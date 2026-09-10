@@ -31,7 +31,7 @@
 
             <!-- 5. DOCUMENTS -->
             <xpath expr="//page[@name='personal_information']/group" position="inside">
-                <group string="Employee Documents" name="hudson_employee_docs">
+                <group string="Documents" name="hudson_employee_docs">
                     <field name="sim_card_copy_filename" invisible="1"/>
                     <field name="sim_card_copy" filename="sim_card_copy_filename" widget="binary" string="SIM Card Copy"/>
                     <field name="internet_subscription_invoice_filename" invisible="1"/>

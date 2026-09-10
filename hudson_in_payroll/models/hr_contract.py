@@ -147,6 +147,12 @@ class HrVersion(models.Model):
                     eval_date=contract.date_start or fields.Date.today()
                 )
                 contract.employee_id.hds_in_esic_applicable = default_esic
+                if not default_esic:
+                    contract.employee_id.hds_in_esic_ip_status = 'exempt'
+                    contract.employee_id.hds_in_esic_exit_reason = 'wage_exceeded'
+                else:
+                    if contract.employee_id.hds_in_esic_ip_status == 'exempt':
+                        contract.employee_id.hds_in_esic_ip_status = 'active'
 
     def _sync_employee_esic_default(self):
         """
@@ -163,7 +169,14 @@ class HrVersion(models.Model):
             gross_wage=self.wage,
             eval_date=self.date_start or fields.Date.today()
         )
-        employee.write({'hds_in_esic_applicable': default_esic})
+        vals = {'hds_in_esic_applicable': default_esic}
+        if not default_esic:
+            vals['hds_in_esic_ip_status'] = 'exempt'
+            vals['hds_in_esic_exit_reason'] = 'wage_exceeded'
+        else:
+            if employee.hds_in_esic_ip_status == 'exempt':
+                vals['hds_in_esic_ip_status'] = 'active'
+        employee.write(vals)
 
     def _estimate_statutory_rule_amount(self, contract, rule):
         """

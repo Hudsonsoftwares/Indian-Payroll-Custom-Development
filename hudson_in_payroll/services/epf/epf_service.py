@@ -28,6 +28,10 @@ class ContractPayslipAdapter:
         self.line_ids = []
 
     def hds_in_get_actual_pf_wage(self, localdict=None):
+        basic = float(getattr(self.contract, 'basic_salary', 0.0) or 0.0)
+        da = float(getattr(self.contract, 'da', 0.0) or 0.0)
+        if basic > 0:
+            return basic + da
         return float(getattr(self.contract, 'wage', 0.0) or 0.0)
 
 

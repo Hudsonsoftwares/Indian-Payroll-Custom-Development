@@ -30,8 +30,8 @@ class EPFEmployerCalculator(BaseStatutoryService):
         # Guard 3: Historical date handling (payslip period date, not today's date)
         eval_date = getattr(payslip, 'date_to', False) or getattr(payslip, 'date_from', False) or self.env.context.get('date') or fields.Date.today()
 
-        # Guard 4: PF Contribution Wage
-        contribution_wage = self.wage_calc.get_pf_contribution_wage(payslip)
+        # Guard 4: PF Contribution Wage (Employer Basis)
+        contribution_wage = getattr(self.wage_calc, 'get_employer_pf_contribution_wage', self.wage_calc.get_pf_contribution_wage)(payslip)
 
         # Guard 5: Non-positive wage guard
         if contribution_wage <= 0.0:
@@ -89,7 +89,7 @@ class EPFEmployerCalculator(BaseStatutoryService):
             return 0.0
 
         eval_date = payslip.date_to or fields.Date.today()
-        pf_wage = self.wage_calc.get_pf_contribution_wage(payslip)
+        pf_wage = getattr(self.wage_calc, 'get_employer_pf_contribution_wage', self.wage_calc.get_pf_contribution_wage)(payslip)
         if pf_wage <= 0.0:
             return 0.0
         admin_rate = self.get_pf_parameter('hds_in_epf_admin_charge_rate', date=eval_date, as_decimal=True)

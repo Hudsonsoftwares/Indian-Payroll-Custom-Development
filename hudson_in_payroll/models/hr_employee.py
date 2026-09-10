@@ -68,9 +68,11 @@ class HrEmployee(models.Model):
     hds_in_pf_contribution_basis = fields.Selection([
         ('statutory_ceiling', 'Statutory Ceiling (₹15,000 Cap)'),
         ('actual_pf_wage', 'Actual PF Wage (Uncapped)'),
-        ('statutory_restricted', 'Statutory Restricted (Legacy Cap)'),
-        ('actual_basic', 'Actual Basic Pay (Legacy Uncapped)'),
-    ], string="PF Contribution Basis", default='statutory_ceiling', required=True)
+    ], string="Employee PF Contribution Basis", default='statutory_ceiling', required=True)
+    hds_in_pf_employer_basis = fields.Selection([
+        ('statutory_ceiling', 'Statutory Ceiling (₹15,000 Cap)'),
+        ('actual_pf_wage', 'Actual PF Wage (Uncapped)'),
+    ], string="Employer PF Contribution Basis", default='statutory_ceiling', required=True)
 
     # VPF (Voluntary Provident Fund)
     hds_in_vpf_type = fields.Selection([
@@ -111,7 +113,7 @@ class HrEmployee(models.Model):
         ('exempt', 'Exempt'),
         ('resigned', 'Resigned'),
         ('disabled', 'Disabled'),
-    ], string="Insured Person Status", default='active', help="Current ESIC Insured Person (IP) compliance status.")
+    ], string="Insured Person Status", default='exempt', help="Current ESIC Insured Person (IP) compliance status.")
 
     hds_in_is_pwd = fields.Boolean(
         string="Person with Disability (PWD)",
@@ -200,22 +202,55 @@ class HrEmployee(models.Model):
         compute='_compute_hds_in_statutory_audit_count'
     )
 
-    @api.depends('hds_in_esic_joining_date', 'hds_in_esic_applicable')
+    @api.depends('hds_in_esic_applicable', 'hds_in_is_pwd', 'wage', 'basic_salary')
     def _compute_esic_contribution_period(self):
         today = fields.Date.today()
         for emp in self:
-            if not emp.hds_in_esic_applicable:
-                emp.hds_in_esic_contribution_period = False
-                continue
-            ref_date = emp.hds_in_esic_joining_date or today
+            ref_date = today
+            if emp.id and isinstance(emp.id, int):
+                version = self.env['hr.version'].search([
+                    ('employee_id', '=', emp.id)
+                ], order='date_start desc', limit=1)
+                if version and getattr(version, 'date_start', None) and version.date_start > today:
+                    ref_date = version.date_start
+
             year = ref_date.year
             month = ref_date.month
+
             if 4 <= month <= 9:
-                emp.hds_in_esic_contribution_period = f"April {year} – September {year}"
+                period_str = f"April {year} – September {year}"
+                valid_until = f"30-Sep-{year}"
             elif month >= 10:
-                emp.hds_in_esic_contribution_period = f"October {year} – March {year + 1}"
+                period_str = f"October {year} – March {year + 1}"
+                valid_until = f"31-Mar-{year + 1}"
             else:
-                emp.hds_in_esic_contribution_period = f"October {year - 1} – March {year}"
+                period_str = f"October {year - 1} – March {year}"
+                valid_until = f"31-Mar-{year}"
+
+            gross = emp._get_gross_wage()
+            ceiling = 25000.0 if emp.hds_in_is_pwd else 21000.0
+
+            if not emp.hds_in_esic_applicable:
+                if gross > ceiling:
+                    emp.hds_in_esic_contribution_period = f"{period_str} — Exempt (Wage ₹{gross:,.0f} > ₹{ceiling:,.0f})"
+                else:
+                    emp.hds_in_esic_contribution_period = f"{period_str} — Not Applicable (Exempt)"
+            else:
+                emp.hds_in_esic_contribution_period = f"{period_str} (Valid until {valid_until})"
+
+    def _get_gross_wage(self):
+        """Helper to reliably retrieve gross wage from record, _origin, or contract version."""
+        self.ensure_one()
+        wage = float(getattr(self, 'wage', 0.0) or getattr(self, 'basic_salary', 0.0) or 0.0)
+        if wage <= 0.0:
+            origin = getattr(self, '_origin', None)
+            if origin:
+                wage = float(getattr(origin, 'wage', 0.0) or getattr(origin, 'basic_salary', 0.0) or 0.0)
+        if wage <= 0.0:
+            version = getattr(self, 'version_id', None) or (getattr(self, '_origin', None) and getattr(self._origin, 'version_id', None))
+            if version:
+                wage = float(getattr(version, 'wage', 0.0) or getattr(version, 'basic_salary', 0.0) or 0.0)
+        return float(wage or 0.0)
 
     def _evaluate_default_esic_applicable(self, gross_wage=None, eval_date=None):
         """
@@ -229,13 +264,110 @@ class HrEmployee(models.Model):
 
         from ..services.esic.contribution_period_service import ESICContributionPeriodService
         period_service = ESICContributionPeriodService(self.env)
-        return period_service.is_covered_for_contribution_period(self, eval_date=eval_date, current_wage=gross_wage)
+        wage = gross_wage if gross_wage is not None else self._get_gross_wage()
+        return period_service.is_covered_for_contribution_period(self, eval_date=eval_date, current_wage=wage)
 
-    @api.onchange('hds_in_is_pwd', 'company_id')
-    def _onchange_esic_default_triggers(self):
-        """Triggered on employee form when PWD status or company changes."""
+    @api.onchange('hds_in_esic_applicable')
+    def _onchange_esic_applicable(self):
+        """Syncs IP status and exit reason when user manually checks/unchecks ESIC Applicable."""
         for emp in self:
-            emp.hds_in_esic_applicable = emp._evaluate_default_esic_applicable()
+            gross = emp._get_gross_wage()
+            ceiling = 25000.0 if emp.hds_in_is_pwd else 21000.0
+            if emp.hds_in_esic_applicable:
+                is_eligible = emp._evaluate_default_esic_applicable(gross_wage=gross)
+                if not is_eligible and gross > ceiling:
+                    emp.hds_in_esic_applicable = False
+                    emp.hds_in_esic_ip_status = 'exempt'
+                    emp.hds_in_esic_exit_reason = 'wage_exceeded'
+                    return {
+                        'warning': {
+                            'title': _("ESIC Not Applicable"),
+                            'message': _(
+                                "Employee gross wage (₹%s) exceeds the statutory ESIC ceiling of ₹%s per month.\n\n"
+                                "Under Indian ESI Regulations, employees earning above ₹21,000 (or ₹25,000 for PWD) "
+                                "are exempt and cannot be enrolled in ESIC."
+                            ) % (f"{gross:,.2f}", f"{ceiling:,.2f}")
+                        }
+                    }
+                emp.hds_in_esic_ip_status = 'active'
+                emp.hds_in_esic_exit_reason = False
+            else:
+                emp.hds_in_esic_ip_status = 'exempt'
+                if gross > ceiling:
+                    emp.hds_in_esic_exit_reason = 'wage_exceeded'
+
+    @api.onchange('wage', 'basic_salary', 'hds_in_is_pwd', 'company_id')
+    def _onchange_esic_default_triggers(self):
+        """Triggered on employee form when salary, wage, PWD status or company changes."""
+        for emp in self:
+            gross = emp._get_gross_wage()
+            ceiling = 25000.0 if emp.hds_in_is_pwd else 21000.0
+            if gross <= 0.0:
+                emp.hds_in_esic_applicable = False
+                emp.hds_in_esic_ip_status = 'exempt'
+                continue
+            is_applicable = emp._evaluate_default_esic_applicable(gross_wage=gross)
+            emp.hds_in_esic_applicable = is_applicable
+            if not is_applicable:
+                emp.hds_in_esic_ip_status = 'exempt'
+                if gross > ceiling:
+                    emp.hds_in_esic_exit_reason = 'wage_exceeded'
+            else:
+                emp.hds_in_esic_ip_status = 'active'
+                emp.hds_in_esic_exit_reason = False
+
+    @api.model_create_multi
+    def create(self, vals_list):
+        for vals in vals_list:
+            wage = vals.get('wage') if 'wage' in vals else vals.get('basic_salary')
+            if wage is not None:
+                gross = float(wage or 0.0)
+                is_pwd = vals.get('hds_in_is_pwd', False)
+                ceiling = 25000.0 if is_pwd else 21000.0
+                if gross > ceiling:
+                    vals['hds_in_esic_applicable'] = False
+                    vals['hds_in_esic_ip_status'] = 'exempt'
+                    vals['hds_in_esic_exit_reason'] = 'wage_exceeded'
+                elif gross > 0.0 and 'hds_in_esic_applicable' not in vals:
+                    vals['hds_in_esic_applicable'] = True
+                    vals['hds_in_esic_ip_status'] = 'active'
+                    vals['hds_in_esic_exit_reason'] = False
+            elif not vals.get('hds_in_esic_applicable'):
+                if 'hds_in_esic_ip_status' not in vals:
+                    vals['hds_in_esic_ip_status'] = 'exempt'
+        return super().create(vals_list)
+
+    def write(self, vals):
+        if 'hds_in_esic_applicable' in vals and not vals['hds_in_esic_applicable']:
+            if 'hds_in_esic_ip_status' not in vals:
+                vals['hds_in_esic_ip_status'] = 'exempt'
+        if 'hds_in_esic_applicable' in vals and vals['hds_in_esic_applicable']:
+            for emp in self:
+                gross = float(vals.get('wage') or getattr(emp, 'wage', 0.0) or vals.get('basic_salary') or getattr(emp, 'basic_salary', 0.0) or 0.0)
+                ceiling = 25000.0 if (vals.get('hds_in_is_pwd') if 'hds_in_is_pwd' in vals else emp.hds_in_is_pwd) else 21000.0
+                if gross > ceiling and not emp._evaluate_default_esic_applicable(gross_wage=gross):
+                    vals['hds_in_esic_applicable'] = False
+                    vals['hds_in_esic_ip_status'] = 'exempt'
+                    vals['hds_in_esic_exit_reason'] = 'wage_exceeded'
+                    break
+        res = super().write(vals)
+        if any(k in vals for k in ('wage', 'basic_salary', 'hds_in_is_pwd', 'company_id')):
+            for emp in self:
+                gross = float(getattr(emp, 'wage', 0.0) or getattr(emp, 'basic_salary', 0.0) or 0.0)
+                if gross > 0.0:
+                    is_covered = emp._evaluate_default_esic_applicable(gross_wage=gross)
+                    ceiling = 25000.0 if emp.hds_in_is_pwd else 21000.0
+                    update_vals = {'hds_in_esic_applicable': is_covered}
+                    if not is_covered:
+                        update_vals['hds_in_esic_ip_status'] = 'exempt'
+                        if gross > ceiling:
+                            update_vals['hds_in_esic_exit_reason'] = 'wage_exceeded'
+                    else:
+                        if emp.hds_in_esic_ip_status == 'exempt':
+                            update_vals['hds_in_esic_ip_status'] = 'active'
+                            update_vals['hds_in_esic_exit_reason'] = False
+                    super(HrEmployee, emp).write(update_vals)
+        return res
 
     @api.constrains('hds_in_esic_applicable', 'hds_in_esic_ip_number')
     def _check_esic_ip_number(self):

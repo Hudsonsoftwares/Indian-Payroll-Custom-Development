@@ -51,8 +51,9 @@ class HrPayslip(models.Model):
 
     @api.onchange('contract_id')
     def onchange_contract_id(self):
-        super().onchange_contract_id()
-        if self.contract_id and self.contract_id.journal_id:
+        if hasattr(super(), 'onchange_contract_id'):
+            super().onchange_contract_id()
+        if self.contract_id and hasattr(self.contract_id, 'journal_id') and self.contract_id.journal_id:
             self.journal_id = self.contract_id.journal_id
 
     def action_payslip_cancel(self):

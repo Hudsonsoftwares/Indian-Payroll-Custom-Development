@@ -48,14 +48,15 @@ class EPFEmployeeCalculator(BaseStatutoryService):
 
         # Step 5: Calculate VPF (if applicable)
         vpf_amount = 0.0
+        vpf_type = getattr(employee, 'hds_in_vpf_type', 'none') or 'none'
 
-        if employee.hds_in_vpf_type == 'percent' and employee.hds_in_vpf_percent > 0:
+        if vpf_type == 'percent' and getattr(employee, 'hds_in_vpf_percent', 0.0) > 0:
             actual_pf_wage = self.wage_calc.get_actual_pf_wage(payslip)
             vpf_amount = self.round_statutory(
                 actual_pf_wage * (employee.hds_in_vpf_percent / 100.0)
             )
 
-        elif employee.hds_in_vpf_type == 'fixed' and employee.hds_in_vpf_amount > 0:
+        elif vpf_type == 'fixed' and getattr(employee, 'hds_in_vpf_amount', 0.0) > 0:
             vpf_amount = float(employee.hds_in_vpf_amount)
 
         # Step 6: Return positive amount

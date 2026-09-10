@@ -62,4 +62,26 @@ class EPFWageCalculator(BaseStatutoryService):
         _logger.info("[EPFWageCalculator] Capped Wage Basis (Ceiling: %s) -> %s", pf_ceiling, res)
         return res
 
+    def get_employer_pf_contribution_wage(self, payslip, localdict=None):
+        """
+        Determines the wage basis for Employer PF contribution.
+        Uses hds_in_pf_employer_basis (falls back to employee basis if not set).
+        """
+        ld = localdict if localdict is not None else self.localdict
+        actual_pf_wage = self.get_actual_pf_wage(payslip, localdict=ld)
+        if actual_pf_wage <= 0.0:
+            return 0.0
+
+        employee = payslip.employee_id
+        if getattr(employee, 'hds_in_is_international_worker', False):
+            return actual_pf_wage
+
+        basis = getattr(employee, 'hds_in_pf_employer_basis', False) or getattr(employee, 'hds_in_pf_contribution_basis', 'statutory_ceiling')
+        if basis in ('actual_pf_wage', 'actual_basic'):
+            return actual_pf_wage
+
+        eval_date = payslip.date_to or fields.Date.today()
+        pf_ceiling = self.get_pf_parameter('PF_WAGE_CEILING', date=eval_date)
+        return min(actual_pf_wage, pf_ceiling)
+
 

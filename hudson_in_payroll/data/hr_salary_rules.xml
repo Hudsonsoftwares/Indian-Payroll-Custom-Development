@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <odoo>
     <!-- Initial Statutory PF Wage Basis Configuration for Standard Salary Rules -->
-    <data noupdate="1">
+    <data noupdate="0">
         <!-- Basic Salary (BASIC) -> Include in PF Wage = True -->
         <record id="hudson_payroll_base.hr_rule_basic" model="hr.salary.rule">
             <field name="hds_in_include_in_pf_wage">True</field>
@@ -91,7 +91,7 @@
             <field name="struct_id" ref="hudson_payroll_base.structure_base"/>
             <field name="condition_select">none</field>
             <field name="amount_select">code</field>
-            <field name="amount_python_compute"><![CDATA[result = payslip_record.hds_in_compute_employer_epf()]]></field>
+            <field name="amount_python_compute"><![CDATA[result = payslip_record.hds_in_compute_employer_epf_share()]]></field>
             <field name="appears_on_payslip" eval="False"/>
             <field name="active" eval="True"/>
         </record>

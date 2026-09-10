@@ -42,6 +42,26 @@
                 </div>
             </xpath>
 
+            <!-- Left Column: Provident Fund and Professional Tax positioned directly under Schedule -->
+            <xpath expr="//field[@name='resource_calendar_id']" position="after">
+                <separator string="Provident Fund" class="mt-4 mb-2"/>
+                <field name="hds_in_epf_applicable" string="EPF Applicable"/>
+                <field name="hds_in_is_international_worker" invisible="not hds_in_epf_applicable"/>
+
+                <!-- Employee Contribution Subdivision -->
+                <separator string="Employee Contribution" class="mt-3 mb-2" invisible="not hds_in_epf_applicable"/>
+                <field name="hds_in_pf_contribution_basis" string="Contribution Basis" invisible="not hds_in_epf_applicable"/>
+
+                <!-- Employer Contribution Subdivision -->
+                <separator string="Employer Contribution" class="mt-3 mb-2" invisible="not hds_in_epf_applicable"/>
+                <field name="hds_in_pf_employer_basis" string="Contribution Basis" invisible="not hds_in_epf_applicable"/>
+                <field name="hds_in_eps_applicable" string="EPS Applicable" invisible="not hds_in_epf_applicable"/>
+                <field name="hds_in_existing_eps_member" string="Existing EPS Member" invisible="not hds_in_epf_applicable or not hds_in_eps_applicable"/>
+
+                <separator string="Professional Tax (PT)" class="mt-4 mb-2"/>
+                <field name="hds_in_pt_applicable" string="PT Applicable"/>
+            </xpath>
+
             <!-- Right Column: Salary Components and Benefits stacked in 2nd column matching Screenshot 5 -->
             <xpath expr="//group[@name='contract']" position="after">
                 <group name="salary_components_and_benefits">
@@ -139,77 +159,28 @@
                     <!-- ESIC Module with clean separator and standard checkbox directly under Benefits -->
                     <separator string="Employees' State Insurance (ESIC)" class="mt-4 mb-2"/>
                     <field name="hds_in_esic_applicable" string="ESIC Applicable"/>
-                    <field name="hds_in_esic_ip_number" placeholder="e.g. 12345678901234567" invisible="not hds_in_esic_applicable"/>
-                    <field name="hds_in_esic_joining_date" invisible="not hds_in_esic_applicable"/>
-                    <field name="hds_in_esic_exit_date" invisible="not hds_in_esic_applicable"/>
-                    <field name="hds_in_esic_exit_reason" invisible="not hds_in_esic_applicable or not hds_in_esic_exit_date"/>
+                    <field name="hds_in_esic_contribution_period" string="Contribution Period" readonly="1"/>
                     <field name="hds_in_esic_ip_status" widget="badge"
                            decoration-success="hds_in_esic_ip_status == 'active'"
                            decoration-warning="hds_in_esic_ip_status == 'exempt'"
                            decoration-danger="hds_in_esic_ip_status == 'resigned'"
-                           decoration-muted="hds_in_esic_ip_status == 'disabled'"
-                           invisible="not hds_in_esic_applicable"/>
-                    <field name="hds_in_esic_dispensary" placeholder="Select or enter ESIC Dispensary" invisible="not hds_in_esic_applicable"/>
+                           decoration-muted="hds_in_esic_ip_status == 'disabled'"/>
 
                     <!-- Labour Welfare Fund (LWF) directly below ESIC -->
                     <separator string="Labour Welfare Fund (LWF)" class="mt-4 mb-2"/>
                     <field name="hds_in_lwf_applicable" string="LWF Applicable"/>
-                    <field name="hds_in_lwf_number" placeholder="e.g. LWF/MH/2026/001" invisible="not hds_in_lwf_applicable"/>
                 </group>
             </xpath>
 
-            <xpath expr="//group[@name='payroll_group']" position="after">
-                <group string="Payroll Statutory Information" name="hds_in_statutory_info" col="2">
-                    
-                    <!-- ======================================================= -->
-                    <!-- 1. EMPLOYEES' PROVIDENT FUND (PF & EPS) MODULE -->
-                    <!-- ======================================================= -->
-                    <group name="group_pf_section" colspan="2" col="2">
-                        <div class="o_horizontal_separator d-flex align-items-center gap-3 mb-2" colspan="2">
-                            <span>Employees' Provident Fund (PF)</span>
-                            <field name="hds_in_epf_applicable" nolabel="1"/>
-                        </div>
-
-                        <!-- PF Details Container (Full Width, 2-Column Grid) -->
-                        <group name="pf_details_container" invisible="not hds_in_epf_applicable" colspan="2" col="2">
-                            <!-- Subsection 1: Registration -->
-                            <separator string="Registration" colspan="2"/>
-                            <field name="hds_in_uan" placeholder="e.g. 100123456789"/>
-                            <field name="hds_in_pf_member_id" placeholder="e.g. MH/BAN/0012345/000/0000123"/>
-                            <field name="hds_in_pf_joining_date"/>
-
-                            <!-- Subsection 2: Membership -->
-                            <separator string="Membership" colspan="2"/>
-                            <field name="hds_in_existing_epf_member"/>
-                            <field name="hds_in_is_international_worker"/>
-                            <field name="hds_in_eps_applicable"/>
-                            <field name="hds_in_existing_eps_member" invisible="not hds_in_eps_applicable"/>
-                            <field name="hds_in_higher_pension" invisible="not hds_in_eps_applicable"/>
-
-                            <!-- Subsection 3: Contribution -->
-                            <separator string="Contribution" colspan="2"/>
-                            <field name="hds_in_pf_contribution_basis"/>
-                            <field name="hds_in_vpf_type"/>
-                            <field name="hds_in_vpf_percent" invisible="hds_in_vpf_type != 'percent'"/>
-                            <field name="hds_in_vpf_amount" invisible="hds_in_vpf_type != 'fixed'"/>
-                        </group>
-                    </group>
-
-                    <!-- ======================================================= -->
-                    <!-- 2. PROFESSIONAL TAX (PT) MODULE -->
-                    <!-- ======================================================= -->
-                    <group name="group_pt_section" colspan="2" col="2">
-                        <div class="o_horizontal_separator d-flex align-items-center gap-3 mb-2" colspan="2">
-                            <span>Professional Tax (PT)</span>
-                            <field name="hds_in_pt_applicable" nolabel="1"/>
-                        </div>
-                    </group>
-
-                </group>
-            </xpath>
-
-            <!-- Relocate PWD field to Personal Information tab -->
+            <!-- Statutory Information (PAN, UAN, PF Account Number, LWF Account Number, ESIC Number) matching Screenshot 2 -->
             <xpath expr="//page[@name='personal_information']/group" position="inside">
+                <group string="Statutory Information" name="group_statutory_information">
+                    <field name="hds_in_pan" string="PAN" placeholder="e.g. ABCDE1234F"/>
+                    <field name="hds_in_uan" string="UAN" placeholder="12 digit Universal Account Number"/>
+                    <field name="hds_in_pf_member_id" string="PF Account Number" placeholder="22 character PF A/c Number"/>
+                    <field name="hds_in_lwf_number" string="LWF Account Number" placeholder="Labour Welfare Fund Account Number"/>
+                    <field name="hds_in_esic_ip_number" string="ESIC Number" placeholder="17 digit ESIC Number"/>
+                </group>
                 <group string="Disability &amp; Special Status" name="group_disability_status">
                     <field name="hds_in_is_pwd"/>
                 </group>

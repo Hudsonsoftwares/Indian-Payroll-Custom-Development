@@ -45,7 +45,7 @@ class ESICContributionPeriodService(BaseStatutoryService):
         Determines effective gross wage on a given historical or future date by inspecting
         active contract wage and adjusting for salary revisions confirmed after eval_date.
         """
-        if not employee:
+        if not employee or not isinstance(employee.id, int):
             return 0.0
 
         if isinstance(eval_date, str):
