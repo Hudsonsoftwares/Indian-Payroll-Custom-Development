@@ -108,6 +108,11 @@ class HrPayslip(models.Model):
         string='Payment Date',
         default=fields.Date.context_today
     )
+    no_worked_days = fields.Boolean(
+        string='No Worked Days',
+        default=False,
+        help="If checked, the worked days lines will not be computed for this payslip."
+    )
     bank_account_id = fields.Many2one(
         'res.partner.bank',
         string='Bank Account',
@@ -193,7 +198,7 @@ class HrPayslip(models.Model):
     def _compute_paid(self):
         for slip in self:
             slip.paid = (slip.state == 'paid')
-    note = fields.Text(string='Internal Notes')
+    note = fields.Text(string='Note', help="Add a note on the printed payslip.")
     credit_note = fields.Boolean(
         string='Credit Note',
         help="Indicates if this payslip is a refund of another payslip"
@@ -540,8 +545,20 @@ class HrPayslip(models.Model):
     def _populate_worked_days(self):
         """Populates standard worked days lines using get_worked_day_lines."""
         self.ensure_one()
+        if not self.contract_id:
+            return
+        if self.no_worked_days:
+            self.worked_days_line_ids = [(5, 0, 0)]
+            return
         worked_days = self.get_worked_day_lines(self.contract_id, self.date_from, self.date_to)
         self.worked_days_line_ids = [(5, 0, 0)] + [(0, 0, vals) for vals in worked_days]
+
+    @api.onchange('no_worked_days')
+    def _onchange_no_worked_days(self):
+        if self.no_worked_days:
+            self.worked_days_line_ids = [(5, 0, 0)]
+        elif self.contract_id and self.date_from and self.date_to:
+            self._populate_worked_days()
 
     def _populate_inputs(self):
         """Populates configured external inputs for the structure."""
@@ -629,7 +646,7 @@ class HrPayslip(models.Model):
                     'amount': amount,
                     'rate': rate,
                     'quantity': qty,
-                    'appears_on_payslip': rule.appears_on_payslip,
+                    'appears_on_payslip': (True if rule.appears_on_payslip == 'always' else False if rule.appears_on_payslip == 'never' else bool(amount)),
                 }))
 
             slip.line_ids = [(5, 0, 0)] + lines_vals

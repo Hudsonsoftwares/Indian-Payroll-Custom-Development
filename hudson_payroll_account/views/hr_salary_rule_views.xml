@@ -8,13 +8,22 @@
             <xpath expr="//notebook" position="inside">
                 <page name="accounting" string="Accounting">
                     <group>
-                        <group string="Accounts">
+                        <group>
                             <field name="account_debit_id" options="{'no_create': True}"/>
                             <field name="account_credit_id" options="{'no_create': True}"/>
+                            <field name="analytic_distribution" widget="analytic_distribution"
+                                   options="{'account_field': 'account_debit_id', 'business_domain': 'general'}"/>
+                            <field name="split_names"/>
+                            <field name="excluded_from_net"/>
+                            <field name="set_employee_on_account_line"/>
                         </group>
-                        <group string="Analytic &amp; Taxes">
-                            <field name="analytic_account_id" groups="analytic.group_analytic_accounting" options="{'no_create': True}"/>
-                            <field name="account_tax_id" options="{'no_create': True}"/>
+                        <group>
+                            <field name="debit_tax_grid_ids" widget="many2many_tags"
+                                   options="{'no_create': True}"
+                                   invisible="not account_debit_id"/>
+                            <field name="credit_tax_grid_ids" widget="many2many_tags"
+                                   options="{'no_create': True}"
+                                   invisible="not account_credit_id"/>
                         </group>
                     </group>
                 </page>

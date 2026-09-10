@@ -66,17 +66,65 @@ class HrSalaryRule(models.Model):
         default='result = contract.wage',
         help="Computation formula. Returns amount in 'result'."
     )
-    appears_on_payslip = fields.Boolean(
-        string='Appears on Payslip',
-        default=True,
-        help="If checked, this rule will be displayed on printed payslip."
+    country_id = fields.Many2one(
+        'res.country',
+        string='Country',
+        related='struct_id.country_id',
+        store=True,
+        readonly=True
     )
+
+    # Display Configuration
+    appears_on_payslip = fields.Selection([
+        ('always', 'Always'),
+        ('never', 'Never'),
+        ('non_zero', 'If Result is not zero'),
+    ], string='Appears on Payslip', default='always',
+       help="Specify when this rule will be displayed on printed payslip.")
+    title_only = fields.Boolean(
+        string='Title only',
+        default=False,
+        help="If checked, only the title will be displayed, without amount."
+    )
+    display_color = fields.Char(
+        string='Color',
+        default='#000000',
+        help="Color for displaying this rule on payslips."
+    )
+    display_bold = fields.Boolean(string='Bold', default=False)
+    display_italic = fields.Boolean(string='Italic', default=False)
+    display_underline = fields.Boolean(string='Underline', default=False)
+    display_indented = fields.Boolean(string='Indented', default=False)
+    display_space_on_top = fields.Boolean(string='Space on top', default=False)
+    display_name_note = fields.Char(
+        string='Display Name',
+        help="Additional info that will be printed below the rule"
+    )
+
     note = fields.Text(string='Description')
     company_id = fields.Many2one(
         'res.company',
         string='Company',
         default=lambda self: self.env.company
     )
+
+    @api.model_create_multi
+    def create(self, vals_list):
+        for vals in vals_list:
+            if 'appears_on_payslip' in vals:
+                if vals['appears_on_payslip'] is True or vals['appears_on_payslip'] == 'True':
+                    vals['appears_on_payslip'] = 'always'
+                elif vals['appears_on_payslip'] is False or vals['appears_on_payslip'] == 'False':
+                    vals['appears_on_payslip'] = 'never'
+        return super().create(vals_list)
+
+    def write(self, vals):
+        if 'appears_on_payslip' in vals:
+            if vals['appears_on_payslip'] is True or vals['appears_on_payslip'] == 'True':
+                vals['appears_on_payslip'] = 'always'
+            elif vals['appears_on_payslip'] is False or vals['appears_on_payslip'] == 'False':
+                vals['appears_on_payslip'] = 'never'
+        return super().write(vals)
 
     @api.constrains('code', 'struct_id')
     def _check_code_struct_unique(self):

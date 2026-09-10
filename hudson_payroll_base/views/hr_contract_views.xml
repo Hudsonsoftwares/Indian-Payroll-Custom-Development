@@ -50,6 +50,12 @@
                             <span>/ month</span>
                             <span class="ms-2 text-muted">(<field name="performance_bonus_percent" readonly="1"/>%)</span>
                         </div>
+                        <label for="retention_bonus"/>
+                        <div class="o_row">
+                            <field name="retention_bonus" nolabel="1"/>
+                            <span>/ month</span>
+                            <span class="ms-2 text-muted">(<field name="retention_bonus_percent" readonly="1"/>%)</span>
+                        </div>
                         <label for="lta_allowance"/>
                         <div class="o_row">
                             <field name="lta_allowance" nolabel="1"/>

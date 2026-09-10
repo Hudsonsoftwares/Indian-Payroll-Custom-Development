@@ -211,19 +211,20 @@
         </field>
     </record>
 
-    <!-- General Menu: Payroll -> Configuration -> Salary -> Bonus Management -->
+    <!-- Bonus Management Menus Deactivated (Retention Bonus handled via Salary Rule) -->
     <menuitem id="menu_hds_in_bonus_config_doc"
               name="Bonus Management"
               parent="hudson_payroll_base.menu_hr_payroll_salary_root"
               sequence="80"
               action="action_hds_in_bonus"
+              active="False"
               groups="hudson_payroll_base.group_payroll_manager"/>
 
-    <!-- Operations Menu: Payroll -> Operations -> Bonus Management -->
     <menuitem id="menu_hds_in_bonus_operations"
-              name="Bonus Management"
+              name="Bonus Operations"
               parent="hudson_payroll_base.menu_hr_payroll_operations"
               sequence="15"
               action="action_hds_in_bonus"
+              active="False"
               groups="hudson_payroll_base.group_payroll_user"/>
 </odoo>

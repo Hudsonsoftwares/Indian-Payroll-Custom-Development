@@ -14,14 +14,56 @@ class HrPayrollStructure(models.Model):
         'hr.payroll.structure.type',
         string='Type'
     )
+    @api.model
+    def _get_payroll_country_domain(self):
+        """Returns domain restricting country selection.
+        In multi-company context: strictly restricts to the active company's country.
+        Each company is bound to its respective country's payroll localization.
+        """
+        if self.env.company and self.env.company.country_id:
+            return [('id', '=', self.env.company.country_id.id)]
+
+        countries = self.env['res.country']
+        if self.env.companies:
+            countries |= self.env.companies.mapped('country_id')
+
+        installed = self.env['ir.module.module'].sudo().search([
+            ('state', '=', 'installed'),
+            ('name', 'in', ['hudson_in_payroll', 'hudson_ae_payroll'])
+        ]).mapped('name')
+
+        if 'hudson_in_payroll' in installed:
+            in_country = self.env.ref('base.in', raise_if_not_found=False)
+            if in_country:
+                countries |= in_country
+        if 'hudson_ae_payroll' in installed:
+            ae_country = self.env.ref('base.ae', raise_if_not_found=False)
+            if ae_country:
+                countries |= ae_country
+
+        if not countries:
+            in_country = self.env.ref('base.in', raise_if_not_found=False)
+            if in_country:
+                countries |= in_country
+        return [('id', 'in', countries.ids)]
+
+    @api.model
+    def _default_country_id(self):
+        """Default country for payroll records."""
+        if self.env.company.country_id:
+            return self.env.company.country_id.id
+        in_country = self.env.ref('base.in', raise_if_not_found=False)
+        return in_country.id if in_country else False
+
     country_id = fields.Many2one(
         'res.country',
         string='Country',
-        default=lambda self: self.env.company.country_id,
+        default=lambda self: self._default_country_id(),
+        domain=lambda self: self._get_payroll_country_domain(),
         compute='_compute_country_id',
         store=True,
         readonly=False,
-        help="Country of applicability, defaults to the company's country."
+        help="Country of applicability, restricted to installed payroll localizations."
     )
     use_worked_day_lines = fields.Boolean(
         string='Use Worked Day Lines',
@@ -92,7 +134,7 @@ class HrPayrollStructure(models.Model):
             elif rec.type_id and rec.type_id.country_id:
                 rec.country_id = rec.type_id.country_id
             elif not rec.country_id:
-                rec.country_id = self.env.company.country_id
+                rec.country_id = rec._default_country_id()
 
     @api.onchange('company_id')
     def _onchange_company_id(self):

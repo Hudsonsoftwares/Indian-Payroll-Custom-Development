@@ -39,6 +39,7 @@
 
         <menuitem id="menu_finance_followup" parent="account.menu_finance"
                   name="Follow-Ups"
+                  active="False"
                   groups="account.group_account_invoice"/>
 
         <menuitem action="action_om_account_followup_print"

@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <odoo>
-    <data noupdate="1">
+    <data noupdate="0">
 
         <!-- India-specific components.
              Reads from contract/version salary breakdown (contract.hra / contract.da / contract.fixed_allowance)
@@ -61,7 +61,19 @@
             <field name="struct_id" ref="hudson_payroll_base.structure_base"/>
             <field name="condition_select">none</field>
             <field name="amount_select">code</field>
-            <field name="amount_python_compute"><![CDATA[result = contract.performance_bonus or 0.0]]></field>
+            <field name="amount_python_compute"><![CDATA[result = payslip_record.hds_in_compute_performance_bonus() if payslip_record else payslip.hds_in_compute_performance_bonus()]]></field>
+            <field name="appears_on_payslip" eval="True"/>
+        </record>
+
+        <record id="hr_rule_retention_bonus_india" model="hr.salary.rule">
+            <field name="name">Retention Bonus</field>
+            <field name="code">RETENTION_BONUS</field>
+            <field name="sequence">19</field>
+            <field name="category_id" ref="hudson_payroll_base.rule_category_alw"/>
+            <field name="struct_id" ref="hudson_payroll_base.structure_base"/>
+            <field name="condition_select">none</field>
+            <field name="amount_select">code</field>
+            <field name="amount_python_compute"><![CDATA[result = payslip_record.hds_in_compute_retention_bonus() if payslip_record else payslip.hds_in_compute_retention_bonus()]]></field>
             <field name="appears_on_payslip" eval="True"/>
         </record>
 

@@ -11,6 +11,7 @@ from . import professional_tax
 from . import tds
 from . import leave_encashment
 from . import compliance
+from . import bonus
 
 
 

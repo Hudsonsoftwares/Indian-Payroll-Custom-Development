@@ -16,7 +16,9 @@ class HrPayrollStructureType(models.Model):
     country_id = fields.Many2one(
         'res.country',
         string='Country',
-        default=lambda self: self.env.company.country_id
+        default=lambda self: self.env['hr.payroll.structure']._default_country_id(),
+        domain=lambda self: self.env['hr.payroll.structure']._get_payroll_country_domain(),
+        help="Country for which this structure type applies."
     )
     wage_type = fields.Selection([
         ('monthly', 'Fixed Wage'),

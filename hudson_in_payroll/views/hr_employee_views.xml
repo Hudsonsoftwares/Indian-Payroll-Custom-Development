@@ -114,6 +114,15 @@
                         <span class="ms-auto text-muted text-nowrap text-end pe-2" style="min-width: 4.5rem;"><field name="performance_bonus_percent" readonly="1"/> %</span>
                     </div>
 
+                    <label for="retention_bonus"/>
+                    <div class="o_row w-100 d-flex align-items-center justify-content-between">
+                        <div class="d-flex align-items-center">
+                            <field name="retention_bonus" class="oe_inline o_hr_narrow_field" widget="monetary" nolabel="1" style="max-width: 120px;"/>
+                            <span class="text-muted ms-2 text-nowrap">/ month</span>
+                        </div>
+                        <span class="ms-auto text-muted text-nowrap text-end pe-2" style="min-width: 4.5rem;"><field name="retention_bonus_percent" readonly="1"/> %</span>
+                    </div>
+
                     <label for="lta_allowance"/>
                     <div class="o_row w-100 d-flex align-items-center justify-content-between">
                         <div class="d-flex align-items-center">

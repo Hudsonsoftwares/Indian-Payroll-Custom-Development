@@ -8,6 +8,7 @@ from ..services.lwf.lwf_service import LWFService
 from ..services.gratuity.gratuity_service import GratuityService
 from ..services.professional_tax.professional_tax_service import ProfessionalTaxService
 from ..services.tds.tds_orchestration_engine import TdsOrchestrationEngine
+from ..services.bonus.bonus_service import BonusService
 
 _logger = logging.getLogger(__name__)
 
@@ -47,6 +48,7 @@ class HrPayslip(models.Model):
             'gratuity_service': GratuityService(self.env, localdict=localdict),
             'pt_service': ProfessionalTaxService(self.env, localdict=localdict),
             'tds_orchestration_engine': TdsOrchestrationEngine(self.env),
+            'bonus_service': BonusService(self.env, localdict=localdict),
             'payslip_record': self,
         })
         return localdict
@@ -1027,7 +1029,7 @@ else:
                             'code': rule.code,
                             'category_id': rule.category_id.id,
                             'sequence': rule.sequence,
-                            'appears_on_payslip': rule.appears_on_payslip,
+                            'appears_on_payslip': (True if rule.appears_on_payslip == 'always' else False if rule.appears_on_payslip == 'never' else bool(amount)),
                             'condition_select': rule.condition_select,
                             'condition_python': rule.condition_python,
                             'condition_range': rule.condition_range,
@@ -1196,6 +1198,17 @@ else:
     def hds_in_compute_pt(self):
         """Alias for hds_in_compute_professional_tax for backward compatibility."""
         return self.hds_in_compute_professional_tax()
+
+    # -------------------------------------------------------------------------
+    # PUBLIC BONUS ORCHESTRATION API FOR SALARY RULES (Zero Arguments in XML)
+    # -------------------------------------------------------------------------
+    def hds_in_compute_performance_bonus(self):
+        """Public API entrypoint for PERF_BONUS Salary Rule (Zero arguments in XML)."""
+        return self._delegate_statutory_service(BonusService, 'compute_performance_bonus')
+
+    def hds_in_compute_retention_bonus(self):
+        """Public API entrypoint for RETENTION_BONUS Salary Rule (Zero arguments in XML)."""
+        return self._delegate_statutory_service(BonusService, 'compute_retention_bonus')
 
     # -------------------------------------------------------------------------
     # WAGE RESOLUTION HELPERS

@@ -12,7 +12,13 @@ class HrRuleParameter(models.Model):
     name = fields.Char(string='Name', required=True)
     code = fields.Char(string='Code', required=True, index=True)
     category = fields.Char(string='Category')
-    country_id = fields.Many2one('res.country', string='Country')
+    country_id = fields.Many2one(
+        'res.country',
+        string='Country',
+        default=lambda self: self.env['hr.payroll.structure']._default_country_id(),
+        domain=lambda self: self.env['hr.payroll.structure']._get_payroll_country_domain(),
+        help="Country of applicability for this rule parameter."
+    )
     description = fields.Text(string='Description')
     parameter_version_ids = fields.One2many(
         'hr.rule.parameter.value',

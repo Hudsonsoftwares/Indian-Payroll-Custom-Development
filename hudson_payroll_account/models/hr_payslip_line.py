@@ -17,6 +17,9 @@ class HrPayslipLine(models.Model):
             or (emp.user_id and emp.user_id.partner_id)
             or False
         )
+        if rule.set_employee_on_account_line:
+            return emp_partner.id if emp_partner else False
+
         if account and account.account_type in ('asset_receivable', 'liability_payable'):
             return emp_partner.id if emp_partner else False
-        return emp_partner.id if emp_partner else False
+        return False

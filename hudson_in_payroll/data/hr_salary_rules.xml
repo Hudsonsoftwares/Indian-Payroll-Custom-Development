@@ -22,9 +22,20 @@
             <field name="hds_in_include_in_pf_wage">False</field>
         </record>
 
-        <!-- Performance Bonus -> Include in PF Wage = False -->
+        <!-- Performance Bonus -> Include in PF Wage = False, Is Bonus = True -->
         <record id="hr_rule_performance_bonus_india" model="hr.salary.rule">
             <field name="hds_in_include_in_pf_wage">False</field>
+            <field name="hds_in_is_bonus">True</field>
+            <field name="hds_in_exclude_notice_period">True</field>
+            <field name="hds_in_apply_tds">True</field>
+        </record>
+
+        <!-- Retention Bonus -> Include in PF Wage = False, Is Bonus = True -->
+        <record id="hr_rule_retention_bonus_india" model="hr.salary.rule">
+            <field name="hds_in_include_in_pf_wage">False</field>
+            <field name="hds_in_is_bonus">True</field>
+            <field name="hds_in_exclude_notice_period">True</field>
+            <field name="hds_in_apply_tds">True</field>
         </record>
 
         <!-- Leave Travel Allowance (LTA) -> Include in PF Wage = False -->

@@ -39,11 +39,11 @@
                                 <field name="code"/>
                                 <field name="category_id"/>
                                 <field name="struct_id" required="1"/>
+                            </group>
+                            <group name="rule_right_group">
+                                <field name="country_id"/>
                                 <field name="sequence"/>
                                 <field name="active" widget="boolean_toggle"/>
-                            </group>
-                            <group>
-                                <field name="appears_on_payslip"/>
                                 <field name="company_id" groups="base.group_multi_company"/>
                             </group>
                         </group>
@@ -62,6 +62,30 @@
                                     <field name="amount_percentage" invisible="amount_select != 'percentage'"/>
                                     <field name="amount_percentage_base" invisible="amount_select != 'percentage'"/>
                                     <field name="amount_python_compute" invisible="amount_select != 'code'"/>
+                                </group>
+                            </page>
+                            <page name="display" string="Display">
+                                <group>
+                                    <field name="appears_on_payslip" widget="radio" options="{'horizontal': True}"/>
+                                    <field name="title_only"/>
+                                    <field name="display_color" widget="color"/>
+                                    <label for="display_bold" string="Style"/>
+                                    <div class="o_row">
+                                        <field name="display_bold"/>
+                                        <label for="display_bold" string="Bold"/>
+                                        <field name="display_italic" class="ms-3"/>
+                                        <label for="display_italic" string="Italic"/>
+                                        <field name="display_underline" class="ms-3"/>
+                                        <label for="display_underline" string="Underline"/>
+                                    </div>
+                                    <label for="display_indented" string="Position"/>
+                                    <div class="o_row">
+                                        <field name="display_indented"/>
+                                        <label for="display_indented" string="Indented"/>
+                                        <field name="display_space_on_top" class="ms-3"/>
+                                        <label for="display_space_on_top" string="Space on top"/>
+                                    </div>
+                                    <field name="display_name_note" placeholder="Additional info that will be printed below the rule"/>
                                 </group>
                             </page>
                             <page name="description" string="Description">

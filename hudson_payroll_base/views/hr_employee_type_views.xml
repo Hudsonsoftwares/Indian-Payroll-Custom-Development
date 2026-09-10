@@ -47,15 +47,22 @@
               action="action_hr_employee_type"
               sequence="8"/>
 
-    <!-- Inherit Employee Form to show Employee Type -->
+    <!-- Inherit Employee Form to show Employee Type and remove Contract Type -->
     <record id="hr_employee_view_form_inherit_hds_type" model="ir.ui.view">
         <field name="name">hr.employee.view.form.inherit.hds.type</field>
         <field name="model">hr.employee</field>
         <field name="inherit_id" ref="hr.view_employee_form"/>
+        <field name="priority">30</field>
         <field name="arch" type="xml">
             <xpath expr="//field[@name='department_id']" position="after">
-                <field name="employee_type_id"/>
                 <field name="bank_account_id"/>
+            </xpath>
+            <xpath expr="//field[@name='employee_type']" position="replace">
+                <field name="employee_type" invisible="1"/>
+                <field name="employee_type_id" string="Employee Type" placeholder="Employee Type" options="{'no_create': True, 'no_create_edit': True}"/>
+            </xpath>
+            <xpath expr="//field[@name='contract_type_id']" position="attributes">
+                <attribute name="invisible">1</attribute>
             </xpath>
         </field>
     </record>

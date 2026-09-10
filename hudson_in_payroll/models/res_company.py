@@ -178,10 +178,20 @@ class ResCompany(models.Model):
         string="Bonus Payroll Structure",
         help="Default Salary Structure used for separate bonus payroll processing."
     )
+    hds_in_retention_min_service_months = fields.Integer(
+        string="Retention Bonus Min Service (Months)",
+        default=12,
+        help="Minimum months of service required for Retention Bonus eligibility."
+    )
+    hds_in_retention_exclude_notice_period = fields.Boolean(
+        string="Exclude Notice Period from Retention Bonus",
+        default=True,
+        help="If checked, employees currently serving notice period will not be eligible for Retention Bonus."
+    )
     hds_in_bonus_apply_tds = fields.Boolean(
         string="Apply TDS on Bonus",
         default=True,
-        help="If checked, Tax Deducted at Source (TDS) rule applies to Bonus Payroll."
+        help="If checked, Tax Deducted at Source (TDS) applies to bonuses (Performance & Retention Bonus)."
     )
     hds_in_bonus_apply_pf = fields.Boolean(
         string="Apply PF on Bonus",

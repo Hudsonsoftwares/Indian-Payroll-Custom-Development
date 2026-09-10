@@ -177,7 +177,7 @@ class SalaryProjectionService(BaseStatutoryService):
                     ytd_hra += amt
                 elif code in ('LTA', 'LEAVE_TRAVEL_ALLOWANCE', 'LEAVE_TRAVEL_ASSISTANCE'):
                     ytd_lta += amt
-                elif code in ('BONUS', 'INCENTIVE', 'COMMISSION', 'OVERTIME', 'ARREARS'):
+                elif code in ('BONUS', 'INCENTIVE', 'COMMISSION', 'OVERTIME', 'ARREARS', 'PERF_BONUS', 'RETENTION_BONUS'):
                     ytd_bonus += amt
                 elif cat_code in ('ALW', 'ALLOWANCE') or cat_code.startswith('ALW'):
                     ytd_allowances += amt
@@ -199,7 +199,7 @@ class SalaryProjectionService(BaseStatutoryService):
         if contract:
             contract_other_allowances = sum([
                 float(getattr(contract, f, 0.0) or 0.0)
-                for f in ('travel_allowance', 'meal_allowance', 'medical_allowance', 'other_allowance', 'fixed_allowance')
+                for f in ('travel_allowance', 'meal_allowance', 'medical_allowance', 'other_allowance', 'fixed_allowance', 'performance_bonus', 'retention_bonus')
             ])
 
         if contract_basic > 0.0:

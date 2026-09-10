@@ -5,7 +5,7 @@
         <field name="name">hds.payroll.dashboard.form</field>
         <field name="model">hds.payroll.dashboard</field>
         <field name="arch" type="xml">
-            <form string="Payroll Dashboard" create="false" delete="false">
+            <form string="Payroll Dashboard" class="o_hds_payroll_dashboard_form" create="false" delete="false">
                 <header>
                     <button name="action_refresh_dashboard" string="Refresh Data" type="object" class="btn-primary"/>
                     <button name="action_view_missing_pan_employees" string="Missing PAN" type="object" class="btn-secondary"/>
@@ -31,11 +31,17 @@
         </field>
     </record>
 
+    <!-- Singleton Record for Payroll Dashboard -->
+    <record id="hds_payroll_dashboard_singleton" model="hds.payroll.dashboard">
+        <field name="name">Payroll Dashboard</field>
+    </record>
+
     <!-- Window Action for Payroll Dashboard -->
     <record id="action_hds_payroll_dashboard" model="ir.actions.act_window">
         <field name="name">Payroll Dashboard</field>
         <field name="res_model">hds.payroll.dashboard</field>
         <field name="view_mode">form</field>
+        <field name="res_id" ref="hds_payroll_dashboard_singleton"/>
         <field name="target">current</field>
     </record>
 
@@ -46,12 +52,4 @@
               action="action_hds_payroll_dashboard"
               groups="hudson_payroll_base.group_payroll_user,hudson_payroll_base.group_payroll_manager,base.group_user,base.group_system"
               sequence="1"/>
-
-    <!-- Additional Menu Item: Human Resources Dashboard under Finance / Accounting Root -->
-    <menuitem id="menu_hds_payroll_dashboard_finance"
-              name="Human Resources"
-              parent="account.menu_finance"
-              action="action_hds_payroll_dashboard"
-              groups="hudson_payroll_base.group_payroll_user,hudson_payroll_base.group_payroll_manager,base.group_user,base.group_system"
-              sequence="25"/>
 </odoo>

@@ -146,10 +146,21 @@ class ResConfigSettings(models.TransientModel):
         readonly=False,
         string="Bonus Payroll Structure"
     )
+    # Retention Bonus Settings
+    hds_in_retention_min_service_months = fields.Integer(
+        related='company_id.hds_in_retention_min_service_months',
+        readonly=False,
+        string="Retention Bonus Min Service (Months)"
+    )
+    hds_in_retention_exclude_notice_period = fields.Boolean(
+        related='company_id.hds_in_retention_exclude_notice_period',
+        readonly=False,
+        string="Exclude Notice Period from Bonus"
+    )
     hds_in_bonus_apply_tds = fields.Boolean(
         related='company_id.hds_in_bonus_apply_tds',
         readonly=False,
-        string="Apply TDS"
+        string="Apply TDS on Bonus"
     )
     hds_in_bonus_apply_pf = fields.Boolean(
         related='company_id.hds_in_bonus_apply_pf',

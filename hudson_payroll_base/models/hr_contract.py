@@ -32,6 +32,7 @@ class HrContract(models.Model):
     da = fields.Monetary(string='Dearness Allowance', tracking=True, help="Dearness Allowance")
     standard_allowance = fields.Monetary(string='Standard Allowance', tracking=True)
     performance_bonus = fields.Monetary(string='Performance Bonus', tracking=True)
+    retention_bonus = fields.Monetary(string='Retention Bonus', tracking=True)
     lta_allowance = fields.Monetary(string='Leave Travel Allowance', tracking=True, help="Monthly Leave Travel Allowance (LTA)")
     travel_allowance = fields.Monetary(string='Travel Allowance')
     meal_allowance = fields.Monetary(string='Meal Allowance')
@@ -51,6 +52,7 @@ class HrContract(models.Model):
     da_percent = fields.Float(string='DA %', compute='_compute_breakdown_percentages', digits=(16, 2))
     standard_allowance_percent = fields.Float(string='Standard Allowance %', compute='_compute_breakdown_percentages', digits=(16, 2))
     performance_bonus_percent = fields.Float(string='Performance Bonus %', compute='_compute_breakdown_percentages', digits=(16, 2))
+    retention_bonus_percent = fields.Float(string='Retention Bonus %', compute='_compute_breakdown_percentages', digits=(16, 2))
     lta_percent = fields.Float(string='LTA %', compute='_compute_breakdown_percentages', digits=(16, 2))
     travel_allowance_percent = fields.Float(string='Travel %', compute='_compute_breakdown_percentages', digits=(16, 2))
     meal_allowance_percent = fields.Float(string='Meal %', compute='_compute_breakdown_percentages', digits=(16, 2))
@@ -100,7 +102,7 @@ class HrContract(models.Model):
             rec.is_india_localization = (rec.country_code == 'IN')
             rec.is_uae_localization = (rec.country_code == 'AE')
 
-    @api.depends('wage', 'basic_salary', 'hra', 'da', 'standard_allowance', 'performance_bonus', 'lta_allowance',
+    @api.depends('wage', 'basic_salary', 'hra', 'da', 'standard_allowance', 'performance_bonus', 'retention_bonus', 'lta_allowance',
                  'travel_allowance', 'meal_allowance', 'medical_allowance', 'other_allowance', 'fixed_allowance')
     def _compute_breakdown_percentages(self):
         for rec in self:
@@ -111,6 +113,7 @@ class HrContract(models.Model):
                 rec.da_percent = ((rec.da or 0.0) / total) * 100.0
                 rec.standard_allowance_percent = ((rec.standard_allowance or 0.0) / total) * 100.0
                 rec.performance_bonus_percent = ((rec.performance_bonus or 0.0) / total) * 100.0
+                rec.retention_bonus_percent = ((rec.retention_bonus or 0.0) / total) * 100.0
                 rec.lta_percent = ((rec.lta_allowance or 0.0) / total) * 100.0
                 rec.travel_allowance_percent = ((rec.travel_allowance or 0.0) / total) * 100.0
                 rec.meal_allowance_percent = ((rec.meal_allowance or 0.0) / total) * 100.0
@@ -123,6 +126,7 @@ class HrContract(models.Model):
                 rec.da_percent = 0.0
                 rec.standard_allowance_percent = 0.0
                 rec.performance_bonus_percent = 0.0
+                rec.retention_bonus_percent = 0.0
                 rec.lta_percent = 0.0
                 rec.travel_allowance_percent = 0.0
                 rec.meal_allowance_percent = 0.0
@@ -130,7 +134,7 @@ class HrContract(models.Model):
                 rec.other_allowance_percent = 0.0
                 rec.fixed_allowance_percent = 0.0
 
-    @api.depends('wage', 'basic_salary', 'hra', 'da', 'standard_allowance', 'performance_bonus', 'lta_allowance',
+    @api.depends('wage', 'basic_salary', 'hra', 'da', 'standard_allowance', 'performance_bonus', 'retention_bonus', 'lta_allowance',
                  'travel_allowance', 'meal_allowance', 'medical_allowance', 'other_allowance', 'fixed_allowance')
     def _compute_breakdown_totals(self):
         for rec in self:
@@ -140,6 +144,7 @@ class HrContract(models.Model):
                 (rec.da or 0.0) +
                 (rec.standard_allowance or 0.0) +
                 (rec.performance_bonus or 0.0) +
+                (rec.retention_bonus or 0.0) +
                 (rec.lta_allowance or 0.0) +
                 (rec.travel_allowance or 0.0) +
                 (rec.meal_allowance or 0.0) +

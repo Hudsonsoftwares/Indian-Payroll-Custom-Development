@@ -6,7 +6,12 @@
         <field name="model">hr.salary.rule</field>
         <field name="inherit_id" ref="hudson_payroll_base.hr_salary_rule_view_form"/>
         <field name="arch" type="xml">
-            <xpath expr="//field[@name='appears_on_payslip']" position="after">
+            <xpath expr="//field[@name='struct_id']" position="after">
+                <field name="hds_in_is_bonus"/>
+                <field name="hds_in_exclude_notice_period" invisible="not hds_in_is_bonus"/>
+                <field name="hds_in_apply_tds" invisible="not hds_in_is_bonus"/>
+            </xpath>
+            <xpath expr="//field[@name='sequence']" position="after">
                 <field name="hds_in_include_in_pf_wage"/>
                 <field name="hds_in_contributes_to_employer_cost"/>
             </xpath>

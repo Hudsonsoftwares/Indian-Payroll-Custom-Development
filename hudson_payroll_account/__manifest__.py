@@ -15,7 +15,7 @@ Seamlessly links Hudson Payroll Base with Odoo 19 Financial Accounting:
 - Support for Analytic Account distribution and Taxes on salary rules
     """,
     'author': 'Hudson',
-    'depends': ['hudson_payroll_base', 'account', 'om_account_accountant'],
+    'depends': ['hudson_payroll_base', 'account', 'analytic', 'om_account_accountant'],
     'data': [
         'views/hr_salary_rule_views.xml',
         'views/hr_contract_views.xml',

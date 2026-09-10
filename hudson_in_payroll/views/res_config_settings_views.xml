@@ -250,18 +250,22 @@
                             </div>
                         </div>
 
-                        <!-- Bonus Management Deductions Setting Box -->
-                        <div class="col-12 col-lg-6 o_setting_box" id="hds_in_bonus_deductions_setting">
+                        <!-- Generic Bonus Configuration Setting Box -->
+                        <div class="col-12 col-lg-6 o_setting_box" id="hds_in_bonus_setting">
                             <div class="o_setting_right_pane">
-                                <span class="o_form_label fw-bold">Bonus Payroll Deductions</span>
+                                <span class="o_form_label fw-bold">Bonus Configuration</span>
                                 <div class="text-muted">
-                                    Select which statutory deduction rules should participate in Bonus Payroll processing.
+                                    Configure bonus eligibility rules and tax applicability.
                                 </div>
                                 <div class="content-group mt8">
-                                    <div class="field_boolean"><field name="hds_in_bonus_apply_tds"/> <label for="hds_in_bonus_apply_tds"/></div>
-                                    <div class="field_boolean"><field name="hds_in_bonus_apply_pf"/> <label for="hds_in_bonus_apply_pf"/></div>
-                                    <div class="field_boolean"><field name="hds_in_bonus_apply_esi"/> <label for="hds_in_bonus_apply_esi"/></div>
-                                    <div class="field_boolean"><field name="hds_in_bonus_apply_pt"/> <label for="hds_in_bonus_apply_pt"/></div>
+                                    <div class="field_boolean">
+                                        <field name="hds_in_retention_exclude_notice_period"/>
+                                        <label for="hds_in_retention_exclude_notice_period" string="Exclude Employees in Notice Period"/>
+                                    </div>
+                                    <div class="field_boolean mt-2">
+                                        <field name="hds_in_bonus_apply_tds"/>
+                                        <label for="hds_in_bonus_apply_tds" string="Apply TDS on Bonus"/>
+                                    </div>
                                 </div>
                             </div>
                         </div>

@@ -7,17 +7,44 @@ class HrPayslip(models.Model):
     _inherit = 'hr.payslip'
 
     date = fields.Date(
-        string='Date Account',
-        help="Keep empty to use the payslip end date (date_to)."
+        string='Accounting Date',
+        help="Keep empty to use the payslip payment date."
     )
+
+    @api.model
+    def _default_journal_id(self):
+        company = self.env.company
+        journal = self.env['account.journal'].search([
+            ('company_id', '=', company.id),
+            ('type', '=', 'general'),
+            '|', ('code', '=', 'SAL'), ('name', 'ilike', 'Salar'),
+        ], limit=1)
+        if not journal:
+            journal = self.env['account.journal'].search([
+                ('company_id', '=', company.id),
+                '|', ('code', '=', 'SAL'), ('name', 'ilike', 'Salar'),
+            ], limit=1)
+        if not journal:
+            journal = self.env['account.journal'].sudo().create({
+                'name': 'Salaries',
+                'code': 'SAL',
+                'type': 'general',
+                'company_id': company.id,
+                'sequence': 10,
+            })
+        return journal
+
     journal_id = fields.Many2one(
         'account.journal',
         string='Salary Journal',
         required=True,
-        default=lambda self: self.env['account.journal'].search(
-            [('type', '=', 'general')], limit=1
-        ),
+        default=lambda self: self._default_journal_id(),
+        domain="[('company_id', '=', company_id)]",
         help="Select Salary Journal for accounting entries."
+    )
+    journal_name = fields.Char(
+        string='Salary Journal',
+        compute='_compute_journal_name'
     )
     move_id = fields.Many2one(
         'account.move',
@@ -26,6 +53,55 @@ class HrPayslip(models.Model):
         copy=False,
         help="Accounting entry generated for this payslip."
     )
+
+    @api.depends('journal_id', 'journal_id.name')
+    def _compute_journal_name(self):
+        for slip in self:
+            slip.journal_name = slip.journal_id.name if slip.journal_id else 'Salaries'
+
+    def action_open_salary_journal_entries(self):
+        """Opens the related Journal Entry (if exists) or the Journal Entries list of Salary Journal."""
+        self.ensure_one()
+        if self.move_id:
+            return {
+                'name': _('Accounting Entry'),
+                'type': 'ir.actions.act_window',
+                'res_model': 'account.move',
+                'view_mode': 'form',
+                'res_id': self.move_id.id,
+                'target': 'current',
+            }
+        journal = self.journal_id or self._default_journal_id()
+        return {
+            'name': _('Journal Entries: %s') % journal.name,
+            'type': 'ir.actions.act_window',
+            'res_model': 'account.move',
+            'view_mode': 'list,form',
+            'domain': [('journal_id', '=', journal.id)],
+            'context': {
+                'default_journal_id': journal.id,
+                'search_default_journal_id': journal.id,
+            },
+            'target': 'current',
+        }
+
+    @api.onchange('company_id')
+    def _onchange_company_id_salary_journal(self):
+        if self.company_id:
+            journal = self.env['account.journal'].search([
+                ('company_id', '=', self.company_id.id),
+                ('type', '=', 'general'),
+                '|', ('code', '=', 'SAL'), ('name', 'ilike', 'Salar'),
+            ], limit=1)
+            if not journal:
+                journal = self.env['account.journal'].sudo().create({
+                    'name': 'Salaries',
+                    'code': 'SAL',
+                    'type': 'general',
+                    'company_id': self.company_id.id,
+                    'sequence': 10,
+                })
+            self.journal_id = journal
 
     @api.model_create_multi
     def create(self, vals_list):
@@ -97,7 +173,7 @@ class HrPayslip(models.Model):
                 continue
 
             if not slip.journal_id:
-                slip.journal_id = self.env['account.journal'].search([('type', '=', 'general')], limit=1)
+                slip.journal_id = slip._default_journal_id()
 
             line_ids = []
             debit_sum = 0.0
@@ -163,15 +239,23 @@ class HrPayslip(models.Model):
                         )
                         credit_account_id = ded_acc.id if ded_acc else False
 
-                analytic_acc = rule.analytic_account_id or slip.contract_id.analytic_account_id
-                analytic_distribution = {str(analytic_acc.id): 100} if analytic_acc else False
+                # Analytic Distribution: rule analytic_distribution takes precedence, then rule analytic_account_id, then contract
+                analytic_distribution = False
+                if getattr(rule, 'analytic_distribution', False):
+                    analytic_distribution = rule.analytic_distribution
+                elif rule.analytic_account_id:
+                    analytic_distribution = {str(rule.analytic_account_id.id): 100}
+                elif slip.contract_id.analytic_account_id:
+                    analytic_distribution = {str(slip.contract_id.analytic_account_id.id): 100}
+
+                line_name = f"{slip.employee_id.name} - {line.name}" if (rule.split_names or rule.set_employee_on_account_line) else line.name
 
                 if debit_account_id:
                     debit_amt = 0.0 if is_refund else abs_amt
                     credit_amt = abs_amt if is_refund else 0.0
                     partner_id = line._get_partner_id(credit_account=False)
                     debit_vals = {
-                        'name': f"{slip.employee_id.name} - {line.name}",
+                        'name': line_name,
                         'partner_id': partner_id,
                         'account_id': debit_account_id,
                         'journal_id': slip.journal_id.id,
@@ -181,6 +265,8 @@ class HrPayslip(models.Model):
                     }
                     if analytic_distribution:
                         debit_vals['analytic_distribution'] = analytic_distribution
+                    if getattr(rule, 'debit_tax_grid_ids', False):
+                        debit_vals['tax_tag_ids'] = [(6, 0, rule.debit_tax_grid_ids.ids)]
                     if rule.account_tax_id:
                         debit_vals['tax_ids'] = [(6, 0, [rule.account_tax_id.id])]
                     line_ids.append((0, 0, debit_vals))
@@ -192,7 +278,7 @@ class HrPayslip(models.Model):
                     credit_amt = 0.0 if is_refund else abs_amt
                     partner_id = line._get_partner_id(credit_account=True)
                     credit_vals = {
-                        'name': f"{slip.employee_id.name} - {line.name}",
+                        'name': line_name,
                         'partner_id': partner_id,
                         'account_id': credit_account_id,
                         'journal_id': slip.journal_id.id,
@@ -202,6 +288,8 @@ class HrPayslip(models.Model):
                     }
                     if analytic_distribution:
                         credit_vals['analytic_distribution'] = analytic_distribution
+                    if getattr(rule, 'credit_tax_grid_ids', False):
+                        credit_vals['tax_tag_ids'] = [(6, 0, rule.credit_tax_grid_ids.ids)]
                     if rule.account_tax_id:
                         credit_vals['tax_ids'] = [(6, 0, [rule.account_tax_id.id])]
                     line_ids.append((0, 0, credit_vals))

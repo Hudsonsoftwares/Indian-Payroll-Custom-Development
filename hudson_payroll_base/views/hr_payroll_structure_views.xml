@@ -21,7 +21,7 @@
                         </div>
                         <group>
                             <group>
-                                <field name="country_id"/>
+                                <field name="country_id" options="{'no_create': True, 'no_create_edit': True}"/>
                                 <field name="wage_type"/>
                             </group>
                             <group>
@@ -75,7 +75,7 @@
                             <group>
                                 <field name="type_id" required="1" string="Type"/>
                                 <field name="use_worked_day_lines"/>
-                                <field name="country_id"/>
+                                <field name="country_id" options="{'no_create': True, 'no_create_edit': True}"/>
                                 <field name="ytd_computation"/>
                             </group>
                             <group>
