@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <!-- Reporting Menu -->
+    <menuitem id="menu_payroll_reporting"
+              name="Reporting"
+              parent="hr_payroll_community.menu_hr_payroll_community_root"
+              sequence="90"
+              groups="hr_payroll_community.group_hr_payroll_community_user"/>
+
+    <!-- Payslip Reports Group Header -->
+    <menuitem id="menu_payslip_reports"
+              name="Payslip Reports"
+              parent="menu_payroll_reporting"
+              sequence="10"/>
+
+    <!-- Submenus -->
+    <menuitem id="menu_payslip_line_report"
+              name="Payslip Lines"
+              parent="menu_payslip_reports"
+              action="action_hr_payslip_line_report"
+              sequence="10"/>
+
+    <menuitem id="menu_payslip_worked_days_report"
+              name="Payslip Work Day Lines"
+              parent="menu_payslip_reports"
+              action="action_hr_payslip_worked_days_report"
+              sequence="20"/>
+
+    <menuitem id="menu_payslip_input_report"
+              name="Payslip Other Inputs"
+              parent="menu_payslip_reports"
+              action="action_hr_payslip_input_report"
+              sequence="30"/>
+</odoo>

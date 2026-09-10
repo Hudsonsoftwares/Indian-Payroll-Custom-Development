@@ -1,0 +1,4 @@
+id,name,model_id:id,group_id:id,perm_read,perm_write,perm_create,perm_unlink
+access_hr_overtime_report_manager,hr.overtime.report.manager,model_hr_overtime_report,hr_attendance.group_hr_attendance_manager,1,1,1,1
+access_hr_overtime_report_officer,hr.overtime.report.officer,model_hr_overtime_report,hr_attendance.group_hr_attendance_officer,1,1,1,1
+access_hr_overtime_report_user,hr.overtime.report.user,model_hr_overtime_report,hr_attendance.group_hr_attendance_user,1,1,1,1

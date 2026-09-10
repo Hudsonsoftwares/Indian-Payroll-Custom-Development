@@ -1,0 +1,112 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+
+    <!-- Report Action -->
+    <record id="action_report_payment_advice" model="ir.actions.report">
+        <field name="name">Payment Advice</field>
+        <field name="model">hudson.payroll.payment.advice</field>
+        <field name="report_type">qweb-pdf</field>
+        <field name="report_name">hudson_payroll_payrun.report_payment_advice_document</field>
+        <field name="report_file">hudson_payroll_payrun.report_payment_advice_document</field>
+        <field name="print_report_name">'Payment_Advice_' + (object.name or '').replace('/', '_')</field>
+        <field name="binding_model_id" ref="model_hudson_payroll_payment_advice"/>
+        <field name="binding_type">report</field>
+    </record>
+
+    <!-- QWeb PDF Template -->
+    <template id="report_payment_advice_document">
+        <t t-call="web.html_container">
+            <t t-foreach="docs" t-as="doc">
+                <t t-call="web.external_layout">
+                    <div class="page">
+                        <div class="row mb-4">
+                            <div class="col-12 text-center">
+                                <h2><strong>PAYMENT ADVICE STATEMENT</strong></h2>
+                                <h4><span t-field="doc.name"/></h4>
+                            </div>
+                        </div>
+
+                        <div class="row mb-4">
+                            <div class="col-6">
+                                <strong>Pay Run:</strong> <span t-field="doc.payslip_run_id.name"/><br/>
+                                <strong>Date:</strong> <span t-field="doc.date"/><br/>
+                                <strong>Company:</strong> <span t-field="doc.company_id.name"/>
+                            </div>
+                            <div class="col-6 text-end">
+                                <strong>Disbursing Bank:</strong> <span t-field="doc.company_bank_id.bank_id.name"/><br/>
+                                <strong>Company Account:</strong> <span t-field="doc.company_bank_id.acc_number"/><br/>
+                                <strong>Total Disbursed:</strong> 
+                                <span t-esc="doc.total_amount" t-options='{"widget": "monetary", "display_currency": doc.company_id.currency_id}'/>
+                            </div>
+                        </div>
+
+                        <table class="table table-sm table-bordered mt-3">
+                            <thead class="table-light">
+                                <tr>
+                                    <th>#</th>
+                                    <th>Employee Name</th>
+                                    <th>Bank Name</th>
+                                    <th>Account Number</th>
+                                    <th>IFSC / Routing Code</th>
+                                    <th class="text-end">Net Amount</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <t t-set="i" t-value="1"/>
+                                <t t-foreach="doc.line_ids" t-as="line">
+                                    <tr t-att-class="'table-warning' if not line.has_bank_account else ''">
+                                        <td><t t-esc="i"/></td>
+                                        <td><span t-field="line.employee_id.name"/></td>
+                                        <td><span t-field="line.bank_name"/></td>
+                                        <td>
+                                            <t t-if="line.acc_number">
+                                                <span t-field="line.acc_number"/>
+                                            </t>
+                                            <t t-else="">
+                                                <strong class="text-danger">MISSING BANK ACCOUNT</strong>
+                                            </t>
+                                        </td>
+                                        <td><span t-field="line.ifsc_code"/></td>
+                                        <td class="text-end">
+                                            <span t-esc="line.net_amount" t-options='{"widget": "monetary", "display_currency": doc.company_id.currency_id}'/>
+                                        </td>
+                                    </tr>
+                                    <t t-set="i" t-value="i+1"/>
+                                </t>
+                            </tbody>
+                            <tfoot>
+                                <tr>
+                                    <td colspan="5" class="text-end"><strong>Total:</strong></td>
+                                    <td class="text-end">
+                                        <strong>
+                                            <span t-esc="doc.total_amount" t-options='{"widget": "monetary", "display_currency": doc.company_id.currency_id}'/>
+                                        </strong>
+                                    </td>
+                                </tr>
+                            </tfoot>
+                        </table>
+
+                        <t t-if="doc.note">
+                            <div class="mt-4">
+                                <strong>Notes / Instructions:</strong>
+                                <p t-field="doc.note"/>
+                            </div>
+                        </t>
+
+                        <div class="row mt-5 pt-5">
+                            <div class="col-6 text-center">
+                                _______________________<br/>
+                                <strong>Prepared By (Payroll Admin)</strong>
+                            </div>
+                            <div class="col-6 text-center">
+                                _______________________<br/>
+                                <strong>Authorized Signatory</strong>
+                            </div>
+                        </div>
+                    </div>
+                </t>
+            </t>
+        </t>
+    </template>
+
+</odoo>

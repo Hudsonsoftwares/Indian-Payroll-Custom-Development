@@ -1,0 +1,55 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <record id="hds_salary_register_wizard_view_form" model="ir.ui.view">
+        <field name="name">hds.salary.register.wizard.view.form</field>
+        <field name="model">hds.salary.register.wizard</field>
+        <field name="arch" type="xml">
+            <form string="Salary Register">
+                <sheet>
+                    <div class="oe_title">
+                        <h2>Salary Register</h2>
+                    </div>
+                    <group>
+                        <group string="Date Range &amp; Criteria">
+                            <field name="date_from" required="1"/>
+                            <field name="date_to" required="1"/>
+                            <field name="payslip_state" required="1"/>
+                        </group>
+                        <group string="Structure &amp; Scope">
+                            <field name="struct_id" options="{'no_create': True}"/>
+                            <field name="company_id" groups="base.group_multi_company" required="1"/>
+                        </group>
+                    </group>
+
+                    <separator string="Employees"/>
+                    <p class="text-muted">
+                        Select specific employees to include in the register. Leave empty to generate the register for all matching employees.
+                    </p>
+                    <field name="employee_ids" widget="many2many">
+                        <list string="Employees">
+                            <field name="name" string="Employee Name"/>
+                            <field name="department_id" string="Department" optional="show"/>
+                            <field name="job_id" string="Job Position" optional="show"/>
+                        </list>
+                    </field>
+                </sheet>
+                <footer>
+                    <button name="action_export_xlsx"
+                            string="Export XLSX"
+                            type="object"
+                            class="btn-primary"/>
+                    <button string="Discard"
+                            class="btn-secondary"
+                            special="cancel"/>
+                </footer>
+            </form>
+        </field>
+    </record>
+
+    <record id="action_hds_salary_register_report_wizard" model="ir.actions.act_window">
+        <field name="name">Salary Register</field>
+        <field name="res_model">hds.salary.register.wizard</field>
+        <field name="view_mode">form</field>
+        <field name="target">new</field>
+    </record>
+</odoo>

@@ -1,0 +1,53 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+
+    <!-- Form View for New Pay Run Wizard -->
+    <record id="hudson_payrun_wizard_view_form" model="ir.ui.view">
+        <field name="name">hudson.payroll.payrun.wizard.view.form</field>
+        <field name="model">hudson.payroll.payrun.wizard</field>
+        <field name="arch" type="xml">
+            <form string="New Pay Run">
+                <sheet>
+                    <div class="oe_title">
+                        <label for="name" string="Pay Run Title"/>
+                        <h1>
+                            <field name="name" placeholder="e.g. July 2026 Regular Salary"/>
+                        </h1>
+                    </div>
+                    <group>
+                        <group string="Period &amp; Structure">
+                            <label for="date_start" string="Period"/>
+                            <div>
+                                <field name="date_start" class="oe_inline"/>
+                                <span class="mx-2">to</span>
+                                <field name="date_end" class="oe_inline"/>
+                            </div>
+                            <field name="struct_id" placeholder="Default Contract Structure"/>
+                            <field name="credit_note"/>
+                        </group>
+                        <group string="Scope Selection">
+                            <field name="employee_type_ids" widget="many2many_tags"
+                                   placeholder="All Employee Types (or select specific types)..."/>
+                            <field name="department_ids" widget="many2many_tags"
+                                   placeholder="All Departments (or select specific departments)..."/>
+                        </group>
+                    </group>
+                </sheet>
+                <footer>
+                    <button name="action_confirm_and_generate" type="object"
+                            string="Continue" class="btn-primary"/>
+                    <button string="Discard" class="btn-secondary" special="cancel"/>
+                </footer>
+            </form>
+        </field>
+    </record>
+
+    <!-- Action for Opening New Pay Run Wizard -->
+    <record id="action_hudson_payrun_wizard" model="ir.actions.act_window">
+        <field name="name">New Pay Run</field>
+        <field name="res_model">hudson.payroll.payrun.wizard</field>
+        <field name="view_mode">form</field>
+        <field name="target">new</field>
+    </record>
+
+</odoo>

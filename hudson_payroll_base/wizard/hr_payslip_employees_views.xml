@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <data>
+        <record id="view_hr_payslip_by_employees" model="ir.ui.view">
+            <field name="name">hr_payslip_by_employees</field>
+            <field name="model">hr.payslip.employees</field>
+            <field name="arch" type="xml">
+                <form string="Add Employees to Pay Run">
+                    <p class="text-muted mb-3">
+                        Select employees to add to this pay run. Any previously detached off-cycle payslips for this period will automatically be re-linked, or a new payslip will be generated.
+                    </p>
+                    <group>
+                        <field name="employee_ids" nolabel="1">
+                            <list>
+                                <field name="name"/>
+                                <field name="department_id"/>
+                                <field name="job_id"/>
+                                <field name="company_id" groups="base.group_multi_company"/>
+                            </list>
+                        </field>
+                    </group>
+                    <footer>
+                        <button name="compute_sheet" string="Add to Pay Run" type="object" class="btn-primary"/>
+                        <button string="Cancel" class="btn-secondary" special="cancel"/>
+                    </footer>
+                </form>
+            </field>
+        </record>
+
+        <record id="action_hr_payslip_by_employees" model="ir.actions.act_window">
+            <field name="name">Add Employees to Pay Run</field>
+            <field name="res_model">hr.payslip.employees</field>
+            <field name="view_mode">form</field>
+            <field name="target">new</field>
+        </record>
+    </data>
+</odoo>

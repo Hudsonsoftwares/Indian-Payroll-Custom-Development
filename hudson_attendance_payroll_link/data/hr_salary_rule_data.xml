@@ -1,0 +1,58 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <data noupdate="1">
+        <!-- Overtime Pay Salary Rule -->
+        <record id="hr_rule_overtime_pay" model="hr.salary.rule">
+            <field name="name">Overtime Pay</field>
+            <field name="sequence" eval="25"/>
+            <field name="code">OT</field>
+            <field name="category_id" ref="hudson_payroll_base.rule_category_alw"/>
+            <field name="struct_id" ref="hudson_payroll_base.structure_base"/>
+            <field name="condition_select">none</field>
+            <field name="amount_select">code</field>
+            <field name="amount_python_compute">
+result = contract.get_period_overtime_rate(payslip.date_from, payslip.date_to)
+result_qty = worked_days.OVERTIME.number_of_hours if (worked_days.OVERTIME and contract.pay_by_attendance) else 0.0
+            </field>
+            <field name="appears_on_payslip" eval="True"/>
+        </record>
+
+        <!-- Shortage Deduction Salary Rule -->
+        <record id="hr_rule_shortage_deduction" model="hr.salary.rule">
+            <field name="name">Shortage Deduction</field>
+            <field name="sequence" eval="26"/>
+            <field name="code">SHORT</field>
+            <field name="category_id" ref="hudson_payroll_base.rule_category_ded"/>
+            <field name="struct_id" ref="hudson_payroll_base.structure_base"/>
+            <field name="condition_select">none</field>
+            <field name="amount_select">code</field>
+            <field name="amount_python_compute">
+result = -contract.get_period_shortage_rate(payslip.date_from, payslip.date_to)
+result_qty = worked_days.SHORTAGE.number_of_hours if (worked_days.SHORTAGE and contract.pay_by_attendance) else 0.0
+            </field>
+            <field name="appears_on_payslip" eval="True"/>
+        </record>
+
+        <!-- Unpaid Leave Deduction Salary Rule -->
+        <record id="hr_rule_unpaid" model="hr.salary.rule">
+            <field name="name">Unpaid Leave Deduction</field>
+            <field name="code">UNPAID</field>
+            <field name="sequence" eval="27"/>
+            <field name="category_id" ref="hudson_payroll_base.rule_category_ded"/>
+            <field name="struct_id" ref="hudson_payroll_base.structure_base"/>
+            <field name="condition_select">none</field>
+            <field name="amount_select">code</field>
+            <field name="amount_python_compute">
+result = -(worked_days.UNPAID.number_of_days if worked_days.UNPAID else 0.0) * (contract.hourly_rate * contract.standard_hours_per_day)
+            </field>
+            <field name="appears_on_payslip" eval="True"/>
+        </record>
+
+        <!-- struct_id set directly on each rule above - no separate
+             rule_ids wiring block needed (hr.payroll.structure.rule_ids
+             is a One2many, not a stored Many2many; setting struct_id on
+             the rule is the reliable way to attach it, rather than an
+             (4, ref(...)) command whose behaviour on a One2many field
+             is not guaranteed across Odoo versions). -->
+    </data>
+</odoo>

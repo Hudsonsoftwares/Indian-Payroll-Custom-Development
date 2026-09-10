@@ -1,0 +1,164 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <data noupdate="0">
+        <!-- ========================================== -->
+        <!-- DECIMAL PRECISION                          -->
+        <!-- ========================================== -->
+        <record forcecreate="True" id="decimal_payroll" model="decimal.precision">
+            <field name="name">Payroll</field>
+            <field name="digits">2</field>
+        </record>
+
+        <record forcecreate="True" id="decimal_payroll_rate" model="decimal.precision">
+            <field name="name">Payroll Rate</field>
+            <field name="digits">4</field>
+        </record>
+
+        <!-- ========================================== -->
+        <!-- REGULAR PAY STRUCTURE                      -->
+        <!-- ========================================== -->
+        <record id="structure_base" model="hr.payroll.structure">
+            <field name="name">Regular Pay</field>
+            <field name="code">REGULAR</field>
+            <field name="type_id" ref="hr.structure_type_employee"/>
+            <field name="note">Standard regular payroll structure containing core salary rules and deductions following standard Odoo Online template.</field>
+        </record>
+
+        <!-- Set default structure on standard structure type -->
+        <record id="hr.structure_type_employee" model="hr.payroll.structure.type">
+            <field name="default_struct_id" ref="structure_base"/>
+            <field name="country_id" ref="base.in"/>
+            <field name="wage_type">monthly</field>
+            <field name="schedule_pay">monthly</field>
+        </record>
+
+        <!-- ========================================== -->
+        <!-- WORKER PAY STRUCTURE                       -->
+        <!-- ========================================== -->
+        <record id="structure_worker" model="hr.payroll.structure">
+            <field name="name">Worker Pay</field>
+            <field name="code">WORKER</field>
+            <field name="type_id" ref="hr.structure_type_worker"/>
+            <field name="parent_id" ref="structure_base"/>
+            <field name="note">Standard worker payroll structure containing core salary rules and deductions following standard Odoo Online template.</field>
+        </record>
+
+        <!-- Set default structure on worker structure type -->
+        <record id="hr.structure_type_worker" model="hr.payroll.structure.type">
+            <field name="default_struct_id" ref="structure_worker"/>
+            <field name="wage_type">monthly</field>
+            <field name="schedule_pay">monthly</field>
+        </record>
+
+        <!-- ========================================== -->
+        <!-- ODOO ONLINE STANDARD SALARY RULES          -->
+        <!-- Components belonging to Regular Pay        -->
+        <!-- ========================================== -->
+
+        <!-- 1. Basic Salary -->
+        <record id="hr_rule_basic" model="hr.salary.rule">
+            <field name="name">Basic Salary</field>
+            <field name="struct_id" ref="structure_base"/>
+            <field name="sequence" eval="10"/>
+            <field name="code">BASIC</field>
+            <field name="category_id" ref="rule_category_basic"/>
+            <field name="condition_select">none</field>
+            <field name="amount_select">code</field>
+            <field name="amount_python_compute">result = contract.basic_salary or contract.wage or 0.0</field>
+        </record>
+
+        <!-- 2. Reimbursement -->
+        <record id="hr_rule_reimbursement" model="hr.salary.rule">
+            <field name="name">Reimbursement</field>
+            <field name="struct_id" ref="structure_base"/>
+            <field name="sequence" eval="50"/>
+            <field name="code">REIMBURSEMENT</field>
+            <field name="category_id" ref="rule_category_alw"/>
+            <field name="condition_select">python</field>
+            <field name="condition_python">result = 'REIMBURSEMENT' in inputs</field>
+            <field name="amount_select">code</field>
+            <field name="amount_python_compute">result = inputs.REIMBURSEMENT.amount if 'REIMBURSEMENT' in inputs else 0.0</field>
+        </record>
+
+        <!-- 3. Taxable Salary -->
+        <record id="hr_rule_taxable" model="hr.salary.rule">
+            <field name="name">Taxable Salary</field>
+            <field name="struct_id" ref="structure_base"/>
+            <field name="sequence" eval="100"/>
+            <field name="code">GROSS</field>
+            <field name="category_id" ref="rule_category_gross"/>
+            <field name="condition_select">none</field>
+            <field name="amount_select">code</field>
+            <field name="amount_python_compute">result = categories.BASIC + categories.ALW</field>
+        </record>
+
+        <!-- 4. Attachment of Salary -->
+        <record id="hr_rule_attach_salary" model="hr.salary.rule">
+            <field name="name">Attachment of Salary</field>
+            <field name="struct_id" ref="structure_base"/>
+            <field name="sequence" eval="110"/>
+            <field name="code">ATTACH_SALARY</field>
+            <field name="category_id" ref="rule_category_ded"/>
+            <field name="condition_select">python</field>
+            <field name="condition_python">result = 'ATTACH_SALARY' in inputs</field>
+            <field name="amount_select">code</field>
+            <field name="amount_python_compute">result = -(inputs.ATTACH_SALARY.amount) if 'ATTACH_SALARY' in inputs else 0.0</field>
+        </record>
+
+        <!-- 5. Assignment of Salary -->
+        <record id="hr_rule_assig_salary" model="hr.salary.rule">
+            <field name="name">Assignment of Salary</field>
+            <field name="struct_id" ref="structure_base"/>
+            <field name="sequence" eval="120"/>
+            <field name="code">ASSIG_SALARY</field>
+            <field name="category_id" ref="rule_category_ded"/>
+            <field name="condition_select">python</field>
+            <field name="condition_python">result = 'ASSIG_SALARY' in inputs</field>
+            <field name="amount_select">code</field>
+            <field name="amount_python_compute">result = -(inputs.ASSIG_SALARY.amount) if 'ASSIG_SALARY' in inputs else 0.0</field>
+        </record>
+
+        <!-- 6. Child Support -->
+        <record id="hr_rule_child_support" model="hr.salary.rule">
+            <field name="name">Child Support</field>
+            <field name="struct_id" ref="structure_base"/>
+            <field name="sequence" eval="130"/>
+            <field name="code">CHILD_SUPPORT</field>
+            <field name="category_id" ref="rule_category_ded"/>
+            <field name="condition_select">python</field>
+            <field name="condition_python">result = 'CHILD_SUPPORT' in inputs</field>
+            <field name="amount_select">code</field>
+            <field name="amount_python_compute">result = -(inputs.CHILD_SUPPORT.amount) if 'CHILD_SUPPORT' in inputs else 0.0</field>
+        </record>
+
+        <!-- 7. Deduction -->
+        <record id="hr_rule_deduction" model="hr.salary.rule">
+            <field name="name">Deduction</field>
+            <field name="struct_id" ref="structure_base"/>
+            <field name="sequence" eval="140"/>
+            <field name="code">DEDUCTION</field>
+            <field name="category_id" ref="rule_category_ded"/>
+            <field name="condition_select">python</field>
+            <field name="condition_python"><![CDATA[result = ('DEDUCTION' in inputs) or ('UNPAID' in worked_days) or ('LEAVE110' in worked_days)]]></field>
+            <field name="amount_select">code</field>
+            <field name="amount_python_compute"><![CDATA[
+unpaid_days = (worked_days.get('LEAVE110') and worked_days['LEAVE110'].number_of_days) or (worked_days.get('UNPAID') and worked_days['UNPAID'].number_of_days) or 0.0
+unpaid_ded = - ((contract.wage or 0.0) / 30.0 * unpaid_days) if unpaid_days else 0.0
+input_ded = -(inputs.DEDUCTION.amount) if 'DEDUCTION' in inputs else 0.0
+result = unpaid_ded + input_ded
+]]></field>
+        </record>
+
+        <!-- 8. Net Salary -->
+        <record id="hr_rule_net" model="hr.salary.rule">
+            <field name="name">Net Salary</field>
+            <field name="struct_id" ref="structure_base"/>
+            <field name="sequence" eval="200"/>
+            <field name="code">NET</field>
+            <field name="category_id" ref="rule_category_net"/>
+            <field name="condition_select">none</field>
+            <field name="amount_select">code</field>
+            <field name="amount_python_compute">result = categories.BASIC + categories.ALW + categories.DED</field>
+        </record>
+    </data>
+</odoo>

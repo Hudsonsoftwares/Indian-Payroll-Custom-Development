@@ -1,0 +1,70 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <data noupdate="0">
+        <!-- ============================================================= -->
+        <!-- EMPLOYEE SELF-SERVICE RECORD RULES (DATA ISOLATION)           -->
+        <!-- ============================================================= -->
+
+        <!-- Employee Own Tax Declaration Rule -->
+        <record id="tds_employee_declaration_emp_rule" model="ir.rule">
+            <field name="name">Employee Own Tax Declaration Rule</field>
+            <field name="model_id" ref="model_tds_employee_declaration"/>
+            <field name="groups" eval="[(4, ref('base.group_user'))]"/>
+            <field name="domain_force">['|', ('employee_id.user_id', '=', user.id), ('employee_id.user_id.id', '=', user.id)]</field>
+        </record>
+
+        <!-- Employee Own Tax Declaration Line Rule -->
+        <record id="tds_employee_declaration_line_emp_rule" model="ir.rule">
+            <field name="name">Employee Own Tax Declaration Line Rule</field>
+            <field name="model_id" ref="model_tds_employee_declaration_line"/>
+            <field name="groups" eval="[(4, ref('base.group_user'))]"/>
+            <field name="domain_force">['|', ('declaration_id.employee_id.user_id', '=', user.id), ('declaration_id.employee_id.user_id.id', '=', user.id)]</field>
+        </record>
+
+        <!-- Employee Own Income Declaration Rule -->
+        <record id="tds_employee_income_declaration_emp_rule" model="ir.rule">
+            <field name="name">Employee Own Income Declaration Rule</field>
+            <field name="model_id" ref="model_tds_employee_income_declaration"/>
+            <field name="groups" eval="[(4, ref('base.group_user'))]"/>
+            <field name="domain_force">['|', ('employee_id.user_id', '=', user.id), ('employee_id.user_id.id', '=', user.id)]</field>
+        </record>
+
+        <!-- Employee Own Tax Regime Choice Rule -->
+        <record id="tds_employee_tax_regime_emp_rule" model="ir.rule">
+            <field name="name">Employee Own Tax Regime Choice Rule</field>
+            <field name="model_id" ref="model_tds_employee_tax_regime"/>
+            <field name="groups" eval="[(4, ref('base.group_user'))]"/>
+            <field name="domain_force">['|', ('employee_id.user_id', '=', user.id), ('employee_id.user_id.id', '=', user.id)]</field>
+        </record>
+
+        <!-- HR / Payroll Manager & System Admin Full Access Rules -->
+        <record id="tds_employee_declaration_manager_rule" model="ir.rule">
+            <field name="name">Payroll Manager &amp; Admin Tax Declaration Rule</field>
+            <field name="model_id" ref="model_tds_employee_declaration"/>
+            <field name="groups" eval="[(4, ref('hudson_payroll_base.group_payroll_user')), (4, ref('hudson_payroll_base.group_payroll_manager')), (4, ref('base.group_system'))]"/>
+            <field name="domain_force">[(1, '=', 1)]</field>
+        </record>
+
+        <record id="tds_employee_declaration_line_manager_rule" model="ir.rule">
+            <field name="name">Payroll Manager &amp; Admin Tax Declaration Line Rule</field>
+            <field name="model_id" ref="model_tds_employee_declaration_line"/>
+            <field name="groups" eval="[(4, ref('hudson_payroll_base.group_payroll_user')), (4, ref('hudson_payroll_base.group_payroll_manager')), (4, ref('base.group_system'))]"/>
+            <field name="domain_force">[(1, '=', 1)]</field>
+        </record>
+
+        <record id="tds_employee_income_declaration_manager_rule" model="ir.rule">
+            <field name="name">Payroll Manager &amp; Admin Income Declaration Rule</field>
+            <field name="model_id" ref="model_tds_employee_income_declaration"/>
+            <field name="groups" eval="[(4, ref('hudson_payroll_base.group_payroll_user')), (4, ref('hudson_payroll_base.group_payroll_manager')), (4, ref('base.group_system'))]"/>
+            <field name="domain_force">[(1, '=', 1)]</field>
+        </record>
+
+        <record id="tds_employee_tax_regime_manager_rule" model="ir.rule">
+            <field name="name">Payroll Manager &amp; Admin Tax Regime Choice Rule</field>
+            <field name="model_id" ref="model_tds_employee_tax_regime"/>
+            <field name="groups" eval="[(4, ref('hudson_payroll_base.group_payroll_user')), (4, ref('hudson_payroll_base.group_payroll_manager')), (4, ref('base.group_system'))]"/>
+            <field name="domain_force">[(1, '=', 1)]</field>
+        </record>
+
+    </data>
+</odoo>

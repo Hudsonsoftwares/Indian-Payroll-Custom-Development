@@ -1,0 +1,82 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <record id="hds_gratuity_report_wizard_view_form" model="ir.ui.view">
+        <field name="name">hds.gratuity.report.wizard.view.form</field>
+        <field name="model">hds.gratuity.report.wizard</field>
+        <field name="arch" type="xml">
+            <form string="Gratuity Calculation Report">
+                <sheet>
+                    <div class="oe_title">
+                        <h2>Gratuity Calculation Report</h2>
+                    </div>
+                    <group>
+                        <group>
+                            <field name="selection_mode" required="1"/>
+                            <field name="company_id" groups="base.group_multi_company" required="1"/>
+                        </group>
+                    </group>
+                    
+                    <notebook>
+                        <page string="Employees Selection" invisible="selection_mode != 'by_employee'">
+                            <field name="employee_ids" widget="many2many">
+                                <list string="Select Employees" editable="bottom">
+                                    <field name="name"/>
+                                    <field name="work_email" optional="show"/>
+                                    <field name="department_id" optional="show"/>
+                                    <field name="job_id" optional="show"/>
+                                </list>
+                            </field>
+                        </page>
+                        <page string="Departments Selection" invisible="selection_mode != 'by_department'">
+                            <field name="department_ids" widget="many2many">
+                                <list string="Select Departments" editable="bottom">
+                                    <field name="display_name"/>
+                                    <field name="company_id" groups="base.group_multi_company" optional="hide"/>
+                                </list>
+                            </field>
+                        </page>
+                        <page string="Job Positions Selection" invisible="selection_mode != 'by_job'">
+                            <field name="job_ids" widget="many2many">
+                                <list string="Select Job Positions" editable="bottom">
+                                    <field name="name"/>
+                                    <field name="department_id" optional="show"/>
+                                </list>
+                            </field>
+                        </page>
+                        <page string="Salary Structures Selection" invisible="selection_mode != 'by_structure'">
+                            <field name="structure_ids" widget="many2many">
+                                <list string="Select Salary Structures" editable="bottom">
+                                    <field name="name"/>
+                                    <field name="code" optional="show"/>
+                                </list>
+                            </field>
+                        </page>
+                        <page string="Employee Tags Selection" invisible="selection_mode != 'by_tag'">
+                            <field name="category_ids" widget="many2many">
+                                <list string="Select Employee Tags" editable="bottom">
+                                    <field name="name"/>
+                                </list>
+                            </field>
+                        </page>
+                    </notebook>
+                </sheet>
+                <footer>
+                    <button name="action_export_xlsx"
+                            string="Export XLSX"
+                            type="object"
+                            class="btn-primary"/>
+                    <button string="Discard"
+                            class="btn-secondary"
+                            special="cancel"/>
+                </footer>
+            </form>
+        </field>
+    </record>
+
+    <record id="action_hds_gratuity_report_wizard" model="ir.actions.act_window">
+        <field name="name">Gratuity Calculation Report</field>
+        <field name="res_model">hds.gratuity.report.wizard</field>
+        <field name="view_mode">form</field>
+        <field name="target">new</field>
+    </record>
+</odoo>

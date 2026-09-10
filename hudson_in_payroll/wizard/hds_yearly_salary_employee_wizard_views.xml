@@ -1,0 +1,54 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <record id="hds_yearly_salary_employee_wizard_view_form" model="ir.ui.view">
+        <field name="name">hds.yearly.salary.employee.wizard.view.form</field>
+        <field name="model">hds.yearly.salary.employee.wizard</field>
+        <field name="arch" type="xml">
+            <form string="Yearly Salary by Employee">
+                <sheet>
+                    <div class="oe_title">
+                        <h2>Yearly Salary by Employee</h2>
+                    </div>
+                    <group>
+                        <group string="Selection Criteria">
+                            <field name="year" required="1"/>
+                            <field name="company_id" groups="base.group_multi_company" required="1"/>
+                        </group>
+                        <group string="Optional Filters">
+                            <field name="department_id" options="{'no_create': True}"/>
+                            <field name="job_id" options="{'no_create': True}"/>
+                        </group>
+                    </group>
+
+                    <separator string="Employees"/>
+                    <p class="text-muted">
+                        Select specific employees to include in the yearly salary report. Leave empty to automatically include all matching employees with paid payslips in the selected year.
+                    </p>
+                    <field name="employee_ids" widget="many2many">
+                        <list string="Employees">
+                            <field name="name" string="Employee Name"/>
+                            <field name="department_id" string="Department" optional="show"/>
+                            <field name="job_id" string="Job Position" optional="show"/>
+                        </list>
+                    </field>
+                </sheet>
+                <footer>
+                    <button name="action_print_xlsx"
+                            string="Print"
+                            type="object"
+                            class="btn-primary"/>
+                    <button string="Discard"
+                            class="btn-secondary"
+                            special="cancel"/>
+                </footer>
+            </form>
+        </field>
+    </record>
+
+    <record id="action_hds_yearly_salary_employee_wizard" model="ir.actions.act_window">
+        <field name="name">Yearly Salary by Employee</field>
+        <field name="res_model">hds.yearly.salary.employee.wizard</field>
+        <field name="view_mode">form</field>
+        <field name="target">new</field>
+    </record>
+</odoo>

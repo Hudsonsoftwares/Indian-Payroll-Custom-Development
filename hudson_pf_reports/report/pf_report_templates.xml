@@ -1,0 +1,112 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <template id="report_hds_pf_register_document">
+        <t t-call="web.html_container">
+            <t t-foreach="docs" t-as="o">
+                <t t-call="web.external_layout">
+                    <div class="page">
+                        <!-- Header Title Banner -->
+                        <div class="text-center mb-4">
+                            <h2 class="font-weight-bold" style="color: #1F4E78;">
+                                <t t-if="o.employee_id">EMPLOYEE PROVIDENT FUND STATEMENT</t>
+                                <t t-else="">PROVIDENT FUND REGISTER</t>
+                            </h2>
+                            <h5 class="text-muted">
+                                Payroll Period: <span t-field="o.display_month_year"/> | Company: <span t-field="o.company_id.name"/>
+                            </h5>
+                            <p class="small text-muted mb-0">Generated On: <span t-esc="context_timestamp(datetime.datetime.now()).strftime('%d %B %Y')"/></p>
+                        </div>
+
+                        <!-- CASE 2: Single Employee PF Statement -->
+                        <t t-if="o.employee_id">
+                            <div class="card mb-4 border-secondary">
+                                <div class="card-header bg-light py-2">
+                                    <h6 class="font-weight-bold mb-0">Employee Information</h6>
+                                </div>
+                                <div class="card-body">
+                                    <div class="row">
+                                        <div class="col-6">
+                                            <p class="mb-1"><strong>Employee Name:</strong> <span t-field="o.emp_summary_name"/></p>
+                                            <p class="mb-1"><strong>Employee ID:</strong> <span t-field="o.emp_summary_code"/></p>
+                                            <p class="mb-1"><strong>Designation:</strong> <span t-field="o.emp_summary_designation"/></p>
+                                            <p class="mb-1"><strong>Department:</strong> <span t-field="o.emp_summary_department"/></p>
+                                        </div>
+                                        <div class="col-6">
+                                            <p class="mb-1"><strong>UAN Number:</strong> <span t-field="o.emp_summary_uan"/></p>
+                                            <p class="mb-1"><strong>PF Applicable:</strong> <span t-field="o.emp_summary_pf_applicable"/></p>
+                                            <p class="mb-1"><strong>Contribution Basis:</strong> <span t-field="o.emp_summary_basis"/></p>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <h5 class="font-weight-bold mt-4 mb-2">Contribution Breakdown</h5>
+                            <table class="table table-bordered table-sm">
+                                <thead style="background-color: #1F4E78; color: #FFFFFF;">
+                                    <tr>
+                                        <th>Contribution Component</th>
+                                        <th class="text-right">Amount (INR)</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <tr>
+                                        <td><strong>PF Wage</strong></td>
+                                        <td class="text-right"><span t-field="o.emp_summary_pf_wage" t-options='{"widget": "monetary", "display_currency": o.company_id.currency_id}'/></td>
+                                    </tr>
+                                    <tr>
+                                        <td>Employee EPF Deduction</td>
+                                        <td class="text-right"><span t-field="o.emp_summary_ee_epf" t-options='{"widget": "monetary", "display_currency": o.company_id.currency_id}'/></td>
+                                    </tr>
+                                    <tr>
+                                        <td>Employer EPF Share (3.67%)</td>
+                                        <td class="text-right"><span t-field="o.emp_summary_er_epf" t-options='{"widget": "monetary", "display_currency": o.company_id.currency_id}'/></td>
+                                    </tr>
+                                    <tr>
+                                        <td>Employer EPS Share (8.33%)</td>
+                                        <td class="text-right"><span t-field="o.emp_summary_er_eps" t-options='{"widget": "monetary", "display_currency": o.company_id.currency_id}'/></td>
+                                    </tr>
+                                    <tr>
+                                        <td>EDLI &amp; Admin Charges</td>
+                                        <td class="text-right"><span t-field="o.emp_summary_edli_admin" t-options='{"widget": "monetary", "display_currency": o.company_id.currency_id}'/></td>
+                                    </tr>
+                                    <tr style="background-color: #EBF1F5; font-weight: bold;">
+                                        <td>Employer Total Statutory Cost</td>
+                                        <td class="text-right"><span t-field="o.emp_summary_total_cost" t-options='{"widget": "monetary", "display_currency": o.company_id.currency_id}'/></td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </t>
+
+                        <!-- CASE 1: Company PF Register Summary -->
+                        <t t-else="">
+                            <div class="card mb-4 border-secondary">
+                                <div class="card-header bg-light py-2">
+                                    <h6 class="font-weight-bold mb-0">Statutory Summary Overview</h6>
+                                </div>
+                                <div class="card-body">
+                                    <div class="row">
+                                        <div class="col-6">
+                                            <p class="mb-1"><strong>Total Employees Processed:</strong> <span t-field="o.record_count"/></p>
+                                            <p class="mb-1"><strong>Total PF Wages:</strong> <span t-field="o.total_pf_wages" t-options='{"widget": "monetary", "display_currency": o.company_id.currency_id}'/></p>
+                                            <p class="mb-1"><strong>Total Employee EPF:</strong> <span t-field="o.total_employee_epf" t-options='{"widget": "monetary", "display_currency": o.company_id.currency_id}'/></p>
+                                        </div>
+                                        <div class="col-6">
+                                            <p class="mb-1"><strong>Total Employer EPF Share:</strong> <span t-field="o.total_employer_epf" t-options='{"widget": "monetary", "display_currency": o.company_id.currency_id}'/></p>
+                                            <p class="mb-1"><strong>Total Employer EPS Share:</strong> <span t-field="o.total_employer_eps" t-options='{"widget": "monetary", "display_currency": o.company_id.currency_id}'/></p>
+                                            <p class="mb-1"><strong>Total Employer Statutory Cost:</strong> <span t-field="o.total_employer_cost" t-options='{"widget": "monetary", "display_currency": o.company_id.currency_id}'/></p>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </t>
+
+                        <!-- Statutory Disclaimer Footer -->
+                        <div class="mt-5 pt-3 border-top text-center text-muted small">
+                            <p>This is a computer-generated statutory payroll document for EPFO compliance verification. Authorized Signature Not Required.</p>
+                        </div>
+                    </div>
+                </t>
+            </t>
+        </t>
+    </template>
+</odoo>

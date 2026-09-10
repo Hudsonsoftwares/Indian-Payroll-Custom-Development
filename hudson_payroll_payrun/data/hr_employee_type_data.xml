@@ -1,0 +1,52 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo noupdate="1">
+
+    <record id="employee_type_employee" model="hr.employee.type">
+        <field name="name">Employee</field>
+        <field name="code">EMP</field>
+        <field name="sequence">1</field>
+    </record>
+
+    <record id="employee_type_executive" model="hr.employee.type">
+        <field name="name">Company Executive</field>
+        <field name="code">EXEC</field>
+        <field name="sequence">2</field>
+    </record>
+
+    <record id="employee_type_student" model="hr.employee.type">
+        <field name="name">Student</field>
+        <field name="code">STU</field>
+        <field name="sequence">3</field>
+    </record>
+
+    <record id="employee_type_intern" model="hr.employee.type">
+        <field name="name">Intern</field>
+        <field name="code">INT</field>
+        <field name="sequence">4</field>
+    </record>
+
+    <record id="employee_type_interim" model="hr.employee.type">
+        <field name="name">Interim</field>
+        <field name="code">ITR</field>
+        <field name="sequence">5</field>
+    </record>
+
+    <record id="employee_type_apprenticeship" model="hr.employee.type">
+        <field name="name">Apprenticeship</field>
+        <field name="code">APP</field>
+        <field name="sequence">6</field>
+    </record>
+
+    <record id="employee_type_seasonal" model="hr.employee.type">
+        <field name="name">Occasional / Seasonal</field>
+        <field name="code">SEASON</field>
+        <field name="sequence">7</field>
+    </record>
+
+    <record id="employee_type_thesis" model="hr.employee.type">
+        <field name="name">Thesis</field>
+        <field name="code">THESIS</field>
+        <field name="sequence">8</field>
+    </record>
+
+</odoo>

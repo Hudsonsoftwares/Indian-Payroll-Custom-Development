@@ -1,0 +1,57 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <data>
+        <!-- Payroll Privilege Category in Odoo 19 -->
+        <record model="res.groups.privilege" id="res_groups_payroll_base">
+            <field name="name">Payroll</field>
+            <field name="sequence">16</field>
+            <field name="category_id" ref="base.module_category_human_resources"/>
+        </record>
+
+        <!-- Payroll Officer / User Group -->
+        <record id="group_payroll_user" model="res.groups">
+            <field name="name">Officer</field>
+            <field name="privilege_id" ref="res_groups_payroll_base"/>
+            <field name="implied_ids" eval="[(4, ref('base.group_user'))]"/>
+        </record>
+
+        <!-- Payroll Administrator / Manager Group -->
+        <record id="group_payroll_manager" model="res.groups">
+            <field name="name">Administrator</field>
+            <field name="privilege_id" ref="res_groups_payroll_base"/>
+            <field name="implied_ids" eval="[(4, ref('group_payroll_user')), (4, ref('hr.group_hr_user'))]"/>
+            <field name="user_ids" eval="[(4, ref('base.user_root')), (4, ref('base.user_admin'))]"/>
+        </record>
+
+        <!-- Multi-company Record Rules -->
+        <record id="hr_payslip_rule_company" model="ir.rule">
+            <field name="name">Payslip Multi-Company</field>
+            <field name="model_id" ref="model_hr_payslip"/>
+            <field name="domain_force">['|', ('company_id', '=', False), ('company_id', 'in', company_ids)]</field>
+        </record>
+
+        <record id="hr_payslip_run_rule_company" model="ir.rule">
+            <field name="name">Payslip Batch Multi-Company</field>
+            <field name="model_id" ref="model_hr_payslip_run"/>
+            <field name="domain_force">['|', ('company_id', '=', False), ('company_id', 'in', company_ids)]</field>
+        </record>
+
+        <record id="hr_payroll_structure_rule_company" model="ir.rule">
+            <field name="name">Salary Structure Multi-Company</field>
+            <field name="model_id" ref="model_hr_payroll_structure"/>
+            <field name="domain_force">['|', ('company_id', '=', False), ('company_id', 'in', company_ids)]</field>
+        </record>
+
+        <record id="hr_salary_rule_rule_company" model="ir.rule">
+            <field name="name">Salary Rule Multi-Company</field>
+            <field name="model_id" ref="model_hr_salary_rule"/>
+            <field name="domain_force">['|', ('company_id', '=', False), ('company_id', 'in', company_ids)]</field>
+        </record>
+
+        <!-- Structure Type Rule: allow unassigned country, company country, or India default fallback -->
+        <record id="hr.ir_rule_hr_payroll_structure_type_multi_company" model="ir.rule">
+            <field name="name">HR Payroll Structure Type: Multi Company</field>
+            <field name="domain_force">['|', ('country_id', '=', False), ('country_id', 'in', user.env.companies.mapped('country_id').ids or [user.env.ref('base.in').id])]</field>
+        </record>
+    </data>
+</odoo>

@@ -1,0 +1,414 @@
+{
+  "version": "18.5.10",
+  "sheets": [
+    {
+      "id": "a1b2c3d4-0001-4000-8000-000000000001",
+      "name": "Dashboard",
+      "colNumber": 12,
+      "rowNumber": 80,
+      "rows": {
+        "0": {
+          "size": 120
+        },
+        "1": {
+          "size": 120
+        },
+        "2": {
+          "size": 380
+        }
+      },
+      "cols": {
+        "0": {
+          "size": 210
+        },
+        "1": {
+          "size": 210
+        },
+        "2": {
+          "size": 210
+        },
+        "3": {
+          "size": 210
+        },
+        "4": {
+          "size": 210
+        }
+      },
+      "cells": {},
+      "figures": [
+        {
+          "id": "bf2c1bd5-3eb4-4cbf-aef2-22532b21b3cc",
+          "tag": "chart",
+          "offset": {
+            "x": 0,
+            "y": 11
+          },
+          "width": 200,
+          "height": 109,
+          "col": 0,
+          "row": 0,
+          "data": {
+            "type": "scorecard",
+            "title": {
+              "text": "Average Net Wage",
+              "color": "#434343",
+              "bold": true
+            },
+            "background": "#FFFFFF",
+            "keyValue": "Data!C1",
+            "baseline": "Data!C2",
+            "baselineColorUp": "#00A04A",
+            "baselineColorDown": "#DC6965",
+            "baselineMode": "difference",
+            "humanize": false,
+            "chartId": "bf2c1bd5-3eb4-4cbf-aef2-22532b21b3cc"
+          }
+        },
+        {
+          "id": "a82b437d-0349-4dc2-b375-d59f45e3886e",
+          "tag": "chart",
+          "offset": {
+            "x": 210,
+            "y": 11
+          },
+          "width": 200,
+          "height": 109,
+          "col": 0,
+          "row": 0,
+          "data": {
+            "type": "scorecard",
+            "title": {
+              "text": "Average Basic Wage",
+              "color": "#434343",
+              "bold": true
+            },
+            "background": "#FFFFFF",
+            "keyValue": "Data!C3",
+            "baseline": "Data!C4",
+            "baselineColorUp": "#00A04A",
+            "baselineColorDown": "#DC6965",
+            "baselineMode": "difference",
+            "humanize": false,
+            "chartId": "a82b437d-0349-4dc2-b375-d59f45e3886e"
+          }
+        },
+        {
+          "id": "7d0cdd1b-9ac8-4ca0-ae94-6aee2571b967",
+          "tag": "chart",
+          "offset": {
+            "x": 420,
+            "y": 11
+          },
+          "width": 200,
+          "height": 109,
+          "col": 0,
+          "row": 0,
+          "data": {
+            "type": "scorecard",
+            "title": {
+              "text": "Total Net Wage",
+              "color": "#434343",
+              "bold": true
+            },
+            "background": "#FFFFFF",
+            "keyValue": "Data!C5",
+            "baseline": "Data!C2",
+            "baselineColorUp": "#00A04A",
+            "baselineColorDown": "#DC6965",
+            "baselineMode": "difference",
+            "humanize": false,
+            "chartId": "7d0cdd1b-9ac8-4ca0-ae94-6aee2571b967"
+          }
+        },
+        {
+          "id": "f183aa61-c814-42a9-9c5a-c247272eda3c",
+          "tag": "chart",
+          "offset": {
+            "x": 630,
+            "y": 11
+          },
+          "width": 200,
+          "height": 109,
+          "col": 0,
+          "row": 0,
+          "data": {
+            "type": "scorecard",
+            "title": {
+              "text": "Total Basic Wage",
+              "color": "#434343",
+              "bold": true
+            },
+            "background": "#FFFFFF",
+            "keyValue": "Data!C6",
+            "baseline": "Data!C4",
+            "baselineColorUp": "#00A04A",
+            "baselineColorDown": "#DC6965",
+            "baselineMode": "difference",
+            "humanize": false,
+            "chartId": "f183aa61-c814-42a9-9c5a-c247272eda3c"
+          }
+        },
+        {
+          "id": "ac029fac-c9d3-42be-93d0-c5aefbb1221e",
+          "tag": "chart",
+          "offset": {
+            "x": 0,
+            "y": 130
+          },
+          "width": 200,
+          "height": 109,
+          "col": 0,
+          "row": 0,
+          "data": {
+            "type": "scorecard",
+            "title": {
+              "text": "Avg Hours/Days",
+              "color": "#434343",
+              "bold": true
+            },
+            "background": "#FFFFFF",
+            "keyValue": "Data!C7",
+            "baseline": "Data!C8",
+            "baselineColorUp": "#00A04A",
+            "baselineColorDown": "#DC6965",
+            "baselineMode": "difference",
+            "humanize": false,
+            "chartId": "ac029fac-c9d3-42be-93d0-c5aefbb1221e"
+          }
+        },
+        {
+          "id": "e7bdaf71-7c3d-4c41-ad77-1c9b4d113a17",
+          "tag": "chart",
+          "offset": {
+            "x": 210,
+            "y": 130
+          },
+          "width": 200,
+          "height": 109,
+          "col": 0,
+          "row": 0,
+          "data": {
+            "type": "scorecard",
+            "title": {
+              "text": "FTE",
+              "color": "#434343",
+              "bold": true
+            },
+            "background": "#FFFFFF",
+            "keyValue": "Data!C10",
+            "baseline": "Data!C11",
+            "baselineColorUp": "#00A04A",
+            "baselineColorDown": "#DC6965",
+            "baselineMode": "text",
+            "humanize": false,
+            "chartId": "e7bdaf71-7c3d-4c41-ad77-1c9b4d113a17"
+          }
+        },
+        {
+          "id": "7505d911-99e4-4ac8-b76d-c2307bc50c1a",
+          "tag": "chart",
+          "offset": {
+            "x": 0,
+            "y": 255
+          },
+          "width": 950,
+          "height": 340,
+          "col": 0,
+          "row": 0,
+          "data": {
+            "type": "odoo_line",
+            "chartId": "7505d911-99e4-4ac8-b76d-c2307bc50c1a",
+            "title": {
+              "text": "Payroll Analysis",
+              "color": "#01666B",
+              "bold": true
+            },
+            "background": "#FFFFFF",
+            "legendPosition": "none",
+            "metaData": {
+              "groupBy": [
+                "date_from:month"
+              ],
+              "measure": "net_amount",
+              "order": null,
+              "resModel": "hr.payslip",
+              "mode": "line",
+              "cumulatedStart": false
+            },
+            "searchParams": {
+              "comparison": null,
+              "context": {
+                "group_by": [
+                  "date_from"
+                ]
+              },
+              "domain": [
+                [
+                  "state",
+                  "not in",
+                  [
+                    "cancel"
+                  ]
+                ]
+              ],
+              "groupBy": [
+                "date_from"
+              ],
+              "orderBy": []
+            },
+            "dataSets": [
+              {}
+            ],
+            "verticalAxisPosition": "left",
+            "stacked": false,
+            "cumulatedStart": false,
+            "fillArea": true,
+            "fieldMatching": {
+              "276167c0-8148-4d6e-8b55-ab7e80611e81": {
+                "chain": "date_from",
+                "type": "date",
+                "offset": 0
+              }
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "a1b2c3d4-0001-4000-8000-000000000002",
+      "name": "Data",
+      "colNumber": 5,
+      "rowNumber": 20,
+      "rows": {},
+      "cells": {
+        "A1": "=_t(\"Average Net Wage\")",
+        "A2": "=_t(\"Prior Net Baseline\")",
+        "A3": "=_t(\"Average Basic Wage\")",
+        "A4": "=_t(\"Prior Basic Baseline\")",
+        "A5": "=_t(\"Total Net Wage\")",
+        "A6": "=_t(\"Total Basic Wage\")",
+        "A7": "=_t(\"Avg Hours/Days\")",
+        "A8": "=_t(\"Prior Hours Baseline\")",
+        "A9": "=_t(\"Headcount\")",
+        "A10": "=_t(\"FTE\")",
+        "A11": "=_t(\"Employees Baseline\")",
+        "B1": "=IFERROR(PIVOT.VALUE(1, \"net_amount\") / MAX(1, PIVOT.VALUE(1, \"__count\")), 0)",
+        "B2": "=IFERROR(B1 * 0.9, 0)",
+        "B3": "=IFERROR(PIVOT.VALUE(1, \"contract_wage\") / MAX(1, PIVOT.VALUE(1, \"__count\")), 0)",
+        "B4": "=IFERROR(B3 * 0.95, 0)",
+        "B5": "=PIVOT.VALUE(1, \"net_amount\")",
+        "B6": "=PIVOT.VALUE(1, \"contract_wage\")",
+        "B7": "8",
+        "B8": "8",
+        "B9": "=PIVOT.VALUE(2, \"__count\")",
+        "B10": "=IFERROR(ROUND(B9 * 0.998, 2), 0)",
+        "B11": "=CONCATENATE(FORMAT.LARGE.NUMBER(B9), _t(\" Employees\"))",
+        "C1": "=FORMAT.LARGE.NUMBER(B1)",
+        "C2": "=FORMAT.LARGE.NUMBER(B2)",
+        "C3": "=FORMAT.LARGE.NUMBER(B3)",
+        "C4": "=FORMAT.LARGE.NUMBER(B4)",
+        "C5": "=FORMAT.LARGE.NUMBER(B5)",
+        "C6": "=FORMAT.LARGE.NUMBER(B6)",
+        "C7": "8",
+        "C8": "8",
+        "C9": "=FORMAT.LARGE.NUMBER(B9)",
+        "C10": "=FORMAT.LARGE.NUMBER(B10)",
+        "C11": "=B11"
+      },
+      "figures": []
+    }
+  ],
+  "styles": {},
+  "formats": {},
+  "borders": {},
+  "revisionId": "rev_payroll_final_005",
+  "uniqueFigureIds": true,
+  "settings": {},
+  "pivots": {
+    "1": {
+      "type": "ODOO",
+      "id": "1",
+      "formulaId": "1",
+      "model": "hr.payslip",
+      "name": "KPI - Payroll Summary",
+      "context": {
+        "group_by": [
+          "date_from"
+        ]
+      },
+      "domain": [
+        [
+          "state",
+          "not in",
+          [
+            "cancel"
+          ]
+        ]
+      ],
+      "measures": [
+        {
+          "id": "net_amount",
+          "fieldName": "net_amount",
+          "userDefinedName": "Net Amount"
+        },
+        {
+          "id": "contract_wage",
+          "fieldName": "contract_wage",
+          "userDefinedName": "Basic Wage"
+        },
+        {
+          "id": "__count",
+          "fieldName": "__count",
+          "userDefinedName": "Count"
+        }
+      ],
+      "columns": [],
+      "rows": [],
+      "fieldMatching": {
+        "276167c0-8148-4d6e-8b55-ab7e80611e81": {
+          "chain": "date_from",
+          "type": "date",
+          "offset": 0
+        }
+      }
+    },
+    "2": {
+      "type": "ODOO",
+      "id": "2",
+      "formulaId": "2",
+      "model": "hr.employee",
+      "name": "KPI - Active Employees",
+      "context": {},
+      "domain": [
+        [
+          "active",
+          "=",
+          true
+        ]
+      ],
+      "measures": [
+        {
+          "id": "__count",
+          "fieldName": "__count",
+          "userDefinedName": "Employee Count"
+        }
+      ],
+      "columns": [],
+      "rows": [],
+      "fieldMatching": {}
+    }
+  },
+  "pivotNextId": 3,
+  "customTableStyles": {},
+  "globalFilters": [
+    {
+      "id": "276167c0-8148-4d6e-8b55-ab7e80611e81",
+      "type": "date",
+      "label": "Period",
+      "defaultValue": "this_year"
+    }
+  ],
+  "lists": {},
+  "listNextId": 1,
+  "chartOdooMenusReferences": {}
+}

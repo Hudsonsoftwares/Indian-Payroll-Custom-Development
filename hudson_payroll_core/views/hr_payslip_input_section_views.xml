@@ -1,0 +1,82 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <!-- Salary Rule Section List View -->
+    <record id="hr_payslip_input_section_view_tree" model="ir.ui.view">
+        <field name="name">hr.payslip.input.section.view.list</field>
+        <field name="model">hr.payslip.input.section</field>
+        <field name="arch" type="xml">
+            <list string="Salary Rule Sections" editable="bottom">
+                <field name="sequence" widget="handle"/>
+                <field name="name"/>
+                <field name="struct_ids" widget="many2many_tags" string="Available in Salary Structure" optional="show"/>
+            </list>
+        </field>
+    </record>
+
+    <!-- Salary Rule Section Search View -->
+    <record id="hr_payslip_input_section_view_search" model="ir.ui.view">
+        <field name="name">hr.payslip.input.section.search</field>
+        <field name="model">hr.payslip.input.section</field>
+        <field name="arch" type="xml">
+            <search string="Search Salary Rule Sections">
+                <field name="name" string="Section" filter_domain="[('name', 'ilike', self)]"/>
+                <field name="struct_ids" filter_domain="[('struct_ids.name', 'ilike', self)]"/>
+            </search>
+        </field>
+    </record>
+
+    <!-- Salary Rule Section Form View -->
+    <record id="hr_payslip_input_section_view_form" model="ir.ui.view">
+        <field name="name">hr.payslip.input.section.view.form</field>
+        <field name="model">hr.payslip.input.section</field>
+        <field name="arch" type="xml">
+            <form string="Salary Rule Section">
+                <sheet>
+                    <div class="oe_title">
+                        <label for="name" class="oe_edit_only"/>
+                        <h1><field name="name" placeholder="e.g. Allowances, Inputs"/></h1>
+                    </div>
+                    <group>
+                        <field name="sequence"/>
+                        <field name="struct_ids" widget="many2many_tags" string="Available in Salary Structure"/>
+                    </group>
+                    <notebook>
+                        <page string="Input Types" name="input_types">
+                            <field name="input_type_ids">
+                                <list editable="bottom">
+                                    <field name="name" string="Description"/>
+                                    <field name="code" optional="show"/>
+                                    <field name="struct_ids" widget="many2many_tags" string="Availability in Structure" optional="show"/>
+                                </list>
+                            </field>
+                        </page>
+                    </notebook>
+                </sheet>
+            </form>
+        </field>
+    </record>
+
+    <!-- Salary Rule Section Window Action -->
+    <record id="action_hr_payslip_input_section" model="ir.actions.act_window">
+        <field name="name">Salary Rule Sections</field>
+        <field name="res_model">hr.payslip.input.section</field>
+        <field name="view_mode">list,form</field>
+        <field name="search_view_id" ref="hr_payslip_input_section_view_search"/>
+        <field name="help" type="html">
+            <p class="o_view_nocontent_smiling_face">
+                Create a new salary rule section!
+            </p>
+            <p>
+                Organize salary input types into logical categories and rule sections.
+            </p>
+        </field>
+    </record>
+
+    <!-- Menuitem under Payroll -> Configuration -->
+    <menuitem id="menu_hr_payslip_input_section"
+              name="Salary Rule Sections"
+              parent="hr_payroll_community.menu_hr_payroll_community_configuration"
+              sequence="19"
+              action="action_hr_payslip_input_section"
+              groups="hr_payroll_community.group_hr_payroll_community_manager"/>
+</odoo>

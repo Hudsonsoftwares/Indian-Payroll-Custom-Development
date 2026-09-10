@@ -1,0 +1,1664 @@
+import logging
+from odoo import api, fields, models, _
+from odoo.exceptions import ValidationError
+from odoo.exceptions import UserError
+from ..services.epf.epf_service import EPFService
+from ..services.esic.esic_service import ESICService
+from ..services.lwf.lwf_service import LWFService
+from ..services.gratuity.gratuity_service import GratuityService
+from ..services.professional_tax.professional_tax_service import ProfessionalTaxService
+from ..services.tds.tds_orchestration_engine import TdsOrchestrationEngine
+
+_logger = logging.getLogger(__name__)
+
+
+class HrPayslip(models.Model):
+    _inherit = 'hr.payslip'
+
+    _hds_in_last_computed_decl_write_date = fields.Datetime(
+        string="Last Computed Declaration Timestamp", copy=False
+    )
+    hds_in_tds_applicable = fields.Boolean(
+        related='company_id.hds_in_tds_applicable',
+        string="TDS Applicable",
+        readonly=True,
+    )
+
+    # Transient in-memory dictionary cache for active payslip evaluation contexts
+    _eval_contexts = {}
+
+    # -------------------------------------------------------------------------
+    # STATUTORY CONTEXT INJECTION HOOK
+    # -------------------------------------------------------------------------
+    def _get_statutory_context(self, localdict):
+        """
+        Extensible hook to inject domain services and actual recordsets into localdict.
+        Stores localdict in HrPayslip._eval_contexts[self.id]
+        so that payslip_record.hds_in_compute_*() calls require ZERO parameters in XML.
+        
+        Future localization modules (ESIC, PT, LWF, TDS) extend this hook via super().
+        """
+        self.ensure_one()
+        HrPayslip._eval_contexts[self.id] = localdict
+        localdict.update({
+            'epf_service': EPFService(self.env, localdict=localdict),
+            'esic_service': ESICService(self.env, localdict=localdict),
+            'lwf_service': LWFService(self.env, localdict=localdict),
+            'gratuity_service': GratuityService(self.env, localdict=localdict),
+            'pt_service': ProfessionalTaxService(self.env, localdict=localdict),
+            'tds_orchestration_engine': TdsOrchestrationEngine(self.env),
+            'payslip_record': self,
+        })
+        return localdict
+
+    def _get_localization_context(self, localdict):
+        """Override base hook to inject India statutory services and context."""
+        localdict = super()._get_localization_context(localdict)
+        return self._get_statutory_context(localdict)
+
+    def hds_in_compute_tds(self):
+        """
+        Payslip statutory method called by salary rule HDS_IN_TDS.
+        Invokes TdsOrchestrationEngine master entry point and returns monthly TDS deduction.
+        """
+        self.ensure_one()
+        company = self.company_id or self.employee_id.company_id or self.env.company
+        if not getattr(company, 'hds_in_tds_applicable', False):
+            _logger.info(
+                "[TDS_APPLICABILITY_CHECK] TDS is disabled for company '%s' (ID: %s). Skipping TDS calculation for payslip %s.",
+                getattr(company, 'name', 'N/A'),
+                getattr(company, 'id', 'N/A'),
+                self.name or self.id
+            )
+            return 0.0
+        if not getattr(self.employee_id, 'hds_in_tds_applicable', True):
+            _logger.info(
+                "[TDS_APPLICABILITY_CHECK] TDS is disabled for employee '%s' (ID: %s). Skipping TDS calculation for payslip %s.",
+                getattr(self.employee_id, 'name', 'N/A'),
+                getattr(self.employee_id, 'id', 'N/A'),
+                self.name or self.id
+            )
+            return 0.0
+
+        _logger.warning(
+            "[TDS_ENTRY_AUDIT] hds_in_compute_tds ENTERED | payslip=%s | employee=%s",
+            self.id,
+            self.employee_id.id,
+        )
+
+        import inspect
+        _logger.warning(
+            "[TDS_ENGINE_PATH_AUDIT] TdsOrchestrationEngine loaded from: %s | class: %s",
+            inspect.getfile(TdsOrchestrationEngine),
+            TdsOrchestrationEngine,
+        )
+
+        debug_enabled = self.env['ir.config_parameter'].sudo().get_param('hudson_in_payroll.tds_debug_logging', 'False') == 'True'
+        if debug_enabled:
+            _logger.warning("=" * 80)
+            _logger.warning("TDS ENGINE STARTED FOR PAYSLIP: %s (Employee: %s)", self.name, self.employee_id.name)
+            _logger.warning("=" * 80)
+        eval_date = self.date_to or fields.Date.today()
+        engine = TdsOrchestrationEngine(self.env)
+        res = engine.hds_in_compute_tds(self.employee_id, eval_date=eval_date, payslip=self)
+
+        if debug_enabled:
+            # ── EXTRACT VARIABLES FOR DETAILED [TDS_DEBUG_TRACE] LOGGING ──────────
+            emp = self.employee_id
+            contract = self.contract_id or (emp.contract_id if hasattr(emp, 'contract_id') else False)
+            contract_wage = float(contract.wage or 0.0) if contract else 0.0
+            contract_id = contract.id if contract else 'N/A'
+
+            financial_year = self.env['tds.financial.year'].search([
+                ('start_date', '<=', eval_date),
+                ('end_date', '>=', eval_date)
+            ], limit=1)
+            fy_name = financial_year.name if financial_year else 'N/A'
+
+            decl = self.env['tds.employee.declaration'].search([
+                ('employee_id', '=', emp.id)
+            ], order='id desc', limit=1)
+
+            regime_code = res.regime_code if hasattr(res, 'regime_code') else 'old'
+
+            # 1. AT METHOD ENTRY
+            _logger.warning("""[TDS_DEBUG_TRACE] ENTER hds_in_compute_tds
+employee_id=%s
+employee_name=%s
+contract_id=%s
+date_from=%s
+date_to=%s
+tax_regime=%s
+financial_year=%s
+contract_wage=%s""",
+                emp.id, emp.name, contract_id, self.date_from, self.date_to,
+                regime_code, fy_name, contract_wage
+            )
+
+            # 2. SHOW ANNUAL INCOME INPUTS
+            sal_proj = res.annual_income_projection.salary_projection
+            prev_emp = res.annual_income_projection.previous_employer_income
+            oth_inc = res.annual_income_projection.other_income_aggregation
+
+            _logger.warning("""[TDS_DEBUG_TRACE] INCOME_COMPONENT
+code=BASIC
+name=Basic Salary
+monthly=%s
+annual=%s
+included=True""", sal_proj.total_basic / 12.0 if sal_proj.total_basic else 0.0, sal_proj.total_basic)
+
+            _logger.warning("""[TDS_DEBUG_TRACE] INCOME_COMPONENT
+code=HRA
+name=House Rent Allowance
+monthly=%s
+annual=%s
+included=True""", sal_proj.total_hra / 12.0 if sal_proj.total_hra else 0.0, sal_proj.total_hra)
+
+            _logger.warning("""[TDS_DEBUG_TRACE] INCOME_COMPONENT
+code=DA
+name=Dearness Allowance
+monthly=%s
+annual=%s
+included=True""", sal_proj.total_da / 12.0 if sal_proj.total_da else 0.0, sal_proj.total_da)
+
+            _logger.warning("""[TDS_DEBUG_TRACE] INCOME_COMPONENT
+code=ALLOWANCES
+name=Other Allowances
+monthly=%s
+annual=%s
+included=True""", sal_proj.total_allowances / 12.0 if sal_proj.total_allowances else 0.0, sal_proj.total_allowances)
+
+            if prev_emp.taxable_salary > 0:
+                _logger.warning("""[TDS_DEBUG_TRACE] INCOME_COMPONENT
+code=PREV_EMP
+name=Previous Employer Income
+monthly=0.0
+annual=%s
+included=True""", prev_emp.taxable_salary)
+
+            if oth_inc.total_other_income != 0:
+                _logger.warning("""[TDS_DEBUG_TRACE] INCOME_COMPONENT
+code=OTHER_INC
+name=Income from Other Sources
+monthly=0.0
+annual=%s
+included=True""", oth_inc.total_other_income)
+
+            # 3. SHOW PROJECTION
+            current_inc = sal_proj.ytd_basic + sal_proj.ytd_da + sal_proj.ytd_hra + sal_proj.ytd_bonus + sal_proj.ytd_allowances
+            projected_inc = sal_proj.projected_basic + sal_proj.projected_da + sal_proj.projected_hra + sal_proj.projected_bonus + sal_proj.projected_allowances
+            gti = res.annual_income_projection.gross_total_income
+
+            _logger.warning("""[TDS_DEBUG_TRACE] ANNUAL_PROJECTION
+months_elapsed=%s
+months_remaining=%s
+previous_income=%s
+current_income=%s
+projected_income=%s
+annual_gross_income=%s""",
+                sal_proj.months_elapsed, sal_proj.months_remaining,
+                prev_emp.taxable_salary, current_inc, projected_inc, gti
+            )
+
+            # 4. SHOW EXEMPTIONS
+            ded_calc = res.deduction_calculation
+            hra_claimed = float(decl.decl_hra_annual_rent or 0.0) if decl else 0.0
+            hra_allowed = ded_calc.hra_exemption
+            _logger.warning("""[TDS_DEBUG_TRACE] EXEMPTION
+name=HRA
+claimed=%s
+eligible=%s
+allowed=%s
+deducted=%s""", hra_claimed, hra_allowed, hra_allowed, hra_allowed)
+
+            home_loan_claimed = float(decl.decl_24b_self_interest or 0.0) if decl else 0.0
+            home_loan_allowed = ded_calc.home_loan_interest_24b
+            _logger.warning("""[TDS_DEBUG_TRACE] EXEMPTION
+name=Home Loan Sec 24(b)
+claimed=%s
+eligible=%s
+allowed=%s
+deducted=%s""", home_loan_claimed, home_loan_allowed, home_loan_allowed, home_loan_allowed)
+
+            # 5. SHOW DEDUCTIONS
+            c6a = getattr(ded_calc, 'chapter_6a_deductions', None)
+            sec_80c = getattr(c6a, 'section_80c', 0.0) if c6a else 0.0
+            sec_80ccd1b = getattr(c6a, 'section_80ccd1b', 0.0) if c6a else 0.0
+            sec_80d = getattr(c6a, 'section_80d', 0.0) if c6a else 0.0
+            sec_80dd = getattr(c6a, 'section_80dd', 0.0) if c6a else 0.0
+            sec_80tta = getattr(c6a, 'section_80tta_80ttb', 0.0) if c6a else 0.0
+            sec_80eea = getattr(c6a, 'section_80eea_deduction', getattr(ded_calc, 'section_80eea_deduction', 0.0))
+            emp_nps = getattr(ded_calc, 'employer_nps_80ccd2', 0.0)
+            fam_pen = getattr(ded_calc, 'family_pension_57iia', 0.0)
+            sec_80cch_val = 0.0
+            cch_claimed = 0.0
+            if decl:
+                cch_ln = next((l for l in decl.declaration_line_ids if l.category == '80cch'), None)
+                if cch_ln:
+                    sec_80cch_val = cch_ln.usable_amount
+                    cch_claimed = float(cch_ln.tax_firm_approved_amount or cch_ln.approved_amount or cch_ln.declared_amount or 0.0) if decl.state in ('proof_verified', 'approved') else float(cch_ln.declared_amount or 0.0)
+                else:
+                    sec_80cch_val = float(getattr(decl, 'decl_80cch_agniveer', 0.0) or 0.0)
+                    cch_claimed = sec_80cch_val
+
+            std_ded_limit = 75000.0 if regime_code == 'new' else 50000.0
+            _logger.warning("""[TDS_DEBUG_TRACE] DEDUCTION
+section=Standard Deduction
+claimed=%s
+eligible=%s
+limit=%s
+allowed=%s""", ded_calc.standard_deduction, ded_calc.standard_deduction, std_ded_limit, ded_calc.standard_deduction)
+
+            c80_claimed = (
+                float(getattr(decl, 'decl_80c_epf', 0.0) or 0.0) +
+                float(getattr(decl, 'decl_80c_lic', 0.0) or 0.0) +
+                float(getattr(decl, 'decl_80c_elss', 0.0) or 0.0) +
+                float(getattr(decl, 'decl_80c_tuition', 0.0) or 0.0) +
+                float(getattr(decl, 'decl_80c_ppf', 0.0) or 0.0) +
+                float(getattr(decl, 'decl_80c_ssy', 0.0) or 0.0) +
+                float(getattr(decl, 'decl_80c_fd', 0.0) or 0.0) +
+                float(getattr(decl, 'decl_80c_nsc', 0.0) or 0.0) +
+                float(getattr(decl, 'decl_80c_housing_principal', 0.0) or 0.0) +
+                float(getattr(decl, 'decl_80c_other', 0.0) or 0.0)
+            ) if decl else sec_80c
+            _logger.warning("""[TDS_DEBUG_TRACE] DEDUCTION
+section=80C
+claimed=%s
+eligible=%s
+limit=150000
+allowed=%s""", c80_claimed, sec_80c, sec_80c)
+
+            _logger.warning("""[TDS_DEBUG_TRACE] DEDUCTION
+section=80CCD(1B)
+claimed=%s
+eligible=%s
+limit=50000
+allowed=%s""", decl.decl_80ccd1b_nps if decl else sec_80ccd1b, sec_80ccd1b, sec_80ccd1b)
+
+            nps2_claimed = float(getattr(decl, 'decl_80ccd2_employer_nps', 0.0) or (next((l.declared_amount for l in decl.declaration_line_ids if l.category == '80ccd2'), 0.0) if decl else 0.0) or 0.0) if decl else emp_nps
+            if nps2_claimed == 0.0:
+                nps2_claimed = emp_nps
+            nps2_limit = round(((sal_proj.total_basic or 0.0) + (sal_proj.total_da or 0.0)) * (0.14 if regime_code == 'new' else 0.10), 2) if sal_proj else emp_nps
+            if nps2_limit == 0.0:
+                nps2_limit = emp_nps
+
+            _logger.warning("""[TDS_DEBUG_TRACE] DEDUCTION
+section=80CCD(2)
+claimed=%s
+eligible=%s
+limit=%s
+allowed=%s""", nps2_claimed, emp_nps, nps2_limit, emp_nps)
+
+            _logger.warning("""[TDS_DEBUG_TRACE] DEDUCTION
+section=80D
+claimed=%s
+eligible=%s
+limit=100000
+allowed=%s""", (decl.decl_80d_self + decl.decl_80d_parents) if decl else sec_80d, sec_80d, sec_80d)
+
+            _logger.warning("""[TDS_DEBUG_TRACE] DEDUCTION
+section=80DD
+claimed=%s
+eligible=%s
+limit=125000
+allowed=%s""", sec_80dd, sec_80dd, sec_80dd)
+
+            _logger.warning("""[TDS_DEBUG_TRACE] DEDUCTION
+section=80TTA/80TTB
+claimed=%s
+eligible=%s
+limit=50000
+allowed=%s""", sec_80tta, sec_80tta, sec_80tta)
+
+            _logger.warning("""[TDS_DEBUG_TRACE] DEDUCTION
+section=80EEA
+claimed=%s
+eligible=%s
+limit=150000
+allowed=%s""", sec_80eea, sec_80eea, sec_80eea)
+
+            _logger.warning("""[TDS_DEBUG_TRACE] DEDUCTION
+section=57(iia)
+claimed=%s
+eligible=%s
+limit=15000
+allowed=%s""", fam_pen, fam_pen, fam_pen)
+
+            _logger.warning("""[TDS_DEBUG_TRACE] DEDUCTION
+section=80CCH
+claimed=%s
+eligible=%s
+allowed=%s""", cch_claimed, sec_80cch_val, sec_80cch_val)
+
+            sec_80e_val = getattr(c6a, 'section_80e', 0.0) if c6a else 0.0
+            e80_declared = float(getattr(decl, 'decl_80e_interest', 0.0) or 0.0) if decl else sec_80e_val
+            e80_verified = 0.0
+            e80_approved = 0.0
+            e80_eligible = sec_80e_val
+            e80_allowed = sec_80e_val
+            if decl:
+                e_ln = next((l for l in decl.declaration_line_ids if l.category == '80e'), None)
+                if e_ln:
+                    e80_declared = float(e_ln.declared_amount or 0.0) if e_ln.declared_amount is not False else e80_declared
+                    e80_verified = float(getattr(e_ln, 'verified_amount', 0.0) or 0.0)
+                    e80_approved = float(getattr(e_ln, 'tax_firm_approved_amount', 0.0) or getattr(e_ln, 'approved_amount', 0.0) or 0.0)
+                    e80_eligible = float(getattr(e_ln, 'eligible_amount', 0.0) or 0.0) or sec_80e_val
+                    e80_allowed = sec_80e_val
+                else:
+                    e80_approved = float(getattr(decl, 'decl_80e_approved_amount', 0.0) or 0.0)
+                    e80_verified = e80_approved
+
+            _logger.warning("""[TDS_DEBUG_TRACE] DEDUCTION
+section=80E
+claimed=%s
+declared=%s
+verified=%s
+approved=%s
+eligible=%s
+allowed=%s""", e80_declared, e80_declared, e80_verified, e80_approved, e80_eligible, e80_allowed)
+
+            sec_80g_val = getattr(c6a, 'section_80g', 0.0) if c6a else 0.0
+            g80_claimed = float(getattr(decl, 'decl_80g_donation', 0.0) or 0.0) if decl else sec_80g_val
+            if decl:
+                g_ln = next((l for l in decl.declaration_line_ids if l.category == '80g'), None)
+                if g_ln:
+                    g80_claimed = float(g_ln.tax_firm_approved_amount or g_ln.approved_amount or g_ln.declared_amount or 0.0) if decl.state in ('proof_verified', 'approved') else float(g_ln.declared_amount or 0.0)
+            _logger.warning("""[TDS_DEBUG_TRACE] DEDUCTION
+section=80G
+claimed=%s
+eligible=%s
+allowed=%s""", g80_claimed, sec_80g_val, sec_80g_val)
+
+            sec_80gg_val = getattr(c6a, 'section_80gg', 0.0) if c6a else 0.0
+            gg80_declared = float(getattr(decl, 'decl_80gg_rent', 0.0) or 0.0) if decl else sec_80gg_val
+            gg80_verified = 0.0
+            gg80_approved = 0.0
+            gg80_eligible = sec_80gg_val
+            gg80_allowed = sec_80gg_val
+            if decl:
+                gg_ln = next((l for l in decl.declaration_line_ids if l.category == '80gg'), None)
+                if gg_ln:
+                    gg80_declared = float(gg_ln.declared_amount or 0.0) if gg_ln.declared_amount is not False else gg80_declared
+                    gg80_verified = float(getattr(gg_ln, 'verified_amount', 0.0) or 0.0)
+                    gg80_approved = float(getattr(gg_ln, 'tax_firm_approved_amount', 0.0) or getattr(gg_ln, 'approved_amount', 0.0) or 0.0)
+                    gg80_eligible = float(getattr(gg_ln, 'eligible_amount', 0.0) or 0.0) or sec_80gg_val
+                    gg80_allowed = sec_80gg_val
+                else:
+                    gg80_approved = gg80_declared
+                    gg80_verified = gg80_declared
+
+            _logger.warning("""[TDS_DEBUG_TRACE] DEDUCTION
+section=80GG
+claimed=%s
+declared=%s
+verified=%s
+approved=%s
+eligible=%s
+allowed=%s""", gg80_declared, gg80_declared, gg80_verified, gg80_approved, gg80_eligible, gg80_allowed)
+
+            # 6. SHOW TAXABLE INCOME CALCULATION
+            tot_exemptions = ded_calc.hra_exemption + ded_calc.home_loan_interest_24b
+            tot_deductions = ded_calc.total_allowable_deductions
+            net_taxable_inc = res.taxable_income.net_taxable_income
+
+            _logger.warning("""[TDS_DEBUG_TRACE] TAXABLE_INCOME_CALCULATION
+annual_gross_income=%s
+total_exemptions=%s
+standard_deduction=%s
+total_deductions=%s
+taxable_income_before_rounding=%s
+taxable_income_after_rounding=%s""",
+                gti, tot_exemptions, ded_calc.standard_deduction, tot_deductions,
+                net_taxable_inc, net_taxable_inc
+            )
+
+            # 7. SHOW TAX SLAB CALCULATION
+            slab_calc = res.income_tax_slab
+            for sb in (slab_calc.slab_breakdown if hasattr(slab_calc, 'slab_breakdown') and slab_calc.slab_breakdown else []):
+                rate_pct = sb.get('rate', 0.0) * 100 if sb.get('rate', 0.0) <= 1 else sb.get('rate', 0.0)
+                _logger.warning("""[TDS_DEBUG_TRACE] TAX_SLAB
+lower=%s
+upper=%s
+taxable_in_slab=%s
+rate=%s
+tax=%s""",
+                    sb.get('lower_limit', 0), sb.get('upper_limit', 0),
+                    sb.get('taxable_in_slab', 0.0), rate_pct, sb.get('tax', 0.0)
+                )
+
+            # 8. SHOW TAX BEFORE REBATE
+            base_tax = slab_calc.base_tax_liability
+            _logger.warning("""[TDS_DEBUG_TRACE] TAX_BEFORE_REBATE
+taxable_income=%s
+tax_before_rebate=%s""", net_taxable_inc, base_tax)
+
+            # 9. SHOW REBATE
+            reb = res.rebate_engine
+            _logger.warning("""[TDS_DEBUG_TRACE] REBATE
+rebate_eligible=%s
+rebate_amount=%s
+tax_after_rebate=%s""",
+                reb.is_applicable if hasattr(reb, 'is_applicable') else (reb.rebate_applied > 0),
+                reb.rebate_applied, reb.tax_after_rebate
+            )
+
+            # 10. SHOW SURCHARGE
+            sur = res.surcharge_engine
+            sur_rate = getattr(sur, 'surcharge_rate_pct', getattr(sur, 'surcharge_rate', 0.0))
+            _logger.warning("""[TDS_DEBUG_TRACE] SURCHARGE
+tax_before_surcharge=%s
+surcharge_rate=%s
+surcharge_amount=%s
+tax_after_surcharge=%s""",
+                reb.tax_after_rebate, sur_rate, sur.surcharge_amount, sur.tax_plus_surcharge
+            )
+
+            # 11. SHOW CESS
+            cess_obj = res.health_education_cess
+            cess_rate_val = getattr(cess_obj, 'cess_rate_pct', getattr(cess_obj, 'cess_rate', 0.04))
+            _logger.warning("""[TDS_DEBUG_TRACE] CESS
+cess_base=%s
+cess_rate=%s
+cess_amount=%s""", sur.tax_plus_surcharge, cess_rate_val, cess_obj.cess_amount)
+
+            # 12. SHOW FINAL ANNUAL TAX LIABILITY
+            ann_tax_liab = cess_obj.total_annual_tax_liability
+            _logger.warning("""[TDS_DEBUG_TRACE] FINAL_ANNUAL_TAX
+tax_before_cess=%s
+cess=%s
+total_annual_tax_liability=%s""", sur.tax_plus_surcharge, cess_obj.cess_amount, ann_tax_liab)
+
+            # Dedicated SECTION 80EEA CALCULATION FLOW TRACE & END-TO-END TRACE
+            home_loan_declared = home_loan_claimed
+            home_loan_allowed = float(getattr(ded_calc, 'home_loan_interest_24b', 0.0) or 0.0)
+            residual_interest = max(home_loan_declared - home_loan_allowed, 0.0)
+
+            eea_line = next((l for l in decl.declaration_line_ids if l.category == '80eea'), None) if decl else None
+            eea_declared = float(getattr(decl, 'decl_80eea_interest_amount', 0.0) or 0.0) if decl else 0.0
+            if eea_line and (eea_line.declared_amount or 0.0) > 0.0:
+                eea_declared = max(eea_declared, float(eea_line.declared_amount or 0.0))
+
+            eea_verified = float(getattr(eea_line, 'verified_amount', 0.0) or 0.0) if eea_line else 0.0
+            eea_approved = float(getattr(eea_line, 'tax_firm_approved_amount', 0.0) or getattr(eea_line, 'approved_amount', 0.0) or 0.0) if eea_line else (float(getattr(decl, 'decl_80eea_approved_amount', 0.0) or 0.0) if decl else 0.0)
+            if home_loan_declared > 0.0:
+                eea_eligible_base = min(residual_interest, eea_declared) if eea_declared > 0.0 else residual_interest
+            else:
+                eea_eligible_base = eea_declared
+            eea_sanction_date = getattr(decl, 'decl_80eea_loan_sanction_date', None) if decl else None
+            eea_stamp_val = float(getattr(decl, 'decl_80eea_property_stamp_value', 0.0) or 0.0) if decl else 0.0
+            eea_first_buyer = bool(getattr(decl, 'decl_80eea_first_time_home_buyer', False)) if decl else False
+            eea_claimed_80ee = bool(getattr(decl, 'decl_80eea_claimed_under_80ee', False)) if decl else False
+            eea_lender_type = getattr(decl, 'decl_80eea_lender_type', 'scheduled_bank') or 'scheduled_bank' if decl else 'scheduled_bank'
+            eea_lending_inst = getattr(decl, 'decl_80eea_lending_institution', 'N/A') or 'N/A' if decl else 'N/A'
+            eea_loan_acct = getattr(decl, 'decl_80eea_loan_account_number', 'N/A') or 'N/A' if decl else 'N/A'
+            eea_sanction_date_str = eea_sanction_date.strftime('%Y-%m-%d') if hasattr(eea_sanction_date, 'strftime') and eea_sanction_date else (str(eea_sanction_date) if eea_sanction_date else 'N/A')
+
+            eea_s_date_obj = fields.Date.from_string(str(eea_sanction_date)) if eea_sanction_date else None
+            eea_cond_date_window = bool(eea_s_date_obj and fields.Date.from_string("2019-04-01") <= eea_s_date_obj <= fields.Date.from_string("2022-03-31"))
+            eea_cond_stamp = bool(eea_stamp_val > 0.0 and eea_stamp_val <= 4500000.0)
+            eea_cond_lender = bool(eea_lender_type in ('scheduled_bank', 'housing_finance_company', 'nbfc'))
+            has_eea_claim = bool(eea_declared > 0.0 or eea_sanction_date)
+            total_chapter_6a = c6a.total_chapter_6a if c6a else 0.0
+
+            trace_80eea_full = f"""
+=========================================================
+[SECTION_80EEA_CALCULATION_FLOW_TRACE]
+=========================================================
+Source: hr.payslip._compute_tds_distribution()
+
+---------------- 1. DECLARATION INPUT ----------------
+employee_id                         : {self.employee_id.id}
+employee_name                       : {self.employee_id.name}
+declaration_id                      : {decl.id if decl else 'N/A'}
+financial_year                      : {fy_name}
+declaration_state                   : {decl.state if decl else 'no_declaration'}
+explicit_80eea_claim                : {"YES" if has_eea_claim else "NO"}
+declared_80eea_amount               : INR {eea_declared:,.2f}
+loan_sanction_date                  : {eea_sanction_date_str}
+property_stamp_value                : INR {eea_stamp_val:,.2f}
+first_time_home_buyer               : {"YES" if eea_first_buyer else "NO"}
+claimed_under_80ee                  : {"YES" if eea_claimed_80ee else "NO"}
+lender_type                         : {eea_lender_type}
+lending_institution                 : {eea_lending_inst}
+loan_account_number                 : {eea_loan_acct}
+
+
+---------------- 2. HOME LOAN / 24(b) ----------------
+original_home_loan_interest_declared: INR {home_loan_declared:,.2f}
+section_24b_eligible_amount         : INR {home_loan_declared:,.2f}
+section_24b_allowed_amount          : INR {home_loan_allowed:,.2f}
+exact_amount_deducted_under_24b     : INR {home_loan_allowed:,.2f}
+
+
+---------------- 3. 80EEA RESIDUAL CALCULATION ----------------
+Formula                             : residual_interest = original_home_loan_interest - allowed_24b_interest
+original_interest                   : INR {home_loan_declared:,.2f}
+allowed_24b                         : INR {home_loan_allowed:,.2f}
+residual_interest                   : INR {residual_interest:,.2f}
+declared_80eea_amount               : INR {eea_declared:,.2f}
+eligible_base_used                  : INR {eea_eligible_base:,.2f} ({'Residual interest after Section 24(b)' if residual_interest > 0.0 else 'Declared 80EEA Amount'})
+
+
+---------------- 4. 80EEA STATUTORY ELIGIBILITY ----------------
+Tax Regime (Old Regime)             : {"PASS (OLD)" if (regime_code == 'old') else "FAIL (NEW - Not permitted u/s 115BAC)"}
+First-Time Home Buyer Condition     : {"PASS" if eea_first_buyer else "FAIL (Assessee is not a first-time buyer)"}
+Loan Sanction Date                  : {eea_sanction_date_str}
+Sanction-Date Window (2019-2022)    : {"PASS (Between 01-Apr-2019 and 31-Mar-2022)" if eea_cond_date_window else "FAIL (Outside statutory window)"}
+Property Stamp Duty Value (<= 45L)  : {"PASS (INR " + f"{eea_stamp_val:,.2f} <= INR 4,500,000.00)" if eea_cond_stamp else "FAIL (Exceeds INR 4,500,000.00)"}
+Lender Institution Condition        : {"PASS (Approved Financial Institution/Bank)" if eea_cond_lender else "FAIL"}
+Section 80EE Exclusivity            : {"PASS (No Section 80EE claimed)" if not eea_claimed_80ee else "FAIL (Already claimed u/s 80EE)"}
+Final Eligibility Result            : {"PASS (ELIGIBLE)" if sec_80eea > 0 else "FAIL (INELIGIBLE)"}
+Rejection Reason                    : {"None (Conditions Met)" if sec_80eea > 0 else "Section 80EEA conditions not satisfied or not claimed."}
+
+
+---------------- 5. 80EEA AMOUNT LIFECYCLE ----------------
+declared_amount                     : INR {eea_declared:,.2f}
+projected_amount                    : INR {eea_declared:,.2f}
+residual_eligible_amount            : INR {residual_interest:,.2f}
+statutory_80eea_cap                 : INR 150,000.00
+capped_eligible_amount              : INR {sec_80eea:,.2f}
+verified_amount                     : INR {eea_verified:,.2f}
+hr_approved_amount                  : INR {eea_approved:,.2f}
+usable_amount                       : INR {sec_80eea:,.2f}
+final_selected_amount               : INR {sec_80eea:,.2f}
+final_Chapter_VIA_amount            : INR {sec_80eea:,.2f}
+
+
+---------------- 6. FINAL AGGREGATION ----------------
+section_24b                         : INR {home_loan_allowed:,.2f}
+section_80eea                       : INR {sec_80eea:,.2f}
+total_chapter_6a_deductions         : INR {total_chapter_6a:,.2f}
+total_deductions                    : INR {tot_deductions:,.2f}
+taxable_income                      : INR {net_taxable_inc:,.2f}
+annual_tax                          : INR {ann_tax_liab:,.2f}
+
+---------------- CALCULATION SEQUENCE ----------------
+Sequence: Total Interest (INR {home_loan_declared:,.2f}) → 24(b) (INR {home_loan_allowed:,.2f}) → Residual Interest (INR {residual_interest:,.2f}) → 80EEA Cap (INR 150,000.00) → Final 80EEA (INR {sec_80eea:,.2f})
+
+=========================================================
+
+[80EEA_END_TO_END_TRACE]
+explicit_80eea_claim = {"YES" if has_eea_claim else "NO"}
+sanction_date = {eea_sanction_date_str}
+first_time_buyer = {"YES" if eea_first_buyer else "NO"}
+property_value = INR {eea_stamp_val:,.2f}
+lender_type = {eea_lender_type}
+section_24b_original_interest = INR {home_loan_declared:,.2f}
+section_24b_final_amount = INR {home_loan_allowed:,.2f}
+section_80eea_residual_interest = INR {residual_interest:,.2f}
+section_80eea_declared_amount = INR {eea_declared:,.2f}
+section_80eea_statutory_cap = INR 150,000.00
+eligible_amount = INR {eea_eligible_base:,.2f}
+approved_amount = INR {sec_80eea:,.2f}
+final_80eea_amount = INR {sec_80eea:,.2f}
+final_chapter6a_amount = INR {sec_80eea:,.2f}
+calculation_sequence = Total Interest (INR {home_loan_declared:,.2f}) → 24(b) (INR {home_loan_allowed:,.2f}) → Residual Interest (INR {residual_interest:,.2f}) → 80EEA Cap (INR 150,000.00) → Final 80EEA (INR {sec_80eea:,.2f})
+section24b = INR {home_loan_allowed:,.2f}
+total_deductions = INR {tot_deductions:,.2f}
+taxable_income = INR {net_taxable_inc:,.2f}
+annual_tax = INR {ann_tax_liab:,.2f}
+=========================================================
+"""
+            _logger.warning(trace_80eea_full)
+
+            _logger.warning("""[TDS_DEBUG_TRACE][80EEA_CALCULATION_AUDIT]
+TOTAL_INTEREST=%s
+FINAL_24B_AMOUNT=%s
+RESIDUAL_INTEREST_FOR_80EEA=%s
+80EEA_DECLARED_AMOUNT=%s
+80EEA_STATUTORY_CAP=150000.00
+80EEA_ELIGIBILITY_RESULT=%s
+FINAL_80EEA_AMOUNT=%s
+FINAL_CHAPTER_VIA_80EEA=%s""",
+                f"INR {home_loan_declared:,.2f}",
+                f"INR {home_loan_allowed:,.2f}",
+                f"INR {residual_interest:,.2f}",
+                f"INR {eea_declared:,.2f}",
+                "ELIGIBLE" if sec_80eea > 0 else ("INELIGIBLE" if not has_eea_claim else "ZERO_RESIDUAL"),
+                f"INR {sec_80eea:,.2f}",
+                f"INR {sec_80eea:,.2f}"
+            )
+
+            # 13. SHOW MONTHLY TDS CALCULATION
+            mth = res.monthly_tds_distribution
+            rem_periods = mth.remaining_payroll_periods or 1
+            rem_liab = mth.remaining_annual_tax_liability
+            raw_mth_tds = rem_liab / rem_periods if rem_periods else 0.0
+
+            eval_m_n = eval_date.month if hasattr(eval_date, 'month') else 4
+            eval_fy_i = eval_m_n - 3 if eval_m_n >= 4 else eval_m_n + 9
+            m_names_d = {1: 'January', 2: 'February', 3: 'March', 4: 'April', 5: 'May', 6: 'June',
+                         7: 'July', 8: 'August', 9: 'September', 10: 'October', 11: 'November', 12: 'December'}
+            curr_m_name = m_names_d.get(eval_m_n, str(eval_m_n))
+            c_m_cnt = max(0, eval_fy_i - 1)
+            f_m_cnt = max(0, 12 - eval_fy_i)
+
+            _logger.warning("""[TDS_DEBUG_TRACE][PAYROLL_MONTH_CONTEXT]
+completed_payroll_months=%s
+current_payroll_month=%s
+future_payroll_months=%s
+tds_distribution_months=%s""",
+                c_m_cnt, curr_m_name, f_m_cnt, rem_periods
+            )
+
+            _logger.warning("""[TDS_DEBUG_TRACE] MONTHLY_TDS
+annual_tax_liability=%s
+months_remaining=%s
+previous_tds_deducted=%s
+current_month_tds_before_rounding=%s
+current_month_tds=%s""",
+                ann_tax_liab, rem_periods, mth.total_tds_paid_so_far,
+                raw_mth_tds, mth.current_month_tds
+            )
+
+            # 14. IMPORTANT: TRACE PREVIOUS TDS
+            prev_payslip_cnt = sal_proj.months_elapsed - 1 if sal_proj.months_elapsed > 0 else 0
+            _logger.warning("""[TDS_DEBUG_TRACE] PREVIOUS_TDS
+previous_payslip_count=%s
+previous_tds=%s
+annual_tax_liability=%s
+balance_tax=%s
+months_remaining=%s""",
+                prev_payslip_cnt, mth.total_tds_paid_so_far, ann_tax_liab,
+                rem_liab, rem_periods
+            )
+
+            # 15. TRACE THE EXACT RETURN
+            _logger.warning("""[TDS_DEBUG_TRACE] RETURN
+total_annual_tax_liability=%s
+current_month_tds=%s""", ann_tax_liab, res.current_month_tds)
+
+            _logger.warning("HDS_IN_TDS TRACE | Inside HrPayslip.hds_in_compute_tds() | total_annual_tax_liability: %s, returning res.current_month_tds: %s", getattr(getattr(res, 'health_education_cess', None), 'total_annual_tax_liability', 'N/A'), res.current_month_tds)
+
+        financial_year = self.env['tds.financial.year'].search([
+            ('start_date', '<=', eval_date),
+            ('end_date', '>=', eval_date)
+        ], limit=1)
+        fy_name = financial_year.name if financial_year else 'N/A'
+        calc_run_id = getattr(res, 'calculation_run_id', None) or self.env.context.get('tds_calc_run_id', 'N/A')
+
+        stored_sched = self.env['tds.recalculation.schedule'].sudo().search([
+            ('employee_id', '=', self.employee_id.id),
+            ('financial_year_id', '=', financial_year.id)
+        ], order='id desc', limit=1) if financial_year else False
+
+        fresh_ann_tax = float(res.total_annual_tax_liability or 0.0)
+        prev_ann_tax = float(getattr(res, 'previous_annual_tax', None) if getattr(res, 'previous_annual_tax', None) is not None else (stored_sched.recalculated_annual_tax if stored_sched else fresh_ann_tax))
+        tax_diff = fresh_ann_tax - prev_ann_tax
+
+        mth_dist = getattr(res, 'monthly_tds_distribution', None)
+        ytd_tds_val = float(getattr(mth_dist, 'total_tds_paid_so_far', 0.0) or getattr(mth_dist, 'ytd_tds_deducted', 0.0) or 0.0) if mth_dist else 0.0
+        rem_tax_val = float(getattr(mth_dist, 'remaining_annual_tax_liability', 0.0) or 0.0) if mth_dist else 0.0
+        rem_months_val = int(getattr(mth_dist, 'remaining_payroll_periods', 0) or 0) if mth_dist else 0
+        monthly_tds_val = float(res.current_month_tds or 0.0)
+        hra_exemption_val = float(getattr(getattr(res, 'deduction_calculation', None), 'hra_exemption', 0.0) or 0.0)
+
+        _logger.warning("""[TDS_ANNUAL_RECALC_AUDIT]
+payslip_id=%s
+calculation_run_id=%s
+previous_annual_tax=%s
+fresh_annual_tax=%s
+tax_difference=%s
+ytd_tds=%s
+remaining_tax=%s
+remaining_months=%s
+monthly_tds=%s
+hra_exemption_received_by_annual_tax=%s
+final_tds=%s""",
+            self.id,
+            calc_run_id,
+            f"INR {prev_ann_tax:,.2f}",
+            f"INR {fresh_ann_tax:,.2f}",
+            f"INR {tax_diff:,.2f}",
+            f"INR {ytd_tds_val:,.2f}",
+            f"INR {rem_tax_val:,.2f}",
+            rem_months_val,
+            f"INR {monthly_tds_val:,.2f}",
+            f"INR {hra_exemption_val:,.2f}",
+            f"INR {monthly_tds_val:,.2f}"
+        )
+
+        _logger.warning("""[FINAL_TDS_TRACE]
+calculation_run_id=%s
+payslip_id=%s
+payslip_name=%s
+evaluation_date=%s
+financial_year=%s
+final_HDS_IN_TDS=%s""",
+            calc_run_id,
+            self.id,
+            self.name,
+            eval_date,
+            fy_name,
+            f"INR {res.current_month_tds:,.2f}"
+        )
+
+        result = -res.current_month_tds
+        _logger.warning(
+            "[TDS_EXIT_AUDIT] hds_in_compute_tds EXIT | payslip=%s | final_tds=%s",
+            self.id,
+            result,
+        )
+
+        return result
+
+    def action_print_statutory_report(self):
+        """
+        Triggers PDF generation of the Statutory Tax Calculation Report from Payslip.
+        Always routes the report from the current payslip (self) so that the evaluation date
+        is correctly locked to the payslip period (e.g. April date_to for April payslip).
+        """
+        self.ensure_one()
+        company = self.company_id or self.employee_id.company_id or self.env.company
+        if not company.hds_in_tds_applicable:
+            raise UserError(_("Tax Calculation Report is not available because TDS is disabled in Company Settings."))
+        return self.env.ref('hudson_in_payroll.action_report_statutory_tax_payslip').report_action(self)
+
+    def get_tds_summary(self):
+        """
+        Helper method for standard Payslip PDF Report to retrieve the exact
+        TDS calculation summary for this payslip using its date_to evaluation date.
+        Reuses the master TDS Orchestration Engine result.
+        """
+        self.ensure_one()
+        rep_provider = self.env['report.hudson_in_payroll.report_statutory_tax_calculation']
+        res_dict = rep_provider.with_context(active_model='hr.payslip')._get_report_values([self.id], data={'model_name': 'hr.payslip'})
+        reports = res_dict.get('reports', [])
+        if reports:
+            return reports[0]
+        return {}
+
+
+
+    # -------------------------------------------------------------------------
+    # OVERRIDDEN GET_PAYSLIP_LINES
+    # -------------------------------------------------------------------------
+    @api.model
+    def _get_payslip_lines(self, contract_ids, payslip_id):
+        """
+        Overridden to inject domain services and real hr.payslip record into localdict.
+        """
+        def _sum_salary_rule_category(localdict, category, amount):
+            if category.parent_id:
+                localdict = _sum_salary_rule_category(localdict, category.parent_id, amount)
+            localdict['categories'].dict[category.code] = (
+                localdict['categories'].dict[category.code] + amount
+                if category.code in localdict['categories'].dict else amount
+            )
+            return localdict
+
+        class DummyInput(object):
+            amount = 0.0
+            number_of_days = 0.0
+            number_of_hours = 0.0
+            total = 0.0
+            rate = 0.0
+            quantity = 0.0
+
+            def __float__(self):
+                return 0.0
+
+            def __int__(self):
+                return 0
+
+            def __bool__(self):
+                return False
+
+            def __repr__(self):
+                return "0.0"
+
+            def __str__(self):
+                return "0.0"
+
+            def __abs__(self):
+                return 0.0
+
+            def __neg__(self):
+                return 0.0
+
+            def __pos__(self):
+                return 0.0
+
+            def __add__(self, other):
+                return float(other) if isinstance(other, (int, float)) else other
+
+            def __radd__(self, other):
+                return float(other) if isinstance(other, (int, float)) else other
+
+            def __sub__(self, other):
+                return -float(other) if isinstance(other, (int, float)) else 0.0
+
+            def __rsub__(self, other):
+                return float(other) if isinstance(other, (int, float)) else 0.0
+
+            def __mul__(self, other):
+                return 0.0
+
+            def __rmul__(self, other):
+                return 0.0
+
+            def __truediv__(self, other):
+                return 0.0
+
+            def __rtruediv__(self, other):
+                return 0.0
+
+            def __eq__(self, other):
+                if isinstance(other, DummyInput):
+                    return True
+                if isinstance(other, (int, float)):
+                    return float(other) == 0.0
+                return not bool(other)
+
+            def __lt__(self, other):
+                val = float(other) if isinstance(other, (int, float)) else 0.0
+                return 0.0 < val
+
+            def __le__(self, other):
+                val = float(other) if isinstance(other, (int, float)) else 0.0
+                return 0.0 <= val
+
+            def __gt__(self, other):
+                val = float(other) if isinstance(other, (int, float)) else 0.0
+                return 0.0 > val
+
+            def __ge__(self, other):
+                val = float(other) if isinstance(other, (int, float)) else 0.0
+                return 0.0 >= val
+
+            def __getattr__(self, attr):
+                return self
+
+        class BrowsableObject(object):
+            def __init__(self, employee_id, dict_val, env):
+                self.employee_id = employee_id
+                self.dict = dict_val
+                self.env = env
+                self.amount = 0.0
+
+            def __contains__(self, attr):
+                if isinstance(self.dict, dict):
+                    return attr in self.dict
+                return hasattr(self.dict, attr)
+
+            def __getitem__(self, attr):
+                if isinstance(self.dict, dict):
+                    return self.dict.get(attr, DummyInput())
+                return getattr(self.dict, attr, DummyInput())
+
+            def __getattr__(self, attr):
+                if isinstance(self.dict, dict):
+                    return self.dict.get(attr, DummyInput())
+                return getattr(self.dict, attr, DummyInput())
+
+        class InputLine(BrowsableObject):
+            def sum(self, code, from_date, to_date=None):
+                if to_date is None:
+                    to_date = fields.Date.today()
+                self.env.cr.execute("""
+                    SELECT sum(amount) as sum
+                    FROM hr_payslip as hp, hr_payslip_input as pi
+                    WHERE hp.employee_id = %s AND hp.state = 'done'
+                    AND hp.date_from >= %s AND hp.date_to <= %s AND hp.id = pi.payslip_id AND pi.code = %s""",
+                    (self.employee_id, from_date, to_date, code))
+                return self.env.cr.fetchone()[0] or 0.0
+
+        class WorkedDays(BrowsableObject):
+            def _sum(self, code, from_date, to_date=None):
+                if to_date is None:
+                    to_date = fields.Date.today()
+                self.env.cr.execute("""
+                    SELECT sum(number_of_days) as number_of_days, sum(number_of_hours) as number_of_hours
+                    FROM hr_payslip as hp, hr_payslip_worked_days as pi
+                    WHERE hp.employee_id = %s AND hp.state = 'done'
+                    AND hp.date_from >= %s AND hp.date_to <= %s AND hp.id = pi.payslip_id AND pi.code = %s""",
+                    (self.employee_id, from_date, to_date, code))
+                return self.env.cr.fetchone()
+
+            def sum(self, code, from_date, to_date=None):
+                res = self._sum(code, from_date, to_date)
+                return res and res[0] or 0.0
+
+            def sum_hours(self, code, from_date, to_date=None):
+                res = self._sum(code, from_date, to_date)
+                return res and res[1] or 0.0
+
+        class Payslips(BrowsableObject):
+            def sum(self, code, from_date, to_date=None):
+                if to_date is None:
+                    to_date = fields.Date.today()
+                self.env.cr.execute("""
+                    SELECT sum(case when hp.credit_note = False then (pl.total) else (-pl.total) end)
+                    FROM hr_payslip as hp, hr_payslip_line as pl
+                    WHERE hp.employee_id = %s AND hp.state = 'done'
+                    AND hp.date_from >= %s AND hp.date_to <= %s AND hp.id = pl.slip_id AND pl.code = %s""",
+                    (self.employee_id, from_date, to_date, code))
+                res = self.env.cr.fetchone()
+                return res and res[0] or 0.0
+
+        result_dict = {}
+        rules_dict = {}
+        worked_days_dict = {}
+        inputs_dict = {}
+        blacklist = []
+        payslip = self.env['hr.payslip'].browse(payslip_id)
+
+        for worked_days_line in payslip.worked_days_line_ids:
+            worked_days_dict[worked_days_line.code] = worked_days_line
+        for input_line in payslip.input_line_ids:
+            inputs_dict[input_line.code] = input_line
+
+        categories = BrowsableObject(payslip.employee_id.id, {}, self.env)
+        inputs = InputLine(payslip.employee_id.id, inputs_dict, self.env)
+        worked_days = WorkedDays(payslip.employee_id.id, worked_days_dict, self.env)
+        payslips = Payslips(payslip.employee_id.id, payslip, self.env)
+        rules = BrowsableObject(payslip.employee_id.id, rules_dict, self.env)
+
+        baselocaldict = {
+            'categories': categories,
+            'rules': rules,
+            'payslip': payslips,
+            'worked_days': worked_days,
+            'inputs': inputs
+        }
+
+        contracts = self.env['hr.version'].browse(contract_ids)
+        if payslip.struct_id:
+            structure_ids = list(set(payslip.struct_id._get_parent_structure().ids))
+        elif len(contracts) == 1 and contracts.struct_id:
+            structure_ids = list(set(contracts.struct_id._get_parent_structure().ids))
+        else:
+            structure_ids = contracts.get_all_structures()
+
+        rule_ids = self.env['hr.payroll.structure'].browse(structure_ids).get_all_rules()
+        sorted_rule_ids = [id for id, sequence in sorted(rule_ids, key=lambda x: x[1])]
+        sorted_rules = self.env['hr.salary.rule'].browse(sorted_rule_ids)
+
+        try:
+            for contract in contracts:
+                employee = contract.employee_id
+                localdict = dict(baselocaldict, employee=employee, contract=contract)
+
+                # INJECTION HOOK: Inject epf_service and payslip_record into localdict & store _eval_contexts
+                localdict = payslip._get_statutory_context(localdict)
+
+                for rule in sorted_rules:
+                    key = rule.code + '-' + str(contract.id)
+                    localdict['result'] = None
+                    localdict['result_qty'] = 1.0
+                    localdict['result_rate'] = 100
+
+                    # Auto-heal legacy database TDS salary rule code if present
+                    if rule.code == 'TDS' and rule.amount_python_compute and 'categories.GROSS or categories.ALW' in rule.amount_python_compute:
+                        rule.sudo().write({
+                            'amount_python_compute': """
+bonus_line = payslip.env['hds.in.bonus.line'].search([('payslip_id', '=', payslip.id)], limit=1)
+bonus_doc = bonus_line.bonus_id if bonus_line else False
+gross_val = categories.GROSS if isinstance(categories.GROSS, (int, float)) else (categories.ALW if isinstance(categories.ALW, (int, float)) else 0.0)
+if bonus_doc and bonus_doc.tax_treatment == 'exempt':
+    result = 0.0
+elif bonus_doc and bonus_doc.tax_treatment == 'partial':
+    taxable_val = max(0.0, gross_val - (bonus_doc.tax_exempt_limit or 0.0))
+    result = - (taxable_val * 0.10)
+else:
+    result = - (gross_val * 0.10)
+"""
+                        })
+
+                    if rule._satisfy_condition(localdict) and rule.id not in blacklist:
+                        amount, qty, rate = rule._compute_rule(localdict)
+
+                        if rule.code in ('HDS_IN_TDS', 'TDS'):
+                            _logger.warning("HDS_IN_TDS TRACE | Stage 3: Immediately after rule._compute_rule() | Rule Code: %s | amount: %s | qty: %s | rate: %s | tot_rule: %s", rule.code, amount, qty, rate, (amount * qty * rate / 100.0))
+
+                        previous_amount = rule.code in localdict and localdict[rule.code] or 0.0
+                        tot_rule = (amount * qty * rate / 100.0)
+                        localdict[rule.code] = tot_rule
+                        rules_dict[rule.code] = rule
+                        localdict = _sum_salary_rule_category(localdict, rule.category_id, tot_rule - previous_amount)
+
+                        if rule.code in ('HDS_IN_TDS', 'TDS'):
+                            _logger.warning("HDS_IN_TDS TRACE | Stage 4: Immediately before creating hr.payslip.line dict | Rule Code: %s | amount: %s | qty: %s | rate: %s", rule.code, amount, qty, rate)
+
+                        result_dict[key] = {
+                            'salary_rule_id': rule.id,
+                            'contract_id': contract.id,
+                            'name': rule.name,
+                            'code': rule.code,
+                            'category_id': rule.category_id.id,
+                            'sequence': rule.sequence,
+                            'appears_on_payslip': rule.appears_on_payslip,
+                            'condition_select': rule.condition_select,
+                            'condition_python': rule.condition_python,
+                            'condition_range': rule.condition_range,
+                            'condition_range_min': rule.condition_range_min,
+                            'condition_range_max': rule.condition_range_max,
+                            'amount_select': rule.amount_select,
+                            'amount_fix': rule.amount_fix,
+                            'amount_python_compute': rule.amount_python_compute,
+                            'amount_percentage': rule.amount_percentage,
+                            'amount_percentage_base': rule.amount_percentage_base,
+                            'register_id': rule.register_id.id,
+                            'amount': amount,
+                            'employee_id': contract.employee_id.id,
+                            'quantity': qty,
+                            'rate': rate,
+                        }
+
+                        if rule.code in ('HDS_IN_TDS', 'TDS'):
+                            _logger.warning("HDS_IN_TDS TRACE | Stage 5: Immediately after payslip line appended | Key: %s | line_dict: %s", key, result_dict[key])
+                    else:
+                        blacklist += [id for id, seq in rule._recursive_search_of_rules()]
+        finally:
+            # Clean up transient context after computation
+            HrPayslip._eval_contexts.pop(payslip_id, None)
+
+        return list(result_dict.values())
+
+    # -------------------------------------------------------------------------
+    # PRIVATE STATUTORY DELEGATION HELPERS
+    # -------------------------------------------------------------------------
+    def _get_payroll_eval_context(self, raise_if_missing=True):
+        """
+        Safely retrieves the transient evaluation context (_eval_context)
+        bound during _get_payslip_lines execution.
+        Raises UserError if executed outside active payslip sheet computation.
+        """
+        self.ensure_one()
+        eval_ctx = HrPayslip._eval_contexts.get(self.id)
+        if not eval_ctx and raise_if_missing:
+            raise UserError(_(
+                "Statutory calculation methods on 'hr.payslip' can only be executed "
+                "during active payslip sheet computation."
+            ))
+        return eval_ctx
+
+    def _delegate_statutory_service(self, service_class, compute_method_name, negate=False, localdict=None):
+        """
+        Generic DRY helper to instantiate statutory service facades with evaluation context
+        and delegate computation cleanly without repeating validation logic.
+        """
+        import logging
+        _logger = logging.getLogger(__name__)
+        self.ensure_one()
+        _logger.warning(">>> Delegating to: %s", service_class.__name__)
+        eval_ctx = localdict or self._get_payroll_eval_context(raise_if_missing=(localdict is None))
+        if eval_ctx:
+            cats = eval_ctx.get('categories')
+            gross_val = cats.GROSS if cats and hasattr(cats, 'GROSS') else None
+            _logger.warning(">>> Localdict GROSS: %s", gross_val)
+
+        service = service_class(self.env, localdict=eval_ctx)
+        compute_fn = getattr(service, compute_method_name)
+        result = compute_fn(self)
+        _logger.warning(">>> PT Result Returned: %s", getattr(result, 'amount', result))
+        amount = result.amount if hasattr(result, 'amount') else result
+        return -amount if negate else amount
+
+    # -------------------------------------------------------------------------
+    # PUBLIC ORCHESTRATION API FOR SALARY RULES (Zero Arguments in XML)
+    # -------------------------------------------------------------------------
+    def hds_in_compute_pf_wage(self, localdict=None):
+        """Public API entrypoint for PF_WAGE Salary Rule (Zero arguments in XML, optional localdict for testing)."""
+        return self._delegate_statutory_service(EPFService, 'compute_pf_wage', localdict=localdict)
+
+    def hds_in_compute_employee_epf(self, localdict=None):
+        """Public API entrypoint for Employee EPF Salary Rule (Zero arguments in XML, optional localdict for testing)."""
+        return self._delegate_statutory_service(EPFService, 'compute_employee_epf', negate=True, localdict=localdict)
+
+    def hds_in_compute_employer_epf(self, localdict=None):
+        """Public API entrypoint for Employer EPF Contribution (12% of Contribution Wage). Zero arguments in XML, optional localdict for testing."""
+        return self._delegate_statutory_service(EPFService, 'compute_employer_epf', localdict=localdict)
+
+    def hds_in_compute_employer_total_pf(self, localdict=None):
+        """Public API entrypoint for Total Employer PF Contribution (12% of Contribution Wage)."""
+        return self._delegate_statutory_service(EPFService, 'compute_employer_total_pf', localdict=localdict)
+
+    def hds_in_compute_employer_epf_share(self, localdict=None):
+        """Public API entrypoint for Net Employer EPF Share (12% - EPS = ₹790)."""
+        return self._delegate_statutory_service(EPFService, 'compute_employer_epf_share', localdict=localdict)
+
+    def hds_in_compute_employer_eps(self):
+        """Public API entrypoint for Employer Pension Scheme (EPS) Salary Rule (Zero arguments)."""
+        return self._delegate_statutory_service(EPFService, 'compute_employer_eps')
+
+    def hds_in_compute_employer_edli(self):
+        """Public API entrypoint for Employer EDLI Contribution Salary Rule (Zero arguments)."""
+        return self._delegate_statutory_service(EPFService, 'compute_employer_edli')
+
+    def hds_in_compute_epf_admin(self):
+        """Public API entrypoint for EPF Admin Charges Salary Rule (Zero arguments)."""
+        return self._delegate_statutory_service(EPFService, 'compute_epf_admin')
+
+    def hds_in_compute_edli_admin(self):
+        """Public API entrypoint for EDLI Admin Charges Salary Rule (Zero arguments)."""
+        return self._delegate_statutory_service(EPFService, 'compute_edli_admin')
+
+    def hds_in_compute_epf_admin_charge(self):
+        """Alias for hds_in_compute_epf_admin for backward compatibility."""
+        return self.hds_in_compute_epf_admin()
+
+    def hds_in_compute_edli_admin_charge(self):
+        """Alias for hds_in_compute_edli_admin for backward compatibility."""
+        return self.hds_in_compute_edli_admin()
+
+    # -------------------------------------------------------------------------
+    # PUBLIC ESIC ORCHESTRATION API FOR SALARY RULES (Zero Arguments in XML)
+    # -------------------------------------------------------------------------
+    def hds_in_compute_esic_wage(self):
+        """Public API entrypoint for ESIC_WAGE Salary Rule (Zero arguments)."""
+        return self._delegate_statutory_service(ESICService, 'compute_esic_wage')
+
+    def hds_in_compute_esic_employee(self):
+        """Public API entrypoint for ESIC_EE Salary Rule (Zero arguments)."""
+        return self._delegate_statutory_service(ESICService, 'compute_esic_employee', negate=True)
+
+    def hds_in_compute_esic_employer(self):
+        """Public API entrypoint for ESIC_ER Salary Rule (Zero arguments)."""
+        return self._delegate_statutory_service(ESICService, 'compute_esic_employer')
+
+    # -------------------------------------------------------------------------
+    # PUBLIC LWF ORCHESTRATION API FOR SALARY RULES (Zero Arguments in XML)
+    # -------------------------------------------------------------------------
+    def hds_in_compute_lwf_employee(self):
+        """Public API entrypoint for LWF_EE Salary Rule (Zero arguments)."""
+        return self._delegate_statutory_service(LWFService, 'compute_lwf_employee', negate=True)
+
+    def hds_in_compute_lwf_employer(self):
+        """Public API entrypoint for LWF_ER Salary Rule (Zero arguments)."""
+        return self._delegate_statutory_service(LWFService, 'compute_lwf_employer')
+
+    # -------------------------------------------------------------------------
+    # PUBLIC GRATUITY ORCHESTRATION API FOR SALARY RULES (Zero Arguments in XML)
+    # -------------------------------------------------------------------------
+    def hds_in_compute_gratuity(self):
+        """
+        Public API entrypoint for Gratuity Salary Rule (Zero arguments in XML).
+        Delegates computation to GratuityService via _delegate_statutory_service DRY helper.
+        Thin orchestration layer containing zero business logic.
+        """
+        return self._delegate_statutory_service(GratuityService, 'compute_gratuity')
+
+    # -------------------------------------------------------------------------
+    # PUBLIC PROFESSIONAL TAX ORCHESTRATION API FOR SALARY RULES (Zero Arguments in XML)
+    # -------------------------------------------------------------------------
+    def hds_in_compute_professional_tax(self):
+        """
+        Public API entrypoint for Professional Tax (PT) Salary Rule (Zero arguments in XML).
+        Delegates computation to ProfessionalTaxService via _delegate_statutory_service DRY helper.
+        Thin orchestration layer containing zero business logic.
+        """
+        import logging
+        _logger = logging.getLogger(__name__)
+        _logger.warning(">>> hds_in_compute_professional_tax() CALLED")
+        return self._delegate_statutory_service(ProfessionalTaxService, 'compute_pt_amount', negate=True)
+
+    def hds_in_compute_pt(self):
+        """Alias for hds_in_compute_professional_tax for backward compatibility."""
+        return self.hds_in_compute_professional_tax()
+
+    # -------------------------------------------------------------------------
+    # WAGE RESOLUTION HELPERS
+    # -------------------------------------------------------------------------
+    def hds_in_get_actual_pf_wage(self, localdict=None):
+        """
+        Calculates actual PF-eligible wage by summing components with hds_in_include_in_pf_wage = True.
+        Does NOT read localdict['PF_WAGE'] to prevent circular dependency.
+        """
+        import logging
+        _logger = logging.getLogger(__name__)
+
+        self.ensure_one()
+        ld = localdict or self._get_payroll_eval_context(raise_if_missing=False)
+        pf_wage = 0.0
+
+        # Scope rules strictly to current salary structure when available
+        struct = self.struct_id or (self.contract_id and self.contract_id.struct_id)
+        if struct:
+            pf_rules = struct.get_all_rules().filtered(
+                lambda r: r.hds_in_include_in_pf_wage and r.active and r.code != 'PF_WAGE'
+            )
+        else:
+            pf_rules = self.env['hr.salary.rule'].search([
+                ('hds_in_include_in_pf_wage', '=', True),
+                ('active', '=', True),
+                ('code', '!=', 'PF_WAGE'),
+            ])
+
+        if ld:
+            for rule in pf_rules:
+                val = ld.get(rule.code)
+                if val is None and isinstance(ld.get('rules'), dict):
+                    rule_obj = ld['rules'].get(rule.code)
+                    if hasattr(rule_obj, 'total'):
+                        val = rule_obj.total
+                    elif isinstance(rule_obj, dict):
+                        val = rule_obj.get('total')
+                amount = float(val or 0.0)
+                _logger.info("PF Rule %s -> %s", rule.code, amount)
+                pf_wage += amount
+            return pf_wage
+
+        for line in self.line_ids:
+            if line.salary_rule_id.hds_in_include_in_pf_wage and line.salary_rule_id.code != 'PF_WAGE':
+                pf_wage += line.total
+
+        return pf_wage
+
+    def get_pf_eligible_wage(self, localdict=None):
+        """Alias for hds_in_get_actual_pf_wage for backwards compatibility."""
+        return self.hds_in_get_actual_pf_wage(localdict=localdict)
+
+    def hds_in_get_pf_contribution_wage(self, localdict=None):
+        """Calculates employee's PF Contribution Wage for this payslip."""
+        self.ensure_one()
+        ld = localdict or self._get_payroll_eval_context(raise_if_missing=False)
+        return EPFService(self.env, localdict=ld).wage_calc.get_pf_contribution_wage(self)
+
+    def get_pf_contribution_wage(self, localdict=None):
+        """Alias for hds_in_get_pf_contribution_wage for backwards compatibility."""
+        return self.hds_in_get_pf_contribution_wage(localdict=localdict)
+
+    hds_in_statutory_audit_count = fields.Integer(
+        string="Statutory Audits",
+        compute='_compute_hds_in_statutory_audit_count'
+    )
+
+    def _compute_hds_in_statutory_audit_count(self):
+        audit_data = self.env['hds.in.payroll.audit']._read_group(
+            [('payslip_id', 'in', self.ids)],
+            ['payslip_id'],
+            ['__count']
+        )
+        mapped_data = {payslip.id: count for payslip, count in audit_data}
+        for slip in self:
+            slip.hds_in_statutory_audit_count = mapped_data.get(slip.id, 0)
+
+    def action_view_statutory_audits(self):
+        self.ensure_one()
+        action = self.env["ir.actions.actions"]._for_xml_id("hudson_in_payroll.hds_in_payroll_audit_action")
+        action['domain'] = [('payslip_id', '=', self.id)]
+        action['context'] = {'default_payslip_id': self.id, 'default_employee_id': self.employee_id.id}
+        return action
+
+    def action_compute_sheet(self):
+        """Auto-sync BONUS input lines before computing salary rules."""
+        for slip in self:
+            if slip.state == 'draft' and slip.contract_id and slip.employee_id:
+                bonus_lines = self.env['hds.in.bonus.line'].search([
+                    ('employee_id', '=', slip.employee_id.id),
+                    ('bonus_id.payment_method', '=', 'monthly_payroll'),
+                    ('bonus_id.state', 'in', ('manager_approved', 'hr_approved', 'approved', 'processed', 'paid')),
+                    ('bonus_id.date_from', '<=', slip.date_to),
+                    ('bonus_id.date_to', '>=', slip.date_from),
+                    ('amount', '>', 0.0)
+                ])
+                for b_line in bonus_lines:
+                    input_line = slip.input_line_ids.filtered(lambda i: i.code == 'BONUS')
+                    if input_line:
+                        input_line.write({'amount': b_line.amount, 'name': b_line.bonus_id.name})
+                    else:
+                        self.env['hr.payslip.input'].create({
+                            'name': b_line.bonus_id.name,
+                            'code': 'BONUS',
+                            'amount': b_line.amount,
+                            'payslip_id': slip.id,
+                            'contract_id': slip.contract_id.id,
+                            'date_from': slip.date_from,
+                            'date_to': slip.date_to,
+                        })
+        res = super(HrPayslip, self).action_compute_sheet()
+        for slip in self:
+            if slip.employee_id:
+                decl = self.env['tds.employee.declaration'].search([
+                    ('employee_id', '=', slip.employee_id.id)
+                ], order='write_date desc, id desc', limit=1)
+                if decl and decl.write_date:
+                    slip._hds_in_last_computed_decl_write_date = decl.write_date
+        return res
+
+    def action_payslip_done(self):
+        """
+        Override action_payslip_done() to guard against redundant recomputation
+        if payslip lines already exist and employee declaration has not changed.
+        """
+        for slip in self:
+            needs_recompute = False
+            if not slip.line_ids:
+                needs_recompute = True
+            else:
+                if slip.employee_id:
+                    decl = self.env['tds.employee.declaration'].search([
+                        ('employee_id', '=', slip.employee_id.id)
+                    ], order='write_date desc, id desc', limit=1)
+                    if not decl:
+                        needs_recompute = True
+                    elif decl.write_date != slip._hds_in_last_computed_decl_write_date:
+                        needs_recompute = True
+                else:
+                    needs_recompute = True
+
+            if needs_recompute:
+                slip.action_compute_sheet()
+
+        return super(HrPayslip, self).action_payslip_done()
+
+    def compute_sheet(self):
+        """Alias for action_compute_sheet for backwards compatibility."""
+        return self.action_compute_sheet()
+
+    @api.model
+    def get_inputs(self, contracts, date_from, date_to):
+        res = super(HrPayslip, self).get_inputs(contracts, date_from, date_to)
+        for contract in contracts:
+            emp = contract.employee_id
+            bonus_lines = self.env['hds.in.bonus.line'].search([
+                ('employee_id', '=', emp.id),
+                ('bonus_id.payment_method', '=', 'monthly_payroll'),
+                ('bonus_id.state', 'in', ('manager_approved', 'hr_approved', 'approved', 'processed', 'paid')),
+                '|',
+                '&', ('bonus_id.date_from', '<=', date_to), ('bonus_id.date_to', '>=', date_from),
+                '&', ('bonus_id.payment_date', '>=', date_from), ('bonus_id.payment_date', '<=', date_to),
+                ('amount', '>', 0.0)
+            ])
+            for b_line in bonus_lines:
+                existing = [i for i in res if i.get('code') == 'BONUS' and i.get('contract_id') == contract.id]
+                if existing:
+                    existing[0]['amount'] = b_line.amount
+                    existing[0]['name'] = b_line.bonus_id.name
+                else:
+                    res.append({
+                        'name': b_line.bonus_id.name,
+                        'code': 'BONUS',
+                        'amount': b_line.amount,
+                        'contract_id': contract.id,
+                        'date_from': date_from,
+                        'date_to': date_to,
+                    })
+        return res
+
+    def get_payslip_pdf_data(self):
+        """
+        Construct compact single-page PDF payslip data structure
+        matching sample reference layout, without altering any payroll computations.
+        """
+        self.ensure_one()
+        import calendar as _calendar
+        emp = self.employee_id
+        company = self.company_id
+
+        # Month Year display
+        month_str = self.date_to.strftime('%B %Y').upper() if self.date_to else ''
+
+        # Employee Identification / Statutory Numbers
+        emp_no = getattr(emp, 'registration_number', False) or getattr(emp, 'barcode', False) or f"EMP{emp.id:04d}"
+        location = getattr(emp.work_location_id, 'name', False) or company.city or 'Main Office'
+        joining_date = getattr(emp, 'hds_in_doj', False) or (self.contract_id.date_start if self.contract_id else False)
+        dob = emp.birthday
+        gender_val = getattr(emp, 'gender', False)
+        gender = gender_val.title() if isinstance(gender_val, str) else 'N/A'
+        
+        pan = getattr(emp, 'hds_in_pan', False) or getattr(emp, 'pan_no', False) or emp.identification_id or '-'
+        aadhaar = getattr(emp, 'hds_in_aadhaar', False) or getattr(emp, 'aadhaar_no', False) or '-'
+        epf_no = getattr(emp, 'hds_in_pf_member_id', False) or getattr(emp, 'hds_in_epf_number', False) or getattr(emp, 'pf_number', False) or '-'
+        esic_no = getattr(emp, 'hds_in_esic_ip_number', False) or getattr(emp, 'hds_in_esic_number', False) or getattr(emp, 'esic_number', False) or '-'
+        uan = getattr(emp, 'hds_in_uan', False) or getattr(emp, 'hds_in_epf_uan', False) or getattr(emp, 'uan', False) or '-'
+
+        # Attendance / Worked Days
+        std_days = _calendar.monthrange(self.date_to.year, self.date_to.month)[1] if self.date_to else 30
+        days_worked = sum(w.number_of_days for w in self.worked_days_line_ids if (w.code or '').upper() not in ('UNPAID', 'ABSENT')) if self.worked_days_line_ids else std_days
+        lop_days = sum(w.number_of_days for w in self.worked_days_line_ids if (w.code or '').upper() in ('UNPAID', 'ABSENT')) if self.worked_days_line_ids else 0.0
+        lop_rev_days = sum(w.number_of_days for w in self.worked_days_line_ids if 'REV' in (w.code or '').upper()) if self.worked_days_line_ids else 0.0
+
+        # Bank Details - Fetch active bank account via employee or work contact / user partner relation
+        bank_acc = getattr(emp, 'bank_account_id', False) or getattr(emp, 'primary_bank_account_id', False) or (emp.bank_account_ids[0] if getattr(emp, 'bank_account_ids', False) else False)
+        if not bank_acc:
+            partner = getattr(emp, 'work_contact_id', False) or (emp.user_id.partner_id if getattr(emp, 'user_id', False) else None)
+            if partner and getattr(partner, 'bank_ids', False):
+                bank_acc = partner.bank_ids[0]
+
+        bank_name = bank_acc.bank_id.name if bank_acc and bank_acc.bank_id else '-'
+        acc_no = bank_acc.acc_number if bank_acc else '-'
+        payment_mode = getattr(emp, 'hds_in_bank_account_type', 'BANK TRANSFER') or 'BANK TRANSFER'
+
+        # Earnings lines vs Deductions lines
+        earnings_lines = []
+        deductions_lines = []
+
+        total_earnings = 0.0
+        total_deductions = 0.0
+
+        # Calculate YTD for each rule up to current date_to in current FY
+        fy = self.env['tds.financial.year'].search([
+            ('start_date', '<=', self.date_to or fields.Date.today()),
+            ('end_date', '>=', self.date_to or fields.Date.today())
+        ], limit=1)
+
+        ytd_domain = [
+            ('employee_id', '=', emp.id),
+            ('state', 'in', ('done', 'paid')),
+            ('date_to', '<=', self.date_to)
+        ]
+        if fy:
+            ytd_domain.extend([('date_from', '>=', fy.start_date), ('date_to', '<=', fy.end_date)])
+        past_slips = self.env['hr.payslip'].search(ytd_domain)
+
+        ytd_map = {}
+        for ps in past_slips:
+            for l in ps.line_ids:
+                code = (l.code or '').upper()
+                ytd_map[code] = ytd_map.get(code, 0.0) + abs(float(l.total or 0.0))
+
+        pf_wage = 0.0
+        for line in self.line_ids.filtered(lambda l: l.appears_on_payslip):
+            code = (line.code or '').upper()
+            cat_code = (line.category_id.code or '').upper() if line.category_id else ''
+            amt = float(line.total or 0.0)
+
+            # Skip calculation base rules (PF_WAGE, PF_CALC, ESI_CALC), gross, net, comp from earnings/deductions
+            if cat_code in ('GROSS', 'NET', 'COMP', 'PF_CALC', 'ESI_CALC', 'CALC') or code in ('PF_WAGE', 'PF_CALC', 'ESI_WAGE', 'GROSS', 'NET'):
+                if code == 'PF_WAGE' or cat_code == 'PF_CALC':
+                    pf_wage = abs(amt)
+                continue
+
+            ytd_amt = ytd_map.get(code, abs(amt))
+
+            if cat_code in ('DED', 'TDS') or amt < 0:
+                abs_amt = abs(amt)
+                deductions_lines.append({
+                    'name': line.name,
+                    'code': code,
+                    'amount': abs_amt,
+                    'ytd': ytd_amt
+                })
+                total_deductions += abs_amt
+            else:
+                earnings_lines.append({
+                    'name': line.name,
+                    'code': code,
+                    'amount': amt,
+                    'ytd': ytd_amt
+                })
+                total_earnings += amt
+
+        # Ensure gross and net match official gross and net salary rules
+        gross_rule_line = self.line_ids.filtered(lambda l: (l.code or '').upper() == 'GROSS')
+        if gross_rule_line:
+            total_earnings = float(gross_rule_line[0].total or total_earnings)
+
+        net_rule_line = self.line_ids.filtered(lambda l: (l.code or '').upper() == 'NET')
+        if net_rule_line:
+            net_salary = float(net_rule_line[0].total or 0.0)
+        else:
+            net_salary = float(self.net_amount or (total_earnings - total_deductions))
+
+        # TDS Engine Data Lookup
+        eval_date = self.date_to or fields.Date.today()
+        tds_engine = TdsOrchestrationEngine(self.env)
+        tds_res = tds_engine.hds_in_compute_tds(emp, eval_date=eval_date, payslip=self)
+
+        # Tax calculation breakdown values
+        proj = tds_res.annual_income_projection
+        sal_proj = getattr(proj, 'salary_projection', None)
+        prev_emp = getattr(proj, 'previous_employer_income', None)
+        oth_inc = getattr(proj, 'other_income_aggregation', None)
+        deduct = tds_res.deduction_calculation
+        tax_inc = tds_res.taxable_income
+        slab = tds_res.income_tax_slab
+        rebate = tds_res.rebate_engine
+        surcharge = tds_res.surcharge_engine
+        cess_obj = tds_res.health_education_cess
+        monthly_obj = tds_res.monthly_tds_distribution
+
+        b_tot = getattr(sal_proj, 'total_basic', 0.0) if sal_proj else 0.0
+        hra_tot = getattr(sal_proj, 'total_hra', 0.0) if sal_proj else 0.0
+        conv_tot = getattr(sal_proj, 'total_conveyance', 0.0) if sal_proj else 0.0
+        med_tot = getattr(sal_proj, 'total_medical', 0.0) if sal_proj else 0.0
+        spec_tot = getattr(sal_proj, 'total_special', 0.0) if sal_proj else 0.0
+
+        b_curr = next((l['amount'] for l in earnings_lines if 'BASIC' in l['code']), b_tot / 12.0)
+        hra_curr = next((l['amount'] for l in earnings_lines if 'HRA' in l['code']), hra_tot / 12.0)
+        hra_ex = getattr(deduct, 'hra_exemption', 0.0) if deduct else 0.0
+
+        tax_comp_income = [
+            {'head': 'Basic Salary', 'annual': b_tot, 'exempt': 0.0, 'taxable': b_tot},
+            {'head': 'House Rent Allowance', 'annual': hra_tot, 'exempt': hra_ex, 'taxable': max(0.0, hra_tot - hra_ex)},
+            {'head': 'Conveyance Allowance', 'annual': conv_tot, 'exempt': 0.0, 'taxable': conv_tot},
+            {'head': 'Medical Allowance', 'annual': med_tot, 'exempt': 0.0, 'taxable': med_tot},
+            {'head': 'Special Allowance', 'annual': spec_tot, 'exempt': 0.0, 'taxable': spec_tot},
+        ]
+        prev_emp_val = getattr(prev_emp, 'taxable_salary', 0.0) if prev_emp else 0.0
+        if prev_emp_val > 0:
+            tax_comp_income.append({'head': 'Previous Employer Salary', 'annual': prev_emp_val, 'exempt': 0.0, 'taxable': prev_emp_val})
+        
+        oth_inc_val = getattr(oth_inc, 'total_other_income', 0.0) if oth_inc else 0.0
+        if oth_inc_val > 0:
+            tax_comp_income.append({'head': 'Declared Other Income', 'annual': oth_inc_val, 'exempt': 0.0, 'taxable': oth_inc_val})
+
+        gti_annual = sum(i['annual'] for i in tax_comp_income)
+        gti_exempt = sum(i['exempt'] for i in tax_comp_income)
+        gti_taxable = sum(i['taxable'] for i in tax_comp_income)
+
+        # Deductions (Old Regime)
+        decl = self.env['tds.employee.declaration'].search([
+            ('employee_id', '=', emp.id),
+            ('state', '!=', 'rejected')
+        ], order='id desc', limit=1)
+
+        std_ded = getattr(deduct, 'standard_deduction', 50000.0) if deduct else 50000.0
+        sec_80c = getattr(deduct, 'c6a_80c_eligible', 0.0) if deduct else 0.0
+        sec_80d = getattr(deduct, 'c6a_80d_eligible', 0.0) if deduct else 0.0
+        sec_80ccd1b = getattr(deduct, 'c6a_80ccd1b_eligible', 0.0) if deduct else 0.0
+        sec_24b = getattr(deduct, 'home_loan_interest_24b', 0.0) if deduct else 0.0
+
+        if decl:
+            if not sec_80c:
+                sec_80c = min(150000.0, getattr(decl, 'decl_80c_total_declared', 0.0) or 0.0)
+            if not sec_80d:
+                sec_80d = getattr(decl, 'decl_80d_total_declared', 0.0) or 0.0
+            if not sec_80ccd1b:
+                sec_80ccd1b = getattr(decl, 'decl_80ccd1b_nps', 0.0) or 0.0
+            if not sec_24b:
+                sec_24b = getattr(decl, 'decl_24b_self_interest', 0.0) or 0.0
+
+        tax_comp_deductions = [
+            {'name': 'Standard Deduction [u/s 16(ia)]', 'amount': std_ded},
+        ]
+        if sec_80c > 0:
+            tax_comp_deductions.append({'name': 'Section 80C (PPF/LIC/EPF/etc)', 'amount': sec_80c})
+        if sec_80d > 0:
+            tax_comp_deductions.append({'name': 'Section 80D (Health Insurance)', 'amount': sec_80d})
+        if sec_80ccd1b > 0:
+            tax_comp_deductions.append({'name': 'Section 80CCD(1B) (NPS)', 'amount': sec_80ccd1b})
+        if sec_24b > 0:
+            tax_comp_deductions.append({'name': 'Section 24(b) (Home Loan Interest)', 'amount': sec_24b})
+
+        net_taxable_income = getattr(tax_inc, 'net_taxable_income', max(0.0, gti_taxable - sum(d['amount'] for d in tax_comp_deductions)))
+        base_tax = getattr(slab, 'base_tax_liability', 0.0) if slab else 0.0
+        cess_val = getattr(cess_obj, 'cess_amount', 0.0) if cess_obj else 0.0
+        total_annual_tax = getattr(tds_res, 'total_annual_tax_liability', base_tax + cess_val)
+
+        # Authoritative TDS Engine Breakdown according to financial-year payroll period
+        current_month_tds = getattr(monthly_obj, 'current_month_tds', 0.0) if monthly_obj else 0.0
+        prior_ytd_tds = getattr(monthly_obj, 'total_tds_paid_so_far', 0.0) if monthly_obj else 0.0
+        tds_recovered_ytd = prior_ytd_tds + current_month_tds
+        remaining_tds_liability = max(0.0, total_annual_tax - tds_recovered_ytd)
+
+        rem_periods_raw = getattr(monthly_obj, 'remaining_payroll_periods', 12) if monthly_obj else 12
+        remaining_months = max(0, rem_periods_raw - 1)
+        projected_monthly_tds = round(remaining_tds_liability / remaining_months, 2) if remaining_months > 0 else 0.0
+
+        tax_rows = [
+            ('Basic', b_tot - b_curr, b_curr, 0.0, b_tot),
+            ('House Rent Allowance', hra_tot - hra_curr, hra_curr, hra_ex, max(0.0, hra_tot - hra_ex)),
+            ('Conveyance Allowance', conv_tot, 0.0, 0.0, conv_tot),
+            ('Medical', med_tot, 0.0, 0.0, med_tot),
+            ('Special Allowance', spec_tot, 0.0, 0.0, spec_tot),
+        ]
+
+        investments = []
+        hra_declarations = []
+        if decl:
+            c6a_val = getattr(decl, 'decl_80c_total_declared', 0.0) or 0.0
+            if c6a_val > 0:
+                investments.append(('Provident Fund & Specified Investments (80C)', c6a_val))
+            if getattr(decl, 'decl_80d_total_declared', 0.0) > 0:
+                investments.append(('Medical Insurance Premium (80D)', decl.decl_80d_total_declared))
+            if getattr(decl, 'decl_24b_self_interest', 0.0) > 0:
+                investments.append(('Housing Loan - Interest (24b)', decl.decl_24b_self_interest))
+
+            if decl.decl_hra_annual_rent > 0:
+                hra_declarations.append({
+                    'type': 'HRA - Rent Payments',
+                    'from_date': fy.start_date.strftime('%d-%b-%Y') if fy and fy.start_date else '',
+                    'to_date': fy.end_date.strftime('%d-%b-%Y') if fy and fy.end_date else '',
+                    'rent_month': round(decl.decl_hra_annual_rent / 12.0, 2),
+                    'metro': 'Y' if decl.decl_hra_is_metro else 'N'
+                })
+
+        return {
+            'month_str': month_str,
+            'emp_no': emp_no,
+            'location': location,
+            'joining_date': joining_date.strftime('%d-%b-%Y') if joining_date else 'N/A',
+            'dob': dob.strftime('%d-%b-%Y') if dob else 'N/A',
+            'gender': gender,
+            'pan': pan,
+            'aadhaar': aadhaar,
+            'epf_no': epf_no,
+            'esic_no': esic_no,
+            'uan': uan,
+            'std_days': std_days,
+            'days_worked': days_worked,
+            'lop_days': lop_days,
+            'lop_rev_days': lop_rev_days,
+            'payment_mode': payment_mode,
+            'bank_name': bank_name,
+            'acc_no': acc_no,
+            'earnings_lines': earnings_lines,
+            'deductions_lines': deductions_lines,
+            'total_earnings': total_earnings,
+            'total_deductions': total_deductions,
+            'net_salary': net_salary,
+            'tds_res': tds_res,
+            'tax_rows': tax_rows,
+            'tax_comp_income': tax_comp_income,
+            'tax_comp_deductions': tax_comp_deductions,
+            'gti_annual': gti_annual,
+            'gti_exempt': gti_exempt,
+            'gti_taxable': gti_taxable,
+            'net_taxable_income': net_taxable_income,
+            'base_tax': base_tax,
+            'cess': cess_val,
+            'total_annual_tax': total_annual_tax,
+            'current_month_tds': current_month_tds,
+            'tds_recovered_ytd': tds_recovered_ytd,
+            'remaining_tds_liability': remaining_tds_liability,
+            'remaining_months': remaining_months,
+            'projected_monthly_tds': projected_monthly_tds,
+            'pf_wage': pf_wage,
+            'investments': investments,
+            'hra_declarations': hra_declarations,
+            'decl': decl,
+        }
+

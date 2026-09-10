@@ -1,0 +1,104 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <!-- Salary Input Type List View -->
+    <record id="hr_payslip_input_type_view_tree" model="ir.ui.view">
+        <field name="name">hr.payslip.input.type.view.list</field>
+        <field name="model">hr.payslip.input.type</field>
+        <field name="arch" type="xml">
+            <list string="Salary Input Types" editable="bottom">
+                <field name="sequence" widget="handle" optional="hide"/>
+                <field name="name" string="Description"/>
+                <field name="code"/>
+                <field name="struct_ids" widget="many2many_tags" string="Availability in Structure"/>
+                <field name="input_section_id" optional="hide"/>
+                <field name="country_id" optional="hide"/>
+            </list>
+        </field>
+    </record>
+
+    <!-- Salary Input Type Form View -->
+    <record id="hr_payslip_input_type_view_form" model="ir.ui.view">
+        <field name="name">hr.payslip.input.type.view.form</field>
+        <field name="model">hr.payslip.input.type</field>
+        <field name="arch" type="xml">
+            <form string="Salary Input Type">
+                <sheet>
+                    <div class="oe_button_box" name="button_box">
+                    </div>
+                    <widget name="web_ribbon" title="Archived" bg_color="text-bg-danger" invisible="active"/>
+                    <div class="oe_title">
+                        <label for="name" string="Description" class="oe_edit_only"/>
+                        <h1><field name="name" placeholder="e.g. Deduction, Reimbursement"/></h1>
+                    </div>
+                    <group>
+                        <group>
+                            <field name="code" placeholder="e.g. DEDUCTION"/>
+                            <field name="input_section_id"/>
+                            <field name="country_id" options="{'no_create': True}"/>
+                        </group>
+                        <group>
+                            <field name="struct_ids" widget="many2many_tags" options="{'no_create_edit': True}" placeholder="Inherit from section (or select overrides)..." string="Availability in Structure"/>
+                            <field name="effective_struct_ids" widget="many2many_tags" readonly="1" string="Effective Availability"/>
+                            <field name="active" invisible="1"/>
+                        </group>
+                    </group>
+                    <notebook>
+                        <page string="Availability in Salary Structures" name="structures">
+                            <field name="effective_struct_ids" readonly="1">
+                                <list>
+                                    <field name="name"/>
+                                    <field name="code" optional="show"/>
+                                    <field name="company_id" groups="base.group_multi_company" optional="hide"/>
+                                </list>
+                            </field>
+                        </page>
+                    </notebook>
+                </sheet>
+            </form>
+        </field>
+    </record>
+
+    <!-- Salary Input Type Search View -->
+    <record id="hr_payslip_input_type_view_search" model="ir.ui.view">
+        <field name="name">hr.payslip.input.type.search</field>
+        <field name="model">hr.payslip.input.type</field>
+        <field name="arch" type="xml">
+            <search string="Search Salary Input Types">
+                <field name="name" string="Description" filter_domain="['|', ('name', 'ilike', self), ('code', 'ilike', self)]"/>
+                <field name="code"/>
+                <field name="input_section_id"/>
+                <field name="effective_struct_ids" filter_domain="[('effective_struct_ids.name', 'ilike', self)]" string="Effective Structure"/>
+                <separator/>
+                <filter string="Archived" name="archived" domain="[('active', '=', False)]"/>
+                <group>
+                    <filter string="Section" name="group_by_section" context="{'group_by': 'input_section_id'}"/>
+                    <filter string="Country" name="group_by_country" context="{'group_by': 'country_id'}"/>
+                </group>
+            </search>
+        </field>
+    </record>
+
+    <!-- Salary Input Type Window Action -->
+    <record id="action_hr_payslip_input_type" model="ir.actions.act_window">
+        <field name="name">Salary Input Types</field>
+        <field name="res_model">hr.payslip.input.type</field>
+        <field name="view_mode">list,form</field>
+        <field name="search_view_id" ref="hr_payslip_input_type_view_search"/>
+        <field name="help" type="html">
+            <p class="o_view_nocontent_smiling_face">
+                Create a new salary input type!
+            </p>
+            <p>
+                Define standard types of inputs (e.g. Deduction, Reimbursement, Overtime) and configure their availability across salary structures.
+            </p>
+        </field>
+    </record>
+
+    <!-- Menuitem under Payroll -> Configuration -->
+    <menuitem id="menu_hr_payslip_input_type"
+              name="Salary Input Types"
+              parent="hr_payroll_community.menu_hr_payroll_community_configuration"
+              sequence="18"
+              action="action_hr_payslip_input_type"
+              groups="hr_payroll_community.group_hr_payroll_community_manager"/>
+</odoo>

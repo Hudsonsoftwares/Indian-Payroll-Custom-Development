@@ -1,0 +1,109 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <!-- List View -->
+    <record id="hr_payroll_structure_type_view_tree" model="ir.ui.view">
+        <field name="name">hr.payroll.structure.type.view.list</field>
+        <field name="model">hr.payroll.structure.type</field>
+        <field name="arch" type="xml">
+            <list string="Salary Structure Types">
+                <field name="sequence" widget="handle"/>
+                <field name="name"/>
+                <field name="country_id" optional="hide"/>
+                <field name="wage_type" optional="show"/>
+                <field name="schedule_pay" optional="show"/>
+                <field name="default_struct_id" optional="show"/>
+                <field name="struct_count" string="Structures" optional="show"/>
+            </list>
+        </field>
+    </record>
+
+    <!-- Form View -->
+    <record id="hr_payroll_structure_type_view_form" model="ir.ui.view">
+        <field name="name">hr.payroll.structure.type.view.form</field>
+        <field name="model">hr.payroll.structure.type</field>
+        <field name="arch" type="xml">
+            <form string="Salary Structure Type">
+                <sheet>
+                    <div class="oe_button_box" name="button_box">
+                        <button name="action_view_structures"
+                                type="object"
+                                class="oe_stat_button"
+                                icon="fa-bars">
+                            <field name="struct_count" widget="statinfo" string="Structures"/>
+                        </button>
+                    </div>
+                    <div class="oe_title">
+                        <label for="name" string="Structure Type"/>
+                        <h1><field name="name" placeholder="e.g. Employee"/></h1>
+                    </div>
+                    <group>
+                        <group name="country_and_type">
+                            <field name="country_id" options="{'no_create': True}"/>
+                            <field name="wage_type"/>
+                            <field name="time_type"/>
+                        </group>
+                        <group name="planning_and_schedule">
+                            <field name="schedule_pay"/>
+                            <field name="default_resource_calendar_id"/>
+                            <field name="default_struct_id"/>
+                        </group>
+                    </group>
+                    <notebook>
+                        <page string="Pay Structures" name="structures">
+                            <field name="struct_ids">
+                                <list>
+                                    <field name="name"/>
+                                    <field name="code" optional="show"/>
+                                    <field name="parent_id" optional="show"/>
+                                </list>
+                            </field>
+                        </page>
+                    </notebook>
+                </sheet>
+            </form>
+        </field>
+    </record>
+
+    <!-- Search View -->
+    <record id="hr_payroll_structure_type_view_search" model="ir.ui.view">
+        <field name="name">hr.payroll.structure.type.view.search</field>
+        <field name="model">hr.payroll.structure.type</field>
+        <field name="arch" type="xml">
+            <search string="Search Structure Types">
+                <field name="name"/>
+                <field name="country_id"/>
+                <separator/>
+                <group>
+                    <filter string="Country" name="group_country" context="{'group_by': 'country_id'}"/>
+                    <filter string="Wage Type" name="group_wage_type" context="{'group_by': 'wage_type'}"/>
+                    <filter string="Scheduled Pay" name="group_schedule_pay" context="{'group_by': 'schedule_pay'}"/>
+                </group>
+            </search>
+        </field>
+    </record>
+
+    <!-- Action -->
+    <record id="action_hr_payroll_structure_type" model="ir.actions.act_window">
+        <field name="name">Structure Types</field>
+        <field name="res_model">hr.payroll.structure.type</field>
+        <field name="view_mode">list,form</field>
+        <field name="search_view_id" ref="hr_payroll_structure_type_view_search"/>
+        <field name="help" type="html">
+            <p class="o_view_nocontent_smiling_face">
+                Create a new Salary Structure Type
+            </p>
+            <p>
+                Structure Types define the wage type, scheduled pay frequency, and default pay structure for employee contracts.
+            </p>
+        </field>
+    </record>
+
+    <!-- Menu Item under Payroll -> Configuration -->
+    <menuitem
+        id="menu_hr_payroll_structure_type"
+        name="Structure Types"
+        action="action_hr_payroll_structure_type"
+        parent="hr_payroll_community.menu_hr_payroll_community_configuration"
+        sequence="1"
+    />
+</odoo>

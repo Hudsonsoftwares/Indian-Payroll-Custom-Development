@@ -1,0 +1,5 @@
+id,name,model_id:id,group_id:id,perm_read,perm_write,perm_create,perm_unlink
+access_final_settlement_user,access.final.settlement.user,model_final_settlement,base.group_user,1,1,1,0
+access_final_settlement_manager,access.final.settlement.manager,model_final_settlement,hudson_payroll_base.group_payroll_manager,1,1,1,1
+access_final_settlement_line_user,access.final.settlement.line.user,model_final_settlement_line,base.group_user,1,1,1,0
+access_final_settlement_line_manager,access.final.settlement.line.manager,model_final_settlement_line,hudson_payroll_base.group_payroll_manager,1,1,1,1

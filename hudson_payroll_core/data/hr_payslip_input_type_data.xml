@@ -1,0 +1,50 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo noupdate="1">
+    <!-- Default Salary Rule Sections -->
+    <record id="hr_payslip_input_section_inputs" model="hr.payslip.input.section">
+        <field name="name">Inputs</field>
+        <field name="sequence">10</field>
+    </record>
+
+    <record id="hr_payslip_input_section_plane_ticket" model="hr.payslip.input.section">
+        <field name="name">Plane Ticket Allowance</field>
+        <field name="sequence">20</field>
+    </record>
+
+    <!-- Default Salary Input Types -->
+    <record id="input_type_deduction" model="hr.payslip.input.type">
+        <field name="name">Deduction</field>
+        <field name="code">DEDUCTION</field>
+        <field name="input_section_id" ref="hr_payslip_input_section_inputs"/>
+    </record>
+
+    <record id="input_type_reimbursement" model="hr.payslip.input.type">
+        <field name="name">Reimbursement</field>
+        <field name="code">REIMBURSEMENT</field>
+        <field name="input_section_id" ref="hr_payslip_input_section_inputs"/>
+    </record>
+
+    <record id="input_type_attach_salary" model="hr.payslip.input.type">
+        <field name="name">Attachment of Salary</field>
+        <field name="code">ATTACH_SALARY</field>
+        <field name="input_section_id" ref="hr_payslip_input_section_inputs"/>
+    </record>
+
+    <record id="input_type_assig_salary_prior" model="hr.payslip.input.type">
+        <field name="name">Assignment of Salary (Prior)</field>
+        <field name="code">ASSIG_SALARY_PRIOR</field>
+        <field name="input_section_id" ref="hr_payslip_input_section_inputs"/>
+    </record>
+
+    <record id="input_type_assig_salary" model="hr.payslip.input.type">
+        <field name="name">Assignment of Salary</field>
+        <field name="code">ASSIG_SALARY</field>
+        <field name="input_section_id" ref="hr_payslip_input_section_inputs"/>
+    </record>
+
+    <record id="input_type_child_support" model="hr.payslip.input.type">
+        <field name="name">Child Support</field>
+        <field name="code">CHILD_SUPPORT</field>
+        <field name="input_section_id" ref="hr_payslip_input_section_inputs"/>
+    </record>
+</odoo>

@@ -1,0 +1,87 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <data noupdate="0">
+        <!-- Default Bonus Payroll Salary Structure -->
+        <record id="hds_in_structure_bonus" model="hr.payroll.structure">
+            <field name="name">Bonus Payroll</field>
+            <field name="code">BONUS_STRUCT</field>
+            <field name="company_id" ref="base.main_company"/>
+        </record>
+
+        <!-- Bonus Allowance Salary Rule -->
+        <record id="hds_in_rule_bonus" model="hr.salary.rule">
+            <field name="name">Bonus</field>
+            <field name="sequence" eval="10"/>
+            <field name="code">BONUS</field>
+            <field name="category_id" ref="hudson_payroll_base.rule_category_alw"/>
+            <field name="struct_id" ref="hds_in_structure_bonus"/>
+            <field name="condition_select">none</field>
+            <field name="amount_select">code</field>
+            <field name="amount_python_compute">
+result = inputs.BONUS.amount if ('BONUS' in inputs and inputs.BONUS and inputs.BONUS.amount) else 0.0
+            </field>
+            <field name="appears_on_payslip" eval="True"/>
+            <field name="active" eval="True"/>
+        </record>
+
+        <!-- Bonus Gross Salary Rule -->
+        <record id="hds_in_rule_bonus_gross" model="hr.salary.rule">
+            <field name="name">Gross</field>
+            <field name="sequence" eval="100"/>
+            <field name="code">GROSS</field>
+            <field name="category_id" ref="hudson_payroll_base.rule_category_gross"/>
+            <field name="struct_id" ref="hds_in_structure_bonus"/>
+            <field name="condition_select">none</field>
+            <field name="amount_select">code</field>
+            <field name="amount_python_compute"><![CDATA[
+result = categories.ALW if isinstance(categories.ALW, (int, float)) else 0.0
+]]></field>
+            <field name="appears_on_payslip" eval="True"/>
+            <field name="active" eval="True"/>
+        </record>
+
+        <!-- Bonus TDS Deduction Rule (Controlled by Bonus Document Tax Configuration) -->
+        <record id="hds_in_rule_bonus_tds" model="hr.salary.rule">
+            <field name="name">TDS on Bonus</field>
+            <field name="sequence" eval="200"/>
+            <field name="code">TDS</field>
+            <field name="category_id" ref="hudson_payroll_base.rule_category_ded"/>
+            <field name="struct_id" ref="hds_in_structure_bonus"/>
+            <field name="condition_select">python</field>
+            <field name="condition_python">result = bool(payslip.company_id.hds_in_bonus_apply_tds)</field>
+            <field name="amount_select">code</field>
+            <field name="amount_python_compute"><![CDATA[
+bonus_line = payslip.env['hds.in.bonus.line'].search([('payslip_id', '=', payslip.id)], limit=1)
+bonus_doc = bonus_line.bonus_id if bonus_line else False
+gross_val = categories.GROSS if isinstance(categories.GROSS, (int, float)) else (categories.ALW if isinstance(categories.ALW, (int, float)) else 0.0)
+if bonus_doc and bonus_doc.tax_treatment == 'exempt':
+    result = 0.0
+elif bonus_doc and bonus_doc.tax_treatment == 'partial':
+    taxable_val = max(0.0, gross_val - (bonus_doc.tax_exempt_limit or 0.0))
+    result = - (taxable_val * 0.10)
+else:
+    result = - (gross_val * 0.10)
+]]></field>
+            <field name="appears_on_payslip" eval="True"/>
+            <field name="active" eval="True"/>
+        </record>
+
+        <!-- Bonus Net Salary Rule -->
+        <record id="hds_in_rule_bonus_net" model="hr.salary.rule">
+            <field name="name">Net Salary</field>
+            <field name="sequence" eval="300"/>
+            <field name="code">NET</field>
+            <field name="category_id" ref="hudson_payroll_base.rule_category_net"/>
+            <field name="struct_id" ref="hds_in_structure_bonus"/>
+            <field name="condition_select">none</field>
+            <field name="amount_select">code</field>
+            <field name="amount_python_compute"><![CDATA[
+gross_val = categories.GROSS if isinstance(categories.GROSS, (int, float)) else 0.0
+ded_val = categories.DED if isinstance(categories.DED, (int, float)) else 0.0
+result = gross_val + ded_val
+]]></field>
+            <field name="appears_on_payslip" eval="True"/>
+            <field name="active" eval="True"/>
+        </record>
+    </data>
+</odoo>

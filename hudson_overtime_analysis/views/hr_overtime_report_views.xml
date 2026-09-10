@@ -1,0 +1,66 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <!-- Pivot View -->
+    <record id="hr_overtime_report_view_pivot" model="ir.ui.view">
+        <field name="name">hr.overtime.report.view.pivot</field>
+        <field name="model">hr.overtime.report</field>
+        <field name="arch" type="xml">
+            <pivot string="Overtime Analysis" sample="1">
+                <field name="employee_id" type="row"/>
+                <field name="date" interval="month" type="col"/>
+                <field name="overtime_hours" type="measure"/>
+            </pivot>
+        </field>
+    </record>
+
+    <!-- Graph View -->
+    <record id="hr_overtime_report_view_graph" model="ir.ui.view">
+        <field name="name">hr.overtime.report.view.graph</field>
+        <field name="model">hr.overtime.report</field>
+        <field name="arch" type="xml">
+            <graph string="Overtime Analysis" type="bar" sample="1">
+                <field name="employee_id" type="row"/>
+                <field name="overtime_hours" type="measure"/>
+            </graph>
+        </field>
+    </record>
+
+    <!-- Search View -->
+    <record id="hr_overtime_report_view_search" model="ir.ui.view">
+        <field name="name">hr.overtime.report.view.search</field>
+        <field name="model">hr.overtime.report</field>
+        <field name="arch" type="xml">
+            <search string="Overtime Analysis">
+                <field name="employee_id"/>
+                <field name="department_id"/>
+                <filter string="Date" name="date_filter" date="date"/>
+                <filter string="Exclude Leave Days" name="exclude_leaves" domain="[('is_leave_day', '=', False)]"/>
+                <group>
+                    <filter string="Employee" name="group_by_employee" context="{'group_by': 'employee_id'}"/>
+                    <filter string="Department" name="group_by_department" context="{'group_by': 'department_id'}"/>
+                    <filter string="Date" name="group_by_date" context="{'group_by': 'date:month'}"/>
+                </group>
+            </search>
+        </field>
+    </record>
+
+    <!-- Action -->
+    <record id="action_hr_overtime_report" model="ir.actions.act_window">
+        <field name="name">Overtime Analysis</field>
+        <field name="res_model">hr.overtime.report</field>
+        <field name="view_mode">pivot,graph</field>
+        <field name="search_view_id" ref="hr_overtime_report_view_search"/>
+        <field name="help" type="html">
+            <p class="o_view_nocontent_smiling_face">
+                No overtime records found.
+            </p>
+        </field>
+    </record>
+
+    <!-- Menu Item -->
+    <menuitem id="menu_hr_attendance_overtime_reporting"
+              name="Overtime Analysis"
+              parent="hr_attendance.menu_hr_attendance_reporting"
+              action="action_hr_overtime_report"
+              sequence="20"/>
+</odoo>

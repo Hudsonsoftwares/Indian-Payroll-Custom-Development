@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <!-- ir.actions.report for PF Register / Statement QWeb PDF -->
+    <record id="action_report_pf_register" model="ir.actions.report">
+        <field name="name">Provident Fund Report PDF</field>
+        <field name="model">hds.pf.register.wizard</field>
+        <field name="report_type">qweb-pdf</field>
+        <field name="report_name">hudson_pf_reports.report_hds_pf_register_document</field>
+        <field name="report_file">hudson_pf_reports.report_hds_pf_register_document</field>
+        <field name="print_report_name">'PF_Report_%s' % (object.name or 'Statement')</field>
+    </record>
+</odoo>

@@ -1,0 +1,962 @@
+# -*- coding: utf-8 -*-
+import calendar
+from datetime import datetime, date
+from odoo import api, fields, models, _
+
+class HdsPayrollDashboard(models.Model):
+    """
+    Enterprise Indian HR & Payroll Dashboard Model.
+    Provides real-time company-wide metrics, period controls, statutory compliance tracking,
+    action required alerts, employee data health, and historical payroll cost trends.
+    """
+    _name = 'hds.payroll.dashboard'
+    _description = 'Indian HR & Payroll Dashboard'
+
+    name = fields.Char(string="Dashboard Name", default="Payroll Dashboard")
+    financial_year_id = fields.Many2one('tds.financial.year', string="Financial Year", default=lambda self: self._default_financial_year())
+    payroll_month_num = fields.Selection([
+        ('1', 'January'), ('2', 'February'), ('3', 'March'), ('4', 'April'),
+        ('5', 'May'), ('6', 'June'), ('7', 'July'), ('8', 'August'),
+        ('9', 'September'), ('10', 'October'), ('11', 'November'), ('12', 'December')
+    ], string="Payroll Month", default=lambda self: str(fields.Date.today().month))
+
+    currency_id = fields.Many2one('res.currency', string="Currency", default=lambda self: self.env.company.currency_id)
+
+    # 1. Primary KPI Metrics
+    total_payroll_cost = fields.Monetary(string="Total Payroll Cost", currency_field='currency_id', compute='_compute_dashboard_metrics')
+    total_net_pay = fields.Monetary(string="Total Net Wage", currency_field='currency_id', compute='_compute_dashboard_metrics')
+    total_basic_wage = fields.Monetary(string="Total Basic Wage", currency_field='currency_id', compute='_compute_dashboard_metrics')
+    avg_net_wage = fields.Monetary(string="Avg Net Wage", currency_field='currency_id', compute='_compute_dashboard_metrics')
+    avg_basic_wage = fields.Monetary(string="Avg Basic Wage", currency_field='currency_id', compute='_compute_dashboard_metrics')
+    avg_hours_per_day = fields.Float(string="Avg Hours/Day", compute='_compute_dashboard_metrics')
+    fte_count = fields.Float(string="FTE", compute='_compute_dashboard_metrics')
+    active_employee_count = fields.Integer(string="Active Employees", compute='_compute_dashboard_metrics')
+    tds_this_month = fields.Monetary(string="TDS This Month", currency_field='currency_id', compute='_compute_dashboard_metrics')
+    pending_actions_count = fields.Integer(string="Pending Actions", compute='_compute_dashboard_metrics')
+
+    # 2. Action Required Counters
+    missing_pan_count = fields.Integer(string="Missing PAN Count", compute='_compute_dashboard_metrics')
+    missing_bank_count = fields.Integer(string="Missing Bank Count", compute='_compute_dashboard_metrics')
+    pending_declarations_count = fields.Integer(string="Pending Declarations Count", compute='_compute_dashboard_metrics')
+    attendance_pending_count = fields.Integer(string="Attendance Pending Count", compute='_compute_dashboard_metrics')
+    missing_salary_count = fields.Integer(string="Missing Salary Info Count", compute='_compute_dashboard_metrics')
+
+    # 3. Employee Data Health Percentages
+    pan_health_pct = fields.Float(string="PAN Completeness %", compute='_compute_dashboard_metrics')
+    bank_health_pct = fields.Float(string="Bank Details Completeness %", compute='_compute_dashboard_metrics')
+    aadhaar_health_pct = fields.Float(string="Aadhaar Completeness %", compute='_compute_dashboard_metrics')
+    contact_health_pct = fields.Float(string="Emergency Contact Completeness %", compute='_compute_dashboard_metrics')
+
+    # 4. Tax Regime Distribution
+    old_regime_count = fields.Integer(string="Old Regime Employees", compute='_compute_dashboard_metrics')
+    new_regime_count = fields.Integer(string="New Regime Employees", compute='_compute_dashboard_metrics')
+    tds_ytd_total = fields.Monetary(string="TDS YTD Total", currency_field='currency_id', compute='_compute_dashboard_metrics')
+
+    # 5. Statutory Liabilities
+    epf_total_liability = fields.Monetary(string="EPF Total Liability", currency_field='currency_id', compute='_compute_dashboard_metrics')
+    esic_total_liability = fields.Monetary(string="ESIC Total Liability", currency_field='currency_id', compute='_compute_dashboard_metrics')
+    pt_total_liability = fields.Monetary(string="Professional Tax Liability", currency_field='currency_id', compute='_compute_dashboard_metrics')
+
+    # 6. Statutory Compliance & Identifier Status
+    epf_complete_count = fields.Integer(string="EPF Complete UAN Count", compute='_compute_dashboard_metrics')
+    epf_missing_count = fields.Integer(string="EPF Missing UAN Count", compute='_compute_dashboard_metrics')
+    esic_complete_count = fields.Integer(string="ESIC Complete IP Count", compute='_compute_dashboard_metrics')
+    esic_missing_count = fields.Integer(string="ESIC Missing IP Count", compute='_compute_dashboard_metrics')
+    lwf_complete_count = fields.Integer(string="LWF Complete Number Count", compute='_compute_dashboard_metrics')
+    lwf_missing_count = fields.Integer(string="LWF Missing Number Count", compute='_compute_dashboard_metrics')
+    statutory_data_errors_count = fields.Integer(string="Statutory Data Errors Count", compute='_compute_dashboard_metrics')
+    statutory_ready_count = fields.Integer(string="Statutory Ready Count", compute='_compute_dashboard_metrics')
+
+    # 7. Workforce Movement
+    new_joiners_count = fields.Integer(string="New Joiners Count", compute='_compute_dashboard_metrics')
+    exits_count = fields.Integer(string="Exits Count", compute='_compute_dashboard_metrics')
+
+    # 8. Final Settlements Due KPI & Status Breakdown
+    final_settlements_due_count = fields.Integer(string="Final Settlements Due This Month", compute='_compute_dashboard_metrics')
+    final_settlement_draft_count = fields.Integer(string="Draft Settlements", compute='_compute_dashboard_metrics')
+    final_settlement_review_count = fields.Integer(string="Under Review Settlements", compute='_compute_dashboard_metrics')
+    final_settlement_approved_count = fields.Integer(string="Approved Settlements", compute='_compute_dashboard_metrics')
+    final_settlement_paid_count = fields.Integer(string="Paid Settlements", compute='_compute_dashboard_metrics')
+
+    # 9. Rich HTML Dashboard Canvas
+    dashboard_html = fields.Html(string="Dashboard Canvas", compute='_compute_dashboard_html')
+
+    @api.model
+    def _default_financial_year(self):
+        today = fields.Date.today()
+        fy = self.env['tds.financial.year'].search([
+            ('start_date', '<=', today), ('end_date', '>=', today)
+        ], limit=1)
+        if not fy:
+            fy = self.env['tds.financial.year'].search([], order='id desc', limit=1)
+        return fy.id if fy else False
+
+    @staticmethod
+    def _has_bank_account(emp):
+        if getattr(emp, 'bank_account_id', False):
+            return True
+        if getattr(emp, 'primary_bank_account_id', False):
+            return True
+        if getattr(emp, 'bank_account_ids', False):
+            return bool(emp.bank_account_ids)
+        if getattr(getattr(emp, 'work_contact_id', None), 'bank_account_id', False):
+            return True
+        if getattr(getattr(emp, 'address_home_id', None), 'bank_account_id', False):
+            return True
+        return False
+
+    @api.depends('financial_year_id', 'payroll_month_num')
+    def _compute_dashboard_metrics(self):
+        for rec in self:
+            if not rec.financial_year_id:
+                rec.financial_year_id = rec._default_financial_year()
+            today = fields.Date.today()
+            m_num = int(rec.payroll_month_num or today.month)
+            year = today.year
+            try:
+                if rec.financial_year_id and getattr(rec.financial_year_id, 'start_date', False):
+                    fy_s_year = rec.financial_year_id.start_date.year
+                    fy_e_year = rec.financial_year_id.end_date.year
+                    year = fy_s_year if m_num >= 4 else fy_e_year
+            except Exception as err:
+                _logger.warning("Safely handled Financial Year date resolution error in dashboard compute: %s", err)
+                year = today.year
+
+            month_start = date(year, m_num, 1)
+            month_end = date(year, m_num, calendar.monthrange(year, m_num)[1])
+
+            # Active Employees & Data Health
+            emp_model = self.env['hr.employee']
+            active_emps = emp_model.search([('active', '=', True)])
+            tot_emp = len(active_emps) or 1
+            rec.active_employee_count = len(active_emps)
+
+            pan_count = len(active_emps.filtered(lambda e: bool(getattr(e, 'hds_in_pan', False) or getattr(e, 'pan_no', False) or getattr(e, 'pan', False))))
+            bank_count = len(active_emps.filtered(lambda e: self._has_bank_account(e)))
+            aadhaar_count = len(active_emps.filtered(lambda e: bool(getattr(e, 'identification_id', False) or getattr(e, 'aadhaar_no', False))))
+            contact_count = len(active_emps.filtered(lambda e: bool(getattr(e, 'emergency_contact', False) or getattr(e, 'mobile_phone', False) or getattr(e, 'work_phone', False))))
+
+            rec.missing_pan_count = len(active_emps.filtered(lambda e: not (getattr(e, 'hds_in_pan', False) or getattr(e, 'pan_no', False) or getattr(e, 'pan', False))))
+            rec.missing_bank_count = len(active_emps.filtered(lambda e: not self._has_bank_account(e)))
+            rec.pan_health_pct = round((pan_count / tot_emp) * 100.0, 1)
+            rec.bank_health_pct = round((bank_count / tot_emp) * 100.0, 1)
+            rec.aadhaar_health_pct = round((aadhaar_count / tot_emp) * 100.0, 1)
+            rec.contact_health_pct = round((contact_count / tot_emp) * 100.0, 1)
+
+            # Statutory Compliance & Identifier Evaluation
+            from ..services.compliance.statutory_compliance_service import StatutoryComplianceValidationService
+            comp_service = StatutoryComplianceValidationService(self.env)
+
+            epf_complete = 0
+            epf_missing = 0
+            esic_complete = 0
+            esic_missing = 0
+            lwf_complete = 0
+            lwf_missing = 0
+            stat_errors = set()
+            stat_ready = set()
+
+            for emp in active_emps:
+                res = comp_service.validate_employee_all(emp)
+                if getattr(emp, 'hds_in_epf_applicable', False):
+                    if res['epf_valid']:
+                        epf_complete += 1
+                    else:
+                        epf_missing += 1
+                        stat_errors.add(emp.id)
+
+                if getattr(emp, 'hds_in_esic_applicable', False):
+                    if res['esic_valid']:
+                        esic_complete += 1
+                    else:
+                        esic_missing += 1
+                        stat_errors.add(emp.id)
+
+                if getattr(emp, 'hds_in_lwf_applicable', False):
+                    if res['lwf_valid']:
+                        lwf_complete += 1
+                    else:
+                        lwf_missing += 1
+                        stat_errors.add(emp.id)
+
+                if not res['pan_valid'] or not res['bank_valid']:
+                    stat_errors.add(emp.id)
+
+                if res['is_compliant']:
+                    stat_ready.add(emp.id)
+
+            rec.epf_complete_count = epf_complete
+            rec.epf_missing_count = epf_missing
+            rec.esic_complete_count = esic_complete
+            rec.esic_missing_count = esic_missing
+            rec.lwf_complete_count = lwf_complete
+            rec.lwf_missing_count = lwf_missing
+            rec.statutory_data_errors_count = len(stat_errors)
+            rec.statutory_ready_count = len(stat_ready)
+
+            # Contract & Salary info missing count (safely guarded)
+            rec.missing_salary_count = len(active_emps.filtered(lambda e: not getattr(e, 'contract_id', False) or float(getattr(getattr(e, 'contract_id', None), 'wage', 0.0) or 0.0) <= 0.0))
+
+            # New Joiners & Exits for period (safely checking field existence)
+            emp_fields = emp_model._fields
+            join_field = next((f for f in ('first_contract_date', 'hds_in_doj', 'joining_date') if f in emp_fields), None)
+            if join_field:
+                rec.new_joiners_count = emp_model.search_count([
+                    (join_field, '>=', month_start),
+                    (join_field, '<=', month_end),
+                ])
+            else:
+                rec.new_joiners_count = 0
+
+            exit_field = next((f for f in ('departure_date', 'hds_in_dol', 'resign_date') if f in emp_fields), None)
+            if exit_field:
+                rec.exits_count = emp_model.search_count([
+                    (exit_field, '>=', month_start),
+                    (exit_field, '<=', month_end),
+                ])
+            else:
+                rec.exits_count = 0
+
+            # Final Settlements Due for period (dynamically calculated if final.settlement model present)
+            if 'final.settlement' in self.env:
+                settlement_model = self.env['final.settlement']
+                settlement_domain = [
+                    ('state', '!=', 'cancel'),
+                    ('last_working_day', '>=', month_start),
+                    ('last_working_day', '<=', month_end),
+                ]
+                rec.final_settlements_due_count = settlement_model.search_count(settlement_domain)
+                rec.final_settlement_draft_count = settlement_model.search_count(settlement_domain + [('state', '=', 'draft')])
+                rec.final_settlement_review_count = settlement_model.search_count(settlement_domain + [('state', '=', 'under_review')])
+                rec.final_settlement_approved_count = settlement_model.search_count(settlement_domain + [('state', '=', 'approved')])
+                rec.final_settlement_paid_count = settlement_model.search_count(settlement_domain + [('state', '=', 'paid')])
+            else:
+                rec.final_settlements_due_count = 0
+                rec.final_settlement_draft_count = 0
+                rec.final_settlement_review_count = 0
+                rec.final_settlement_approved_count = 0
+                rec.final_settlement_paid_count = 0
+
+            # Payslips and Payroll Financial Metrics for period (Company-aware & Date Overlap Domain)
+            company_domain = [('company_id', 'in', self.env.companies.ids)]
+            period_domain = [
+                ('date_from', '<=', month_end),
+                ('date_to', '>=', month_start),
+            ] + company_domain
+            slips = self.env['hr.payslip'].search(period_domain)
+
+            # Fallback if no slips found for the exact month window
+            if not slips:
+                slips = self.env['hr.payslip'].search([('state', '!=', 'cancel')] + company_domain, limit=20, order='date_to desc')
+
+            rec.attendance_pending_count = len(slips.filtered(lambda s: getattr(s, 'has_attendance_discrepancy', False) or s.state in ('draft', 'verify')))
+
+            tot_gross = 0.0
+            tot_net = 0.0
+            tot_basic = 0.0
+            tot_tds = 0.0
+            tot_epf = 0.0
+            tot_esi = 0.0
+            tot_pt = 0.0
+            tot_hours = 0.0
+            tot_days = 0.0
+
+            for slip in slips:
+                tot_gross += float(getattr(slip, 'gross_amount', None) or getattr(slip, 'gross_wage', 0.0) or 0.0)
+                tot_net += float(getattr(slip, 'net_amount', None) or getattr(slip, 'net_wage', 0.0) or 0.0)
+                for line in slip.line_ids:
+                    code = (line.code or '').upper()
+                    amt = float(line.total or 0.0)
+                    if code == 'BASIC':
+                        tot_basic += abs(amt)
+                    elif code in ('TDS', 'INCOME_TAX', 'IT', 'HDS_IN_TDS'):
+                        tot_tds += abs(amt)
+                    elif code in ('PF', 'EPF', 'EE_PF', 'ER_PF'):
+                        tot_epf += abs(amt)
+                    elif code in ('ESI', 'ESIC', 'EE_ESI', 'ER_ESI'):
+                        tot_esi += abs(amt)
+                    elif code in ('PT', 'PROF_TAX'):
+                        tot_pt += abs(amt)
+
+                for wd in slip.worked_days_line_ids:
+                    tot_hours += float(wd.number_of_hours or 0.0)
+                    tot_days += float(wd.number_of_days or 0.0)
+
+            rec.total_payroll_cost = tot_gross if tot_gross > 0 else sum((getattr(s, 'net_amount', None) or getattr(s, 'net_wage', 0.0) or 0.0) for s in slips)
+            rec.total_net_pay = tot_net
+            rec.total_basic_wage = tot_basic
+            rec.avg_net_wage = (tot_net / tot_emp) if tot_emp > 0 else 0.0
+            rec.avg_basic_wage = (tot_basic / tot_emp) if tot_emp > 0 else 0.0
+            rec.avg_hours_per_day = round(tot_hours / tot_days, 1) if tot_days > 0 else 8.0
+            rec.fte_count = float(tot_emp)
+            rec.tds_this_month = tot_tds
+            rec.epf_total_liability = tot_epf
+            rec.esic_total_liability = tot_esi
+            rec.pt_total_liability = tot_pt
+
+            # YTD TDS computation for FY
+            fy_start = rec.financial_year_id.start_date if rec.financial_year_id else date(year, 4, 1)
+            ytd_slips = self.env['hr.payslip'].search([
+                ('date_from', '>=', fy_start),
+                ('date_to', '<=', month_end),
+                ('state', 'in', ('done', 'paid'))
+            ])
+            ytd_tds_val = 0.0
+            for ys in ytd_slips:
+                for line in ys.line_ids:
+                    if (line.code or '').upper() in ('TDS', 'INCOME_TAX', 'IT'):
+                        ytd_tds_val += abs(float(line.total or 0.0))
+            rec.tds_ytd_total = ytd_tds_val
+
+            # Tax Declarations & Regime Distribution
+            decl_model = self.env['tds.employee.declaration']
+            rec.pending_declarations_count = decl_model.search_count([
+                ('state', 'in', ('submitted', 'proof_submitted', 'proof_under_review'))
+            ])
+            rec.old_regime_count = decl_model.search_count([('regime_code', '=', 'old')])
+            rec.new_regime_count = decl_model.search_count([('regime_code', '=', 'new')])
+
+            # Total Action Required Items
+            rec.pending_actions_count = rec.missing_pan_count + rec.missing_bank_count + rec.pending_declarations_count + rec.attendance_pending_count + rec.missing_salary_count
+
+    @api.depends('financial_year_id', 'payroll_month_num', 'active_employee_count', 'total_payroll_cost', 'total_net_pay', 'tds_this_month', 'pending_actions_count', 'final_settlements_due_count')
+    def _compute_dashboard_html(self):
+        for rec in self:
+            currency_symbol = rec.currency_id.symbol or '₹'
+            month_name = dict(rec._fields['payroll_month_num'].selection).get(rec.payroll_month_num, 'August')
+            fy_name = rec.financial_year_id.name if rec.financial_year_id else 'FY 2026-27'
+
+            # Fetch New Joiners for selected month
+            today = fields.Date.today()
+            m_num = int(rec.payroll_month_num or today.month)
+            year = today.year
+            if rec.financial_year_id and rec.financial_year_id.start_date:
+                fy_s_year = rec.financial_year_id.start_date.year
+                fy_e_year = rec.financial_year_id.end_date.year
+                year = fy_s_year if m_num >= 4 else fy_e_year
+
+            month_start = date(year, m_num, 1)
+            month_end = date(year, m_num, calendar.monthrange(year, m_num)[1])
+
+            emp_fields = self.env['hr.employee']._fields
+            join_field = next((f for f in ('joining_date', 'date_of_joining', 'hds_in_doj', 'first_contract_date', 'contract_date_start', 'create_date') if f in emp_fields), None)
+
+            joiners = self.env['hr.employee']
+            if join_field:
+                joiners = self.env['hr.employee'].search([
+                    (join_field, '>=', month_start),
+                    (join_field, '<=', month_end),
+                ], limit=5, order=f'{join_field} desc')
+
+            joiner_rows_html = ""
+            if joiners:
+                for j in joiners:
+                    j_date_val = getattr(j, join_field, False) if join_field else False
+                    j_date = j_date_val.strftime('%d %b') if (j_date_val and hasattr(j_date_val, 'strftime')) else 'N/A'
+                    dept = j.department_id.name if j.department_id else 'General'
+                    has_pan = bool(getattr(j, 'hds_in_pan', False) or getattr(j, 'pan_no', False) or getattr(j, 'pan', False))
+                    has_bank = self._has_bank_account(j)
+
+                    if has_pan and has_bank:
+                        status_chip = '<span style="background: #d1fae5; color: #065f46; padding: 3px 8px; border-radius: 12px; font-size: 10px; font-weight: 600;">🟢 Payroll Ready</span>'
+                    elif not has_pan:
+                        status_chip = '<span style="background: #fee2e2; color: #991b1b; padding: 3px 8px; border-radius: 12px; font-size: 10px; font-weight: 600;">🔴 PAN Missing</span>'
+                    else:
+                        status_chip = '<span style="background: #fef3c7; color: #92400e; padding: 3px 8px; border-radius: 12px; font-size: 10px; font-weight: 600;">🟠 Bank Missing</span>'
+
+                    joiner_rows_html += f"""
+                    <tr style="border-bottom: 1px solid #f1f5f9;">
+                        <td style="padding: 10px 8px; font-weight: 600; color: #1e293b;">{j.name}</td>
+                        <td style="padding: 10px 8px; color: #64748b;">{j_date}</td>
+                        <td style="padding: 10px 8px; color: #64748b;">{dept}</td>
+                        <td style="padding: 10px 8px;">{status_chip}</td>
+                    </tr>
+                    """
+            else:
+                joiner_rows_html = """
+                <tr>
+                    <td colspan="4" style="padding: 15px; text-align: center; color: #94a3b8; font-style: italic;">
+                        No new joiners recorded for this payroll period.
+                    </td>
+                </tr>
+                """
+
+            # 6-Month Payroll Trend Visualizer Data
+            trend_bars_html = ""
+            for i in range(5, -1, -1):
+                t_month = (m_num - i - 1) % 12 + 1
+                t_year = year if (m_num - i) > 0 else year - 1
+                t_m_name = calendar.month_abbr[t_month]
+                t_start = date(t_year, t_month, 1)
+                t_end = date(t_year, t_month, calendar.monthrange(t_year, t_month)[1])
+
+                t_slips = self.env['hr.payslip'].search([
+                    ('date_from', '>=', t_start), ('date_to', '<=', t_end)
+                ])
+                t_cost = sum(float(getattr(s, 'gross_amount', None) or getattr(s, 'gross_wage', None) or getattr(s, 'net_amount', None) or getattr(s, 'net_wage', 0.0) or 0.0) for s in t_slips)
+                bar_height = min(100, max(15, int((t_cost / (rec.total_payroll_cost or 1.0)) * 70))) if rec.total_payroll_cost > 0 else 20
+                cost_lbl = f"{currency_symbol} {t_cost/100000:.1f}L" if t_cost >= 100000 else f"{currency_symbol} {t_cost:,.0f}"
+
+                trend_bars_html += f"""
+                <div style="display: flex; flex-direction: column; align-items: center; gap: 6px; flex: 1;">
+                    <div style="font-size: 10px; font-weight: 600; color: #475569;">{cost_lbl}</div>
+                    <div style="width: 100%; max-width: 32px; background: linear-gradient(180deg, #6366f1 0%, #4f46e5 100%); height: {bar_height}px; border-radius: 4px 4px 0 0;"></div>
+                    <div style="font-size: 10px; color: #94a3b8; font-weight: 500;">{t_m_name}</div>
+                </div>
+                """
+
+            rec.dashboard_html = f"""
+            <div style="font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif; color: #0f172a; background: #f8fafc; padding: 10px; border-radius: 12px; width: 100%; box-sizing: border-box;">
+
+                <!-- 0. HIGH CONTRAST PERIOD CONTROLS DISPLAY -->
+                <div style="background: #ffffff; padding: 14px 18px; border-radius: 8px; border: 1px solid #cbd5e1; margin-bottom: 18px; display: grid; grid-template-columns: repeat(4, 1fr); gap: 15px; text-align: left; box-shadow: 0 1px 2px rgba(0,0,0,0.03);">
+                    <div>
+                        <div style="font-size: 11px; font-weight: 700; text-transform: uppercase; color: #475569; letter-spacing: 0.5px;">Payroll Month</div>
+                        <div style="font-size: 15px; font-weight: 800; color: #0f172a; margin-top: 2px;">{month_name}</div>
+                    </div>
+                    <div>
+                        <div style="font-size: 11px; font-weight: 700; text-transform: uppercase; color: #475569; letter-spacing: 0.5px;">Financial Year</div>
+                        <div style="font-size: 15px; font-weight: 800; color: #0f172a; margin-top: 2px;">{fy_name}</div>
+                    </div>
+                    <div>
+                        <div style="font-size: 11px; font-weight: 700; text-transform: uppercase; color: #475569; letter-spacing: 0.5px;">Active Workforce</div>
+                        <div style="font-size: 15px; font-weight: 800; color: #0f172a; margin-top: 2px;">{rec.active_employee_count} Employees</div>
+                    </div>
+                    <div>
+                        <div style="font-size: 11px; font-weight: 700; text-transform: uppercase; color: #475569; letter-spacing: 0.5px;">Pending Actions</div>
+                        <div style="font-size: 15px; font-weight: 800; color: #d97706; margin-top: 2px;">{rec.pending_actions_count} Actions</div>
+                    </div>
+                </div>
+
+                <!-- 1. ODOO ONLINE STYLE PAYROLL KPI CARDS -->
+                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 14px; margin-bottom: 20px;">
+                    <div style="background: #ffffff; padding: 14px; border-radius: 10px; border: 1px solid #e2e8f0; box-shadow: 0 1px 3px rgba(0,0,0,0.04); border-top: 4px solid #10b981;">
+                        <div style="font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; color: #64748b; font-weight: 600;">Avg Net Wage</div>
+                        <div style="font-size: 20px; font-weight: 700; color: #0f172a; margin: 4px 0;">{currency_symbol} {rec.avg_net_wage:,.2f}</div>
+                        <div style="font-size: 10px; color: #10b981; font-weight: 600;">Per Employee / Month</div>
+                    </div>
+                    <div style="background: #ffffff; padding: 14px; border-radius: 10px; border: 1px solid #e2e8f0; box-shadow: 0 1px 3px rgba(0,0,0,0.04); border-top: 4px solid #6366f1;">
+                        <div style="font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; color: #64748b; font-weight: 600;">Avg Basic Wage</div>
+                        <div style="font-size: 20px; font-weight: 700; color: #0f172a; margin: 4px 0;">{currency_symbol} {rec.avg_basic_wage:,.2f}</div>
+                        <div style="font-size: 10px; color: #6366f1; font-weight: 600;">Basic Base Average</div>
+                    </div>
+                    <div style="background: #ffffff; padding: 14px; border-radius: 10px; border: 1px solid #e2e8f0; box-shadow: 0 1px 3px rgba(0,0,0,0.04); border-top: 4px solid #059669;">
+                        <div style="font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; color: #64748b; font-weight: 600;">Total Net Wage</div>
+                        <div style="font-size: 20px; font-weight: 700; color: #0f172a; margin: 4px 0;">{currency_symbol} {rec.total_net_pay:,.2f}</div>
+                        <div style="font-size: 10px; color: #059669; font-weight: 600;">Disbursable Net Payroll</div>
+                    </div>
+                    <div style="background: #ffffff; padding: 14px; border-radius: 10px; border: 1px solid #e2e8f0; box-shadow: 0 1px 3px rgba(0,0,0,0.04); border-top: 4px solid #4f46e5;">
+                        <div style="font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; color: #64748b; font-weight: 600;">Total Basic Wage</div>
+                        <div style="font-size: 20px; font-weight: 700; color: #0f172a; margin: 4px 0;">{currency_symbol} {rec.total_basic_wage:,.2f}</div>
+                        <div style="font-size: 10px; color: #4f46e5; font-weight: 600;">Total Statutory Basic Basis</div>
+                    </div>
+                    <div style="background: #ffffff; padding: 14px; border-radius: 10px; border: 1px solid #e2e8f0; box-shadow: 0 1px 3px rgba(0,0,0,0.04); border-top: 4px solid #0284c7;">
+                        <div style="font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; color: #64748b; font-weight: 600;">Avg Hours/Day</div>
+                        <div style="font-size: 20px; font-weight: 700; color: #0f172a; margin: 4px 0;">{rec.avg_hours_per_day:.1f} hrs</div>
+                        <div style="font-size: 10px; color: #0284c7; font-weight: 600;">Standard Work Daily Avg</div>
+                    </div>
+                    <div style="background: #ffffff; padding: 14px; border-radius: 10px; border: 1px solid #e2e8f0; box-shadow: 0 1px 3px rgba(0,0,0,0.04); border-top: 4px solid #8b5cf6;">
+                        <div style="font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; color: #64748b; font-weight: 600;">FTE</div>
+                        <div style="font-size: 20px; font-weight: 700; color: #0f172a; margin: 4px 0;">{rec.fte_count:.1f}</div>
+                        <div style="font-size: 10px; color: #8b5cf6; font-weight: 600;">Full Time Equivalent</div>
+                    </div>
+                </div>
+
+                <!-- 2. PRIMARY KPI CARDS GRID -->
+                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 16px; margin-bottom: 22px;">
+
+                    <!-- Card 1: Total Payroll Cost -->
+                    <div style="background: #ffffff; padding: 16px; border-radius: 10px; border: 1px solid #e2e8f0; box-shadow: 0 1px 3px rgba(0,0,0,0.04); border-top: 4px solid #4f46e5;">
+                        <div style="font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; color: #64748b; font-weight: 600;">Total Payroll Cost</div>
+                        <div style="font-size: 22px; font-weight: 700; color: #0f172a; margin: 6px 0;">{currency_symbol} {rec.total_payroll_cost:,.2f}</div>
+                        <div style="font-size: 11px; color: #64748b;">Period: {month_name} ({fy_name})</div>
+                    </div>
+
+                    <!-- Card 2: Net Salary Payable -->
+                    <div style="background: #ffffff; padding: 16px; border-radius: 10px; border: 1px solid #e2e8f0; box-shadow: 0 1px 3px rgba(0,0,0,0.04); border-top: 4px solid #10b981;">
+                        <div style="font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; color: #64748b; font-weight: 600;">Net Salary Payable</div>
+                        <div style="font-size: 22px; font-weight: 700; color: #0f172a; margin: 6px 0;">{currency_symbol} {rec.total_net_pay:,.2f}</div>
+                        <div style="font-size: 11px; color: #10b981; font-weight: 600;">Disbursable Amount</div>
+                    </div>
+
+                    <!-- Card 3: Active Employees -->
+                    <div style="background: #ffffff; padding: 16px; border-radius: 10px; border: 1px solid #e2e8f0; box-shadow: 0 1px 3px rgba(0,0,0,0.04); border-top: 4px solid #0284c7;">
+                        <div style="font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; color: #64748b; font-weight: 600;">Active Employees</div>
+                        <div style="font-size: 22px; font-weight: 700; color: #0f172a; margin: 6px 0;">{rec.active_employee_count}</div>
+                        <div style="font-size: 11px; color: #0284c7; font-weight: 600;">Active Workforce</div>
+                    </div>
+
+                    <!-- Card 4: TDS This Month -->
+                    <div style="background: #ffffff; padding: 16px; border-radius: 10px; border: 1px solid #e2e8f0; box-shadow: 0 1px 3px rgba(0,0,0,0.04); border-top: 4px solid #8b5cf6;">
+                        <div style="font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; color: #64748b; font-weight: 600;">TDS This Month</div>
+                        <div style="font-size: 22px; font-weight: 700; color: #0f172a; margin: 6px 0;">{currency_symbol} {rec.tds_this_month:,.2f}</div>
+                        <div style="font-size: 11px; color: #8b5cf6; font-weight: 600;">YTD: {currency_symbol} {rec.tds_ytd_total:,.2f}</div>
+                    </div>
+
+                    <!-- Card 5: Pending Actions -->
+                    <div style="background: #ffffff; padding: 16px; border-radius: 10px; border: 1px solid #e2e8f0; box-shadow: 0 1px 3px rgba(0,0,0,0.04); border-top: 4px solid #f59e0b;">
+                        <div style="font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; color: #64748b; font-weight: 600;">Pending Actions</div>
+                        <div style="font-size: 22px; font-weight: 700; color: #d97706; margin: 6px 0;">{rec.pending_actions_count}</div>
+                        <div style="font-size: 11px; color: #d97706; font-weight: 600;">Requires HR Attention</div>
+                    </div>
+
+                    <!-- Card 6: Final Settlements Due This Month -->
+                    <div style="background: #ffffff; padding: 16px; border-radius: 10px; border: 1px solid #e2e8f0; box-shadow: 0 1px 3px rgba(0,0,0,0.04); border-top: 4px solid #dc2626;">
+                        <div style="font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; color: #64748b; font-weight: 600;">Final Settlements Due</div>
+                        <div style="font-size: 22px; font-weight: 700; color: #dc2626; margin: 6px 0;">{rec.final_settlements_due_count}</div>
+                        <div style="display: flex; gap: 4px; flex-wrap: wrap; margin-top: 4px; font-size: 10px;">
+                            <span style="background: #f1f5f9; color: #475569; padding: 2px 6px; border-radius: 10px; font-weight: 600;">📝 Draft: {rec.final_settlement_draft_count}</span>
+                            <span style="background: #fef3c7; color: #92400e; padding: 2px 6px; border-radius: 10px; font-weight: 600;">🔍 Review: {rec.final_settlement_review_count}</span>
+                            <span style="background: #dbeafe; color: #1e40af; padding: 2px 6px; border-radius: 10px; font-weight: 600;">✅ Appr: {rec.final_settlement_approved_count}</span>
+                            <span style="background: #d1fae5; color: #065f46; padding: 2px 6px; border-radius: 10px; font-weight: 600;">💰 Paid: {rec.final_settlement_paid_count}</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 2. ACTION REQUIRED SECTION (HIGH VISIBILITY ALERTS) -->
+                <div style="background: #ffffff; padding: 18px; border-radius: 10px; border: 1px solid #fecaca; margin-bottom: 22px; box-shadow: 0 2px 4px rgba(239, 68, 68, 0.05);">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+                        <div style="font-size: 15px; font-weight: 700; color: #991b1b;">⚠️ Action Required</div>
+                        <div style="font-size: 11px; color: #991b1b; font-weight: 600;">Immediate HR Verification Required</div>
+                    </div>
+                    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px;">
+                        <div style="background: #fef2f2; padding: 12px 14px; border-radius: 8px; border-left: 4px solid #ef4444;">
+                            <div style="font-size: 12px; font-weight: 700; color: #991b1b;">🔴 {rec.missing_pan_count} Employees Missing PAN</div>
+                            <div style="font-size: 11px; color: #7f1d1d; margin-top: 2px;">Impacts 20% flat TDS deduction rate u/s 206AA</div>
+                        </div>
+                        <div style="background: #fef2f2; padding: 12px 14px; border-radius: 8px; border-left: 4px solid #ef4444;">
+                            <div style="font-size: 12px; font-weight: 700; color: #991b1b;">🔴 {rec.missing_bank_count} Employees Missing Bank Details</div>
+                            <div style="font-size: 11px; color: #7f1d1d; margin-top: 2px;">Blocks automated salary disbursement file</div>
+                        </div>
+                        <div style="background: #fffbeb; padding: 12px 14px; border-radius: 8px; border-left: 4px solid #f59e0b;">
+                            <div style="font-size: 12px; font-weight: 700; color: #92400e;">🟠 {rec.pending_declarations_count} Tax Declarations Pending</div>
+                            <div style="font-size: 11px; color: #78350f; margin-top: 2px;">Pending Tax Firm / HR verification</div>
+                        </div>
+                        <div style="background: #fffbeb; padding: 12px 14px; border-radius: 8px; border-left: 4px solid #f59e0b;">
+                            <div style="font-size: 12px; font-weight: 700; color: #92400e;">🟠 {rec.attendance_pending_count} Attendance / Payslip Exceptions</div>
+                            <div style="font-size: 11px; color: #78350f; margin-top: 2px;">Draft status or discrepancy pending</div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 3. MIDDLE ROW: NEW JOINERS & EMPLOYEE DATA HEALTH -->
+                <div style="display: grid; grid-template-columns: 3fr 2fr; gap: 18px; margin-bottom: 22px;">
+
+                    <!-- New Joiners Card -->
+                    <div style="background: #ffffff; padding: 18px; border-radius: 10px; border: 1px solid #e2e8f0;">
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; border-bottom: 1px solid #f1f5f9; padding-bottom: 8px;">
+                            <div style="font-size: 14px; font-weight: 700; color: #0f172a;">🆕 New Joiners ({month_name})</div>
+                            <div style="font-size: 11px; font-weight: 700; color: #4f46e5; background: #eef2ff; padding: 4px 10px; border-radius: 12px;">Count: {rec.new_joiners_count}</div>
+                        </div>
+                        <table style="width: 100%; border-collapse: collapse; font-size: 12px;">
+                            <thead>
+                                <tr style="background: #f8fafc; color: #64748b; text-align: left; font-size: 11px;">
+                                    <th style="padding: 6px 8px;">Employee Name</th>
+                                    <th style="padding: 6px 8px;">Joining Date</th>
+                                    <th style="padding: 6px 8px;">Department</th>
+                                    <th style="padding: 6px 8px;">Readiness</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {joiner_rows_html}
+                            </tbody>
+                        </table>
+                    </div>
+
+                    <!-- Employee Data Health Card -->
+                    <div style="background: #ffffff; padding: 18px; border-radius: 10px; border: 1px solid #e2e8f0;">
+                        <div style="font-size: 14px; font-weight: 700; color: #0f172a; margin-bottom: 15px; border-bottom: 1px solid #f1f5f9; padding-bottom: 8px;">
+                            📊 Employee Data Health
+                        </div>
+                        <div style="display: flex; flex-direction: column; gap: 12px;">
+
+                            <div>
+                                <div style="display: flex; justify-content: space-between; font-size: 11px; font-weight: 600; color: #475569; margin-bottom: 4px;">
+                                    <span>PAN Completeness</span>
+                                    <span>{rec.pan_health_pct}%</span>
+                                </div>
+                                <div style="width: 100%; background: #f1f5f9; height: 7px; border-radius: 4px; overflow: hidden;">
+                                    <div style="width: {rec.pan_health_pct}%; background: #4f46e5; height: 100%;"></div>
+                                </div>
+                            </div>
+
+                            <div>
+                                <div style="display: flex; justify-content: space-between; font-size: 11px; font-weight: 600; color: #475569; margin-bottom: 4px;">
+                                    <span>Bank Details Completeness</span>
+                                    <span>{rec.bank_health_pct}%</span>
+                                </div>
+                                <div style="width: 100%; background: #f1f5f9; height: 7px; border-radius: 4px; overflow: hidden;">
+                                    <div style="width: {rec.bank_health_pct}%; background: #10b981; height: 100%;"></div>
+                                </div>
+                            </div>
+
+                            <div>
+                                <div style="display: flex; justify-content: space-between; font-size: 11px; font-weight: 600; color: #475569; margin-bottom: 4px;">
+                                    <span>Aadhaar / ID Completeness</span>
+                                    <span>{rec.aadhaar_health_pct}%</span>
+                                </div>
+                                <div style="width: 100%; background: #f1f5f9; height: 7px; border-radius: 4px; overflow: hidden;">
+                                    <div style="width: {rec.aadhaar_health_pct}%; background: #0284c7; height: 100%;"></div>
+                                </div>
+                            </div>
+
+                            <div>
+                                <div style="display: flex; justify-content: space-between; font-size: 11px; font-weight: 600; color: #475569; margin-bottom: 4px;">
+                                    <span>Emergency Contact Completeness</span>
+                                    <span>{rec.contact_health_pct}%</span>
+                                </div>
+                                <div style="width: 100%; background: #f1f5f9; height: 7px; border-radius: 4px; overflow: hidden;">
+                                    <div style="width: {rec.contact_health_pct}%; background: #f59e0b; height: 100%;"></div>
+                                </div>
+                            </div>
+
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 4. STATUTORY & TAX CARD SECTION -->
+                <!-- 4. STATUTORY NUMBER VALIDATION & COMPLIANCE SECTION -->
+                <div style="background: #ffffff; padding: 18px; border-radius: 10px; border: 1px solid #e2e8f0; margin-bottom: 22px;">
+                    <div style="font-size: 14px; font-weight: 700; color: #0f172a; margin-bottom: 12px; border-bottom: 1px solid #f1f5f9; padding-bottom: 8px; display: flex; justify-content: space-between; align-items: center;">
+                        <span>🛡️ Statutory Identifier Compliance & Readiness</span>
+                        <span style="font-size: 12px; font-weight: 600; color: #64748b;">Active Workforce: {rec.active_employee_count} Employees</span>
+                    </div>
+                    <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; font-size: 12px;">
+
+                        <!-- EPF Tile -->
+                        <div style="background: #f8fafc; border: 1px solid #cbd5e1; border-radius: 8px; padding: 12px;">
+                            <div style="color: #1e293b; font-size: 12px; font-weight: 700; border-bottom: 1px dashed #cbd5e1; padding-bottom: 4px; margin-bottom: 6px;">EPF (UAN / PF No)</div>
+                            <div style="display: flex; justify-content: space-between; margin-bottom: 4px;">
+                                <span style="color: #16a34a; font-weight: 600;">Complete UAN:</span>
+                                <span style="font-weight: 700; color: #16a34a;">{rec.epf_complete_count}</span>
+                            </div>
+                            <div style="display: flex; justify-content: space-between;">
+                                <span style="color: #dc2626; font-weight: 600;">Missing UAN:</span>
+                                <span style="font-weight: 700; color: #dc2626;">{rec.epf_missing_count}</span>
+                            </div>
+                        </div>
+
+                        <!-- ESIC Tile -->
+                        <div style="background: #f8fafc; border: 1px solid #cbd5e1; border-radius: 8px; padding: 12px;">
+                            <div style="color: #1e293b; font-size: 12px; font-weight: 700; border-bottom: 1px dashed #cbd5e1; padding-bottom: 4px; margin-bottom: 6px;">ESIC (IP Number)</div>
+                            <div style="display: flex; justify-content: space-between; margin-bottom: 4px;">
+                                <span style="color: #16a34a; font-weight: 600;">Complete IP:</span>
+                                <span style="font-weight: 700; color: #16a34a;">{rec.esic_complete_count}</span>
+                            </div>
+                            <div style="display: flex; justify-content: space-between;">
+                                <span style="color: #dc2626; font-weight: 600;">Missing IP:</span>
+                                <span style="font-weight: 700; color: #dc2626;">{rec.esic_missing_count}</span>
+                            </div>
+                        </div>
+
+                        <!-- LWF Tile -->
+                        <div style="background: #f8fafc; border: 1px solid #cbd5e1; border-radius: 8px; padding: 12px;">
+                            <div style="color: #1e293b; font-size: 12px; font-weight: 700; border-bottom: 1px dashed #cbd5e1; padding-bottom: 4px; margin-bottom: 6px;">LWF Registration</div>
+                            <div style="display: flex; justify-content: space-between; margin-bottom: 4px;">
+                                <span style="color: #16a34a; font-weight: 600;">Complete Number:</span>
+                                <span style="font-weight: 700; color: #16a34a;">{rec.lwf_complete_count}</span>
+                            </div>
+                            <div style="display: flex; justify-content: space-between;">
+                                <span style="color: #dc2626; font-weight: 600;">Missing Number:</span>
+                                <span style="font-weight: 700; color: #dc2626;">{rec.lwf_missing_count}</span>
+                            </div>
+                        </div>
+
+                        <!-- Overall Readiness Tile -->
+                        <div style="background: #f8fafc; border: 1px solid #cbd5e1; border-radius: 8px; padding: 12px;">
+                            <div style="color: #1e293b; font-size: 12px; font-weight: 700; border-bottom: 1px dashed #cbd5e1; padding-bottom: 4px; margin-bottom: 6px;">Data Health & Readiness</div>
+                            <div style="display: flex; justify-content: space-between; margin-bottom: 4px;">
+                                <span style="color: #16a34a; font-weight: 600;">Processing Ready:</span>
+                                <span style="font-weight: 700; color: #16a34a;">{rec.statutory_ready_count}</span>
+                            </div>
+                            <div style="display: flex; justify-content: space-between;">
+                                <span style="color: #dc2626; font-weight: 600;">Data Errors:</span>
+                                <span style="font-weight: 700; color: #dc2626;">{rec.statutory_data_errors_count}</span>
+                            </div>
+                        </div>
+
+                    </div>
+                </div>
+
+                <!-- 5. STATUTORY & TAX CARD SECTION -->
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 18px; margin-bottom: 22px;">
+
+                    <!-- Statutory Compliance Card -->
+                    <div style="background: #ffffff; padding: 18px; border-radius: 10px; border: 1px solid #e2e8f0;">
+                        <div style="font-size: 14px; font-weight: 700; color: #0f172a; margin-bottom: 12px; border-bottom: 1px solid #f1f5f9; padding-bottom: 8px;">
+                            🇮🇳 Statutory Compliance Summary
+                        </div>
+                        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; font-size: 12px;">
+                            <div style="background: #f8fafc; padding: 10px; border-radius: 6px;">
+                                <div style="color: #64748b; font-size: 11px; font-weight: 600;">EPF / PF Liability</div>
+                                <div style="font-weight: 700; color: #0f172a; margin-top: 2px;">{currency_symbol} {rec.epf_total_liability:,.2f}</div>
+                                <div style="color: #10b981; font-size: 10px; font-weight: 500;">🟢 ECR Ready</div>
+                            </div>
+                            <div style="background: #f8fafc; padding: 10px; border-radius: 6px;">
+                                <div style="color: #64748b; font-size: 11px; font-weight: 600;">ESIC Liability</div>
+                                <div style="font-weight: 700; color: #0f172a; margin-top: 2px;">{currency_symbol} {rec.esic_total_liability:,.2f}</div>
+                                <div style="color: #10b981; font-size: 10px; font-weight: 500;">🟢 Ready for Filing</div>
+                            </div>
+                            <div style="background: #f8fafc; padding: 10px; border-radius: 6px;">
+                                <div style="color: #64748b; font-size: 11px; font-weight: 600;">Professional Tax (PT)</div>
+                                <div style="font-weight: 700; color: #0f172a; margin-top: 2px;">{currency_symbol} {rec.pt_total_liability:,.2f}</div>
+                                <div style="color: #10b981; font-size: 10px; font-weight: 500;">🟢 State Slabs Applied</div>
+                            </div>
+                            <div style="background: #f8fafc; padding: 10px; border-radius: 6px;">
+                                <div style="color: #64748b; font-size: 11px; font-weight: 600;">TDS Withholding</div>
+                                <div style="font-weight: 700; color: #0f172a; margin-top: 2px;">{currency_symbol} {rec.tds_this_month:,.2f}</div>
+                                <div style="color: #10b981; font-size: 10px; font-weight: 500;">🟢 Form 24Q Ready</div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Tax & TDS Card -->
+                    <div style="background: #ffffff; padding: 18px; border-radius: 10px; border: 1px solid #e2e8f0;">
+                        <div style="font-size: 14px; font-weight: 700; color: #0f172a; margin-bottom: 12px; border-bottom: 1px solid #f1f5f9; padding-bottom: 8px;">
+                            📋 Tax Regime & Declarations Breakdown
+                        </div>
+                        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; font-size: 12px;">
+                            <div style="background: #f8fafc; padding: 10px; border-radius: 6px;">
+                                <div style="color: #64748b; font-size: 11px; font-weight: 600;">Old Regime Opted</div>
+                                <div style="font-weight: 700; color: #4f46e5; margin-top: 2px;">{rec.old_regime_count} Employees</div>
+                            </div>
+                            <div style="background: #f8fafc; padding: 10px; border-radius: 6px;">
+                                <div style="color: #64748b; font-size: 11px; font-weight: 600;">New Regime (115BAC)</div>
+                                <div style="font-weight: 700; color: #0284c7; margin-top: 2px;">{rec.new_regime_count} Employees</div>
+                            </div>
+                            <div style="background: #f8fafc; padding: 10px; border-radius: 6px;">
+                                <div style="color: #64748b; font-size: 11px; font-weight: 600;">TDS YTD Total</div>
+                                <div style="font-weight: 700; color: #0f172a; margin-top: 2px;">{currency_symbol} {rec.tds_ytd_total:,.2f}</div>
+                            </div>
+                            <div style="background: #f8fafc; padding: 10px; border-radius: 6px;">
+                                <div style="color: #64748b; font-size: 11px; font-weight: 600;">Pending Declarations</div>
+                                <div style="font-weight: 700; color: #d97706; margin-top: 2px;">{rec.pending_declarations_count} Pending</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 5. HISTORICAL PAYROLL COST TREND CHART -->
+                <div style="background: #ffffff; padding: 18px; border-radius: 10px; border: 1px solid #e2e8f0;">
+                    <div style="font-size: 14px; font-weight: 700; color: #0f172a; margin-bottom: 15px; border-bottom: 1px solid #f1f5f9; padding-bottom: 8px;">
+                        📈 Historical Payroll Cost Trend (Last 6 Months)
+                    </div>
+                    <div style="display: flex; align-items: flex-end; justify-content: space-around; height: 110px; padding: 0 20px;">
+                        {trend_bars_html}
+                    </div>
+                </div>
+
+            </div>
+            """
+
+    def action_refresh_dashboard(self):
+        self.ensure_one()
+        self._compute_dashboard_metrics()
+        return True
+
+    def action_view_missing_pan_employees(self):
+        self.ensure_one()
+        return {
+            'name': _('Employees Missing PAN'),
+            'type': 'ir.actions.act_window',
+            'res_model': 'hr.employee',
+            'view_mode': 'list,form',
+            'domain': ['&', ('active', '=', True), '|', ('hds_in_pan', '=', False), ('hds_in_pan', '=', '')],
+            'target': 'current',
+        }
+
+    def action_view_missing_bank_employees(self):
+        self.ensure_one()
+        active_emps = self.env['hr.employee'].search([('active', '=', True)])
+        missing_ids = [e.id for e in active_emps if not self._has_bank_account(e)]
+        return {
+            'name': _('Employees Missing Bank Account'),
+            'type': 'ir.actions.act_window',
+            'res_model': 'hr.employee',
+            'view_mode': 'list,form',
+            'domain': [('id', 'in', missing_ids)],
+            'target': 'current',
+        }
+
+    def action_view_epf_missing_employees(self):
+        self.ensure_one()
+        active_emps = self.env['hr.employee'].search([('active', '=', True), ('hds_in_epf_applicable', '=', True)])
+        from ..services.compliance.statutory_compliance_service import StatutoryComplianceValidationService
+        comp_service = StatutoryComplianceValidationService(self.env)
+        missing_ids = [e.id for e in active_emps if not comp_service.validate_employee_epf(e)[0]]
+        return {
+            'name': _('EPF: Employees Missing UAN / Invalid UAN'),
+            'type': 'ir.actions.act_window',
+            'res_model': 'hr.employee',
+            'view_mode': 'list,form',
+            'domain': [('id', 'in', missing_ids)],
+            'target': 'current',
+        }
+
+    def action_view_epf_complete_employees(self):
+        self.ensure_one()
+        active_emps = self.env['hr.employee'].search([('active', '=', True), ('hds_in_epf_applicable', '=', True)])
+        from ..services.compliance.statutory_compliance_service import StatutoryComplianceValidationService
+        comp_service = StatutoryComplianceValidationService(self.env)
+        complete_ids = [e.id for e in active_emps if comp_service.validate_employee_epf(e)[0]]
+        return {
+            'name': _('EPF: Employees with Complete UAN'),
+            'type': 'ir.actions.act_window',
+            'res_model': 'hr.employee',
+            'view_mode': 'list,form',
+            'domain': [('id', 'in', complete_ids)],
+            'target': 'current',
+        }
+
+    def action_view_esic_missing_employees(self):
+        self.ensure_one()
+        active_emps = self.env['hr.employee'].search([('active', '=', True), ('hds_in_esic_applicable', '=', True)])
+        from ..services.compliance.statutory_compliance_service import StatutoryComplianceValidationService
+        comp_service = StatutoryComplianceValidationService(self.env)
+        missing_ids = [e.id for e in active_emps if not comp_service.validate_employee_esic(e)[0]]
+        return {
+            'name': _('ESIC: Employees Missing IP Number / Invalid IP'),
+            'type': 'ir.actions.act_window',
+            'res_model': 'hr.employee',
+            'view_mode': 'list,form',
+            'domain': [('id', 'in', missing_ids)],
+            'target': 'current',
+        }
+
+    def action_view_esic_complete_employees(self):
+        self.ensure_one()
+        active_emps = self.env['hr.employee'].search([('active', '=', True), ('hds_in_esic_applicable', '=', True)])
+        from ..services.compliance.statutory_compliance_service import StatutoryComplianceValidationService
+        comp_service = StatutoryComplianceValidationService(self.env)
+        complete_ids = [e.id for e in active_emps if comp_service.validate_employee_esic(e)[0]]
+        return {
+            'name': _('ESIC: Employees with Complete IP Number'),
+            'type': 'ir.actions.act_window',
+            'res_model': 'hr.employee',
+            'view_mode': 'list,form',
+            'domain': [('id', 'in', complete_ids)],
+            'target': 'current',
+        }
+
+    def action_view_lwf_missing_employees(self):
+        self.ensure_one()
+        active_emps = self.env['hr.employee'].search([('active', '=', True), ('hds_in_lwf_applicable', '=', True)])
+        from ..services.compliance.statutory_compliance_service import StatutoryComplianceValidationService
+        comp_service = StatutoryComplianceValidationService(self.env)
+        missing_ids = [e.id for e in active_emps if not comp_service.validate_employee_lwf(e)[0]]
+        return {
+            'name': _('LWF: Employees Missing Registration Number'),
+            'type': 'ir.actions.act_window',
+            'res_model': 'hr.employee',
+            'view_mode': 'list,form',
+            'domain': [('id', 'in', missing_ids)],
+            'target': 'current',
+        }
+
+    def action_view_lwf_complete_employees(self):
+        self.ensure_one()
+        active_emps = self.env['hr.employee'].search([('active', '=', True), ('hds_in_lwf_applicable', '=', True)])
+        from ..services.compliance.statutory_compliance_service import StatutoryComplianceValidationService
+        comp_service = StatutoryComplianceValidationService(self.env)
+        complete_ids = [e.id for e in active_emps if comp_service.validate_employee_lwf(e)[0]]
+        return {
+            'name': _('LWF: Employees with Complete Number'),
+            'type': 'ir.actions.act_window',
+            'res_model': 'hr.employee',
+            'view_mode': 'list,form',
+            'domain': [('id', 'in', complete_ids)],
+            'target': 'current',
+        }
+
+    def action_view_statutory_error_employees(self):
+        self.ensure_one()
+        active_emps = self.env['hr.employee'].search([('active', '=', True)])
+        from ..services.compliance.statutory_compliance_service import StatutoryComplianceValidationService
+        comp_service = StatutoryComplianceValidationService(self.env)
+        error_ids = [e.id for e in active_emps if not comp_service.validate_employee_all(e)['is_compliant']]
+        return {
+            'name': _('Employees with Statutory Data Errors'),
+            'type': 'ir.actions.act_window',
+            'res_model': 'hr.employee',
+            'view_mode': 'list,form',
+            'domain': [('id', 'in', error_ids)],
+            'target': 'current',
+        }
+
+    def action_view_statutory_ready_employees(self):
+        self.ensure_one()
+        active_emps = self.env['hr.employee'].search([('active', '=', True)])
+        from ..services.compliance.statutory_compliance_service import StatutoryComplianceValidationService
+        comp_service = StatutoryComplianceValidationService(self.env)
+        ready_ids = [e.id for e in active_emps if comp_service.validate_employee_all(e)['is_compliant']]
+        return {
+            'name': _('Employees Ready for Statutory Payroll Processing'),
+            'type': 'ir.actions.act_window',
+            'res_model': 'hr.employee',
+            'view_mode': 'list,form',
+            'domain': [('id', 'in', ready_ids)],
+            'target': 'current',
+        }
+
+    def action_view_pending_declarations(self):
+        self.ensure_one()
+        return {
+            'name': _('Pending Tax Declarations'),
+            'type': 'ir.actions.act_window',
+            'res_model': 'tds.employee.declaration',
+            'view_mode': 'list,form',
+            'domain': [('state', 'in', ('submitted', 'proof_submitted', 'proof_under_review'))],
+            'target': 'current',
+        }
+
+    def action_view_new_joiners(self):
+        self.ensure_one()
+        today = fields.Date.today()
+        m_num = int(self.payroll_month_num or today.month)
+        year = today.year
+        if self.financial_year_id and self.financial_year_id.start_date:
+            fy_s_year = self.financial_year_id.start_date.year
+            fy_e_year = self.financial_year_id.end_date.year
+            year = fy_s_year if m_num >= 4 else fy_e_year
+        month_start = date(year, m_num, 1)
+        month_end = date(year, m_num, calendar.monthrange(year, m_num)[1])
+
+        emp_fields = self.env['hr.employee']._fields
+        join_field = next((f for f in ('joining_date', 'date_of_joining', 'hds_in_doj', 'first_contract_date', 'contract_date_start', 'create_date') if f in emp_fields), None)
+
+        domain = [(join_field, '>=', month_start), (join_field, '<=', month_end)] if join_field else []
+
+        return {
+            'name': _('New Joiners'),
+            'type': 'ir.actions.act_window',
+            'res_model': 'hr.employee',
+            'view_mode': 'list,form',
+            'domain': domain,
+            'target': 'current',
+        }
+
+    def action_view_final_settlements_due(self):
+        self.ensure_one()
+        today = fields.Date.today()
+        m_num = int(self.payroll_month_num or today.month)
+        year = today.year
+        if self.financial_year_id and self.financial_year_id.start_date:
+            fy_s_year = self.financial_year_id.start_date.year
+            fy_e_year = self.financial_year_id.end_date.year
+            year = fy_s_year if m_num >= 4 else fy_e_year
+        month_start = date(year, m_num, 1)
+        month_end = date(year, m_num, calendar.monthrange(year, m_num)[1])
+
+        month_name = dict(self._fields['payroll_month_num'].selection).get(self.payroll_month_num, '')
+        return {
+            'name': _('Final Settlements Due (%s)') % month_name,
+            'type': 'ir.actions.act_window',
+            'res_model': 'final.settlement',
+            'view_mode': 'list,form',
+            'domain': [
+                ('state', '!=', 'cancel'),
+                ('last_working_day', '>=', month_start),
+                ('last_working_day', '<=', month_end)
+            ],
+            'target': 'current',
+        }

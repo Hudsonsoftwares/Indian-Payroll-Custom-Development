@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <data noupdate="1">
+
+        <!-- India-specific components.
+             Reads from contract/version salary breakdown (contract.hra / contract.da / contract.fixed_allowance)
+             with automatic fallback to company policy percentages of BASIC if not set. -->
+        <record id="hr_rule_hra_india" model="hr.salary.rule">
+            <field name="name">House Rent Allowance</field>
+            <field name="code">HRA</field>
+            <field name="sequence">15</field>
+            <field name="category_id" ref="hudson_payroll_base.rule_category_alw"/>
+            <field name="struct_id" ref="hudson_payroll_base.structure_base"/>
+            <field name="condition_select">none</field>
+            <field name="amount_select">code</field>
+            <field name="amount_python_compute"><![CDATA[result = contract.hra or 0.0]]></field>
+            <field name="appears_on_payslip" eval="True"/>
+        </record>
+
+        <record id="hr_rule_da_india" model="hr.salary.rule">
+            <field name="name">Dearness Allowance</field>
+            <field name="code">DA</field>
+            <field name="sequence">16</field>
+            <field name="category_id" ref="hudson_payroll_base.rule_category_alw"/>
+            <field name="struct_id" ref="hudson_payroll_base.structure_base"/>
+            <field name="condition_select">none</field>
+            <field name="amount_select">code</field>
+            <field name="amount_python_compute"><![CDATA[result = contract.da or 0.0]]></field>
+            <field name="appears_on_payslip" eval="True"/>
+        </record>
+
+        <record id="hr_rule_fixed_allowance_india" model="hr.salary.rule">
+            <field name="name">Fixed Allowance</field>
+            <field name="code">FIXED</field>
+            <field name="sequence">17</field>
+            <field name="category_id" ref="hudson_payroll_base.rule_category_alw"/>
+            <field name="struct_id" ref="hudson_payroll_base.structure_base"/>
+            <field name="condition_select">none</field>
+            <field name="amount_select">code</field>
+            <field name="amount_python_compute"><![CDATA[result = contract.fixed_allowance or 0.0]]></field>
+            <field name="appears_on_payslip" eval="True"/>
+        </record>
+
+    </data>
+</odoo>

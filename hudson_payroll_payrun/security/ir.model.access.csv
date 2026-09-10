@@ -1,0 +1,6 @@
+id,name,model_id:id,group_id:id,perm_read,perm_write,perm_create,perm_unlink
+access_hr_employee_type_user,access.hr.employee.type.user,model_hr_employee_type,base.group_user,1,1,1,1
+access_hr_payslip_run_dep_summary_user,access.hr.payslip.run.dep.summary.user,model_hr_payslip_run_dep_summary,base.group_user,1,1,1,1
+access_hudson_payroll_payrun_wizard_user,access.hudson.payroll.payrun.wizard.user,model_hudson_payroll_payrun_wizard,base.group_user,1,1,1,1
+access_hudson_payroll_payment_advice_user,access.hudson.payroll.payment.advice.user,model_hudson_payroll_payment_advice,base.group_user,1,1,1,1
+access_hudson_payroll_payment_advice_line_user,access.hudson.payroll.payment.advice.line.user,model_hudson_payroll_payment_advice_line,base.group_user,1,1,1,1

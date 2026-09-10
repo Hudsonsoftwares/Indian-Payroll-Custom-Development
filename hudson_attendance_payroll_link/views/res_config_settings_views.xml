@@ -1,0 +1,59 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <record id="res_config_settings_view_form" model="ir.ui.view">
+        <field name="name">res.config.settings.view.form.inherit.hudson.attendance.payroll.link</field>
+        <field name="model">res.config.settings</field>
+        <field name="inherit_id" ref="hudson_payroll_base.res_config_settings_view_form"/>
+        <field name="arch" type="xml">
+            <xpath expr="//app[@name='hudson_payroll_base']" position="inside">
+                <h2>Attendance &amp; Payroll Connection</h2>
+                <div class="row mt16 o_settings_container">
+                    <div class="col-12 col-lg-6 o_setting_box">
+                        <div class="o_setting_right_pane">
+                            <span class="o_form_label">Standard Working Days / Month</span>
+                            <div class="text-muted">
+                                Standard divisor days per month for hourly rate calculation.
+                            </div>
+                            <div class="content-group mt8">
+                                <field name="standard_working_days_per_month"/>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-12 col-lg-6 o_setting_box">
+                        <div class="o_setting_right_pane">
+                            <span class="o_form_label">Standard Hours / Day</span>
+                            <div class="text-muted">
+                                Standard hours per day for hourly rate calculation.
+                            </div>
+                            <div class="content-group mt8">
+                                <field name="standard_hours_per_day"/>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-12 col-lg-6 o_setting_box">
+                        <div class="o_setting_right_pane">
+                            <span class="o_form_label">Overtime Rate Multiplier</span>
+                            <div class="text-muted">
+                                Default multiplier for overtime rate calculation.
+                            </div>
+                            <div class="content-group mt8">
+                                <field name="overtime_multiplier"/>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-12 col-lg-6 o_setting_box">
+                        <div class="o_setting_left_pane">
+                            <field name="pay_overtime"/>
+                        </div>
+                        <div class="o_setting_right_pane">
+                            <span class="o_form_label">Pay Overtime</span>
+                            <div class="text-muted">
+                                Enable or disable overtime salary calculations and payouts on payslips.
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </xpath>
+        </field>
+    </record>
+</odoo>

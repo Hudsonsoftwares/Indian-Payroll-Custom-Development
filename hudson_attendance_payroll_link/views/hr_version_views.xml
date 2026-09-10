@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <record id="hr_contract_template_form_view_inherit_rates" model="ir.ui.view">
+        <field name="name">hr.version.view.form.inherit.rates</field>
+        <field name="model">hr.version</field>
+        <field name="inherit_id" ref="hudson_payroll_base.hr_version_view_form_inherit_hudson_payroll_base"/>
+        <field name="arch" type="xml">
+            <xpath expr="//group[@name='salary_breakdown']" position="after">
+                <group string="Hourly Rate Configuration" name="hourly_rate_config">
+                    <field name="salary_calculation_type"/>
+                    <field name="pay_by_attendance" widget="boolean_toggle"/>
+                    <field name="pay_overtime" widget="boolean_toggle"/>
+                    <field name="standard_working_days_per_month"/>
+                    <field name="standard_hours_per_day"/>
+                    <field name="overtime_multiplier"/>
+                    <field name="hourly_rate" readonly="1"/>
+                    <field name="overtime_hourly_rate" readonly="1"/>
+                    <field name="overtime_rate_manually_set" invisible="1"/>
+                    <field name="shortage_rate_manually_set" invisible="1"/>
+                    <button name="action_reset_to_computed_rates" string="Reset to Computed Rates" type="object" class="btn-secondary" invisible="not overtime_rate_manually_set and not shortage_rate_manually_set"/>
+                </group>
+            </xpath>
+        </field>
+    </record>
+</odoo>

@@ -1,0 +1,198 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<odoo>
+
+    <!-- Kanban View for Pay Runs -->
+    <record id="hr_payslip_run_view_kanban_payrun" model="ir.ui.view">
+        <field name="name">hr.payslip.run.view.kanban.payrun</field>
+        <field name="model">hr.payslip.run</field>
+        <field name="arch" type="xml">
+            <kanban default_group_by="state" class="o_kanban_mobile" quick_create="false">
+                <field name="name"/>
+                <field name="date_start"/>
+                <field name="date_end"/>
+                <field name="state"/>
+                <field name="payslip_count"/>
+                <field name="department_names"/>
+                <field name="credit_note"/>
+                <templates>
+                    <t t-name="card">
+                        <div class="oe_kanban_global_click p-3 shadow-sm rounded border">
+                            <div class="d-flex justify-content-between align-items-center mb-2">
+                                <strong class="fs-5 text-primary"><field name="name"/></strong>
+                                <span t-attf-class="badge rounded-pill #{record.state.raw_value == 'confirmed' and 'bg-success' or (record.state.raw_value == 'paid' and 'bg-info' or 'bg-secondary')}">
+                                    <field name="state"/>
+                                </span>
+                            </div>
+                            <div class="text-muted mb-2">
+                                <i class="fa fa-calendar me-1"/>
+                                <field name="date_start"/> <i class="fa fa-arrow-right mx-1"/> <field name="date_end"/>
+                            </div>
+                            <div class="d-flex justify-content-between align-items-center mt-3 pt-2 border-top">
+                                <div>
+                                    <i class="fa fa-building me-1 text-muted"/>
+                                    <span class="text-muted"><field name="department_names"/></span>
+                                </div>
+                                <div class="badge bg-light text-dark border">
+                                    <i class="fa fa-users me-1"/>
+                                    <t t-esc="record.payslip_count.value"/> Payslips
+                                </div>
+                            </div>
+                        </div>
+                    </t>
+                </templates>
+            </kanban>
+        </field>
+    </record>
+
+    <!-- Form View Inheritance for Pay Run -->
+    <record id="hr_payslip_run_view_form_inherit_payrun" model="ir.ui.view">
+        <field name="name">hr.payslip.run.view.form.inherit.payrun</field>
+        <field name="model">hr.payslip.run</field>
+        <field name="inherit_id" ref="hr_payroll_community.hr_payslip_run_view_form"/>
+        <field name="arch" type="xml">
+
+            <!-- Replace Header Buttons -->
+            <xpath expr="//header/button[@name='close_payslip_run']" position="replace">
+                <button name="action_confirm_payrun" type="object"
+                        string="Confirm &amp; Post Batch"
+                        invisible="state != 'draft'"
+                        class="oe_highlight"/>
+                <button name="action_generate_payment_advice" type="object"
+                        string="Generate Payment Advice"
+                        invisible="state not in ('confirmed', 'paid', 'close')"
+                        class="oe_highlight" icon="fa-credit-card"/>
+                <button name="action_pay_payrun" type="object"
+                        string="Mark as Paid"
+                        invisible="state != 'confirmed'"/>
+            </xpath>
+
+            <xpath expr="//header/button[@type='action']" position="replace">
+                <button name="action_generate_payslips" type="object"
+                        string="Generate Payslips"
+                        invisible="state != 'draft'"
+                        class="oe_highlight"/>
+            </xpath>
+
+            <xpath expr="//header/button[@name='action_payslip_run']" position="attributes">
+                <attribute name="invisible">state == 'draft'</attribute>
+            </xpath>
+
+            <xpath expr="//header/field[@name='state']" position="replace">
+                <field name="state" widget="statusbar" statusbar_visible="draft,confirmed,paid"/>
+            </xpath>
+
+            <!-- Stat Buttons in Sheet -->
+            <xpath expr="//sheet/*[1]" position="before">
+                <div class="oe_button_box" name="button_box">
+                    <button class="oe_stat_button" type="object" name="action_generate_payslips" icon="fa-users" invisible="state != 'draft'">
+                        <div class="o_field_widget o_stat_info">
+                            <span class="o_stat_value">
+                                <field name="employee_count"/>
+                            </span>
+                            <span class="o_stat_text">Eligible Emps</span>
+                        </div>
+                    </button>
+                    <button class="oe_stat_button" type="object" name="action_generate_payslips" icon="fa-building" invisible="state != 'draft'">
+                        <div class="o_field_widget o_stat_info">
+                            <span class="o_stat_value">
+                                <field name="department_count"/>
+                            </span>
+                            <span class="o_stat_text">Departments</span>
+                        </div>
+                    </button>
+                    <button class="oe_stat_button" icon="fa-file-text-o" invisible="payslip_count == 0">
+                        <div class="o_field_widget o_stat_info">
+                            <span class="o_stat_value">
+                                <field name="payslip_count"/>
+                            </span>
+                            <span class="o_stat_text">Payslips</span>
+                        </div>
+                    </button>
+                    <button class="oe_stat_button" type="object" name="action_generate_payment_advice" icon="fa-university" invisible="advice_count == 0">
+                        <div class="o_field_widget o_stat_info">
+                            <span class="o_stat_value">1</span>
+                            <span class="o_stat_text">Payment Advice</span>
+                        </div>
+                    </button>
+                </div>
+            </xpath>
+
+            <!-- Scope & Filter Fields -->
+            <xpath expr="//group[1]" position="inside">
+                <field name="struct_id" readonly="state != 'draft'"/>
+                <field name="employee_type_ids" widget="many2many_tags"
+                       placeholder="All Types (or select specific employee types)..."
+                       readonly="state != 'draft'"/>
+                <field name="department_ids" widget="many2many_tags"
+                       placeholder="All Departments (or select specific departments)..."
+                       readonly="state != 'draft'"/>
+            </xpath>
+
+            <!-- Replace Separator & Field slip_ids with Notebook Tabs -->
+            <xpath expr="//separator" position="replace"/>
+            <xpath expr="//field[@name='slip_ids']" position="replace">
+                <notebook>
+                    <page string="Department Breakdown" name="department_breakdown">
+                        <field name="department_summary_ids" readonly="1">
+                            <list string="Department Breakdown" no_open="1">
+                                <field name="department_name"/>
+                                <field name="employee_count" sum="Total Payslips" optional="show"/>
+                                <field name="gross_total" sum="Total Gross Pay" optional="show"/>
+                                <field name="net_total" sum="Total Net Pay" optional="show"/>
+                            </list>
+                        </field>
+                    </page>
+                    <page string="Payslips" name="payslips">
+                        <field name="slip_ids" readonly="state != 'draft'"/>
+                    </page>
+                    <page string="Generation Log" name="generation_log" invisible="not generation_log">
+                        <field name="generation_log" readonly="1"/>
+                    </page>
+                </notebook>
+            </xpath>
+
+        </field>
+    </record>
+
+    <!-- List View Inheritance for Pay Run -->
+    <record id="hr_payslip_run_view_tree_inherit_payrun" model="ir.ui.view">
+        <field name="name">hr.payslip.run.view.list.inherit.payrun</field>
+        <field name="model">hr.payslip.run</field>
+        <field name="inherit_id" ref="hr_payroll_community.hr_payslip_run_view_tree"/>
+        <field name="arch" type="xml">
+            <xpath expr="//field[@name='date_start']" position="attributes">
+                <attribute name="optional">show</attribute>
+            </xpath>
+            <xpath expr="//field[@name='date_end']" position="attributes">
+                <attribute name="optional">show</attribute>
+            </xpath>
+            <xpath expr="//field[@name='credit_note']" position="attributes">
+                <attribute name="optional">hide</attribute>
+            </xpath>
+            <xpath expr="//field[@name='credit_note']" position="after">
+                <field name="department_ids" widget="many2many_tags" optional="show"/>
+                <field name="employee_type_ids" widget="many2many_tags" optional="show"/>
+                <field name="payslip_count" string="Payslips" optional="show"/>
+            </xpath>
+            <xpath expr="//field[@name='state']" position="attributes">
+                <attribute name="widget">badge</attribute>
+                <attribute name="optional">show</attribute>
+            </xpath>
+        </field>
+    </record>
+
+    <!-- Override Main Pay Run Action to Default to List and Support Wizard -->
+    <record id="hr_payroll_community.hr_payslip_run_action" model="ir.actions.act_window">
+        <field name="name">Pay Runs</field>
+        <field name="res_model">hr.payslip.run</field>
+        <field name="view_mode">list,form</field>
+    </record>
+
+    <!-- Header Action Button / Menu Action to Launch New Pay Run Wizard -->
+    <menuitem id="menu_hudson_new_payrun_wizard"
+              name="New Pay Run"
+              action="action_hudson_payrun_wizard"
+              parent="hr_payroll_community.menu_hr_payroll_community_root"
+              sequence="15"/>
+
+</odoo>

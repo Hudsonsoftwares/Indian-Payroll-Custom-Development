@@ -1,0 +1,386 @@
+/* =========================================================
+   Payroll Settings UI Styling (Odoo 19 Dark/Light Harmonized)
+   ========================================================= */
+
+.app_settings_block[data-key="hudson_payroll_base"],
+.app_settings_block[data-key="hr_payroll_community"] {
+
+    /* Full-width horizontal section headers with subtle background contrast */
+    .o_horizontal_separator,
+    h2 {
+        background-color: var(--bs-tertiary-bg, rgba(128, 128, 128, 0.08)) !important;
+        padding: 10px 16px !important;
+        border-radius: 6px !important;
+        font-weight: 600 !important;
+        font-size: 1.12rem !important;
+        letter-spacing: 0.25px !important;
+        margin-top: 24px !important;
+        margin-bottom: 16px !important;
+        border-left: 4px solid var(--o-brand-odoo, #71639e) !important;
+        display: flex !important;
+        align-items: center !important;
+        width: 100% !important;
+        color: var(--bs-body-color, inherit) !important;
+    }
+
+    /* Indented & subtle bordered setting boxes */
+    .o_setting_box {
+        margin-bottom: 14px !important;
+        padding: 10px 14px !important;
+        border-radius: 6px !important;
+        border: 1px solid transparent;
+        transition: background-color 0.15s ease, border-color 0.15s ease;
+
+        &:hover {
+            background-color: var(--bs-secondary-bg, rgba(128, 128, 128, 0.04));
+            border-color: var(--bs-border-color, rgba(128, 128, 128, 0.12));
+        }
+
+        .o_form_label {
+            font-weight: 600 !important;
+            font-size: 0.94rem !important;
+            color: var(--bs-body-color, inherit) !important;
+        }
+
+        .text-muted {
+            font-size: 0.85rem !important;
+            line-height: 1.4 !important;
+            color: var(--bs-secondary-color, #6c757d) !important;
+        }
+
+        .content-group {
+            margin-top: 6px !important;
+        }
+    }
+}
+
+/* =========================================================
+   Pay Run Kanban Full-Width Accordion & Stepper (Screenshot 2 Match)
+   ========================================================= */
+
+.o_kanban_renderer.o_kanban_payrun,
+.o_kanban_renderer.o_kanban_grouped.o_kanban_mobile {
+    display: flex !important;
+    flex-direction: column !important;
+    width: 100% !important;
+    min-width: 100% !important;
+    padding: 16px 24px !important;
+    gap: 16px !important;
+    overflow-x: hidden !important;
+
+    .o_kanban_group {
+        display: flex !important;
+        flex-direction: column !important;
+        width: 100% !important;
+        min-width: 100% !important;
+        max-width: 100% !important;
+        flex: 1 1 100% !important;
+        margin-bottom: 16px !important;
+        padding: 0 !important;
+        border: none !important;
+        background: transparent !important;
+
+        .o_kanban_header {
+            font-size: 1.1rem !important;
+            font-weight: 600 !important;
+            margin-bottom: 10px !important;
+            padding: 4px 0 !important;
+            border: none !important;
+            background: transparent !important;
+            display: flex !important;
+            align-items: center !important;
+        }
+
+        .o_kanban_records {
+            display: flex !important;
+            flex-direction: column !important;
+            gap: 10px !important;
+            width: 100% !important;
+            min-width: 100% !important;
+        }
+
+        .o_kanban_record {
+            display: block !important;
+            width: 100% !important;
+            min-width: 100% !important;
+            max-width: 100% !important;
+            margin: 0 !important;
+            padding: 0 !important;
+            border: none !important;
+            background: transparent !important;
+        }
+    }
+}
+
+/* =========================================================
+   Pay Run Payslip List - Off-Cycle Button & Styling
+   ========================================================= */
+
+.btn-off-cycle {
+    color: #38bdf8 !important;
+    text-decoration: none !important;
+    font-weight: 600 !important;
+    font-size: 0.86rem !important;
+    white-space: nowrap !important;
+    padding: 2px 6px !important;
+    border-radius: 4px !important;
+    transition: all 0.15s ease-in-out !important;
+
+    &:hover {
+        color: #0284c7 !important;
+        background-color: rgba(56, 189, 248, 0.12) !important;
+        text-decoration: none !important;
+    }
+}
+
+/* =========================================================
+   Pay Run Top Summary Banner - High-Visibility Typography
+   ========================================================= */
+
+.o_payrun_summary_banner {
+    background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%) !important;
+    color: #ffffff !important;
+
+    /* Enforce white / light text on all native Odoo field widgets */
+    h2,
+    h2 span,
+    .o_field_char,
+    .o_field_char span,
+    .o_field_char input,
+    .o_field_widget,
+    .o_field_widget span {
+        color: #ffffff !important;
+    }
+
+    .o_field_monetary,
+    .o_field_monetary span,
+    .o_monetary_cell {
+        color: #ffffff !important;
+        font-weight: 700 !important;
+        font-size: 1.25rem !important;
+    }
+
+    .small,
+    .small span {
+        color: #cbd5e1 !important;
+    }
+}
+
+/* Pay Run Details Box (Collapsible Filter Box) */
+.o_payrun_details_box {
+    background-color: var(--bs-tertiary-bg, rgba(128, 128, 128, 0.08)) !important;
+    border: 1px solid var(--bs-border-color, rgba(128, 128, 128, 0.2)) !important;
+    border-radius: 8px !important;
+
+    summary {
+        color: var(--bs-body-color, inherit) !important;
+        user-select: none;
+        outline: none;
+    }
+}
+
+/* =========================================================
+   Payslips Table High Visibility (Dark & Light Mode)
+   ========================================================= */
+
+.o_field_widget[name="slip_ids"] .o_list_table,
+.o_list_view .o_list_table {
+    /* High contrast on numerical cells */
+    td.o_data_cell[name="basic_wage"] {
+        color: #38bdf8 !important;
+        font-weight: 600 !important;
+        span {
+            color: #38bdf8 !important;
+        }
+    }
+
+    td.o_data_cell[name="net_wage"] {
+        color: #4ade80 !important;
+        font-weight: 700 !important;
+        span {
+            color: #4ade80 !important;
+        }
+    }
+
+    td.o_data_cell[name="total_worked_days"] {
+        font-weight: 600 !important;
+        color: var(--bs-body-color, inherit) !important;
+        span {
+            color: var(--bs-body-color, inherit) !important;
+        }
+    }
+
+    /* Paid status badge in orchid/rose purple (#c084fc) matching Screenshot */
+    td.o_data_cell[name="state"] {
+        .badge.text-bg-secondary,
+        .badge.bg-secondary,
+        .text-bg-secondary,
+        .bg-secondary {
+            background-color: #c084fc !important;
+            color: #ffffff !important;
+            -webkit-text-fill-color: #ffffff !important;
+            font-weight: 600 !important;
+            border-radius: 12px !important;
+            padding: 3px 10px !important;
+        }
+    }
+
+    /* Warning cell in Payslips matching Screenshot: cyan/teal text */
+    td.o_data_cell[name="payslip_warning"] {
+        .badge.text-bg-warning,
+        .badge.bg-warning,
+        span.badge {
+            background-color: transparent !important;
+            color: #2dd4bf !important;
+            -webkit-text-fill-color: #2dd4bf !important;
+            font-weight: 500 !important;
+            font-size: 0.88rem !important;
+            border: none !important;
+            padding: 0 !important;
+        }
+    }
+
+    tfoot td {
+        font-weight: 700 !important;
+        color: var(--bs-body-color, inherit) !important;
+        span {
+            color: var(--bs-body-color, inherit) !important;
+        }
+    }
+}
+
+/* =========================================================
+   Pay Run Banner Controls & Buttons High Contrast (Universal)
+   ========================================================= */
+
+.o_payrun_summary_banner {
+    color: #ffffff !important;
+    --btn-color: #ffffff !important;
+    --o-color-text-main: #ffffff !important;
+    --bs-body-color: #ffffff !important;
+    --bs-btn-color: #ffffff !important;
+
+    /* Force all buttons, spans, and icons inside the banner to stay white */
+    .btn,
+    button,
+    .btn-group button,
+    .btn-group .btn,
+    .dropdown button {
+        color: #ffffff !important;
+        -webkit-text-fill-color: #ffffff !important;
+
+        &,
+        span,
+        i,
+        i.fa,
+        * {
+            color: #ffffff !important;
+            -webkit-text-fill-color: #ffffff !important;
+            fill: #ffffff !important;
+        }
+    }
+
+    /* Add Employees & 3-Dot Button */
+    .o_payrun_btn_add,
+    .o_payrun_btn_dots {
+        background-color: #334155 !important;
+        border: 1px solid rgba(255, 255, 255, 0.45) !important;
+        color: #ffffff !important;
+        -webkit-text-fill-color: #ffffff !important;
+        font-weight: 600 !important;
+
+        &, span, i, i.fa, * {
+            color: #ffffff !important;
+            -webkit-text-fill-color: #ffffff !important;
+        }
+
+        &:hover, &:focus, &:active {
+            background-color: #475569 !important;
+            border-color: rgba(255, 255, 255, 0.8) !important;
+            &, span, i, i.fa, * {
+                color: #ffffff !important;
+                -webkit-text-fill-color: #ffffff !important;
+            }
+        }
+    }
+
+    /* Stage Switcher Pills */
+    .o_payrun_stage_btn {
+        &.active,
+        &[data-active="true"] {
+            background-color: #7c3aed !important;
+            border: 1px solid #a855f7 !important;
+            &, span, * {
+                color: #ffffff !important;
+                -webkit-text-fill-color: #ffffff !important;
+                font-weight: 700 !important;
+            }
+        }
+
+        &:not(.active) {
+            background-color: rgba(255, 255, 255, 0.12) !important;
+            border: 1px solid rgba(255, 255, 255, 0.3) !important;
+            &, span, * {
+                color: #f1f5f9 !important;
+                -webkit-text-fill-color: #f1f5f9 !important;
+            }
+
+            &:hover {
+                background-color: rgba(255, 255, 255, 0.25) !important;
+                &, span, * {
+                    color: #ffffff !important;
+                    -webkit-text-fill-color: #ffffff !important;
+                }
+            }
+        }
+    }
+
+    /* 3-Dot Dropdown Menu */
+    .dropdown-menu {
+        border-radius: 8px !important;
+        overflow: hidden !important;
+        background-color: #1e293b !important;
+        border: 1px solid rgba(255, 255, 255, 0.2) !important;
+        box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.6) !important;
+
+        .dropdown-item {
+            color: #f1f5f9 !important;
+            -webkit-text-fill-color: #f1f5f9 !important;
+            transition: background-color 0.15s ease;
+
+            &, span, * {
+                color: #f1f5f9 !important;
+                -webkit-text-fill-color: #f1f5f9 !important;
+            }
+
+            &:hover, &:focus {
+                background-color: #334155 !important;
+                color: #ffffff !important;
+                -webkit-text-fill-color: #ffffff !important;
+                &, span, * {
+                    color: #ffffff !important;
+                    -webkit-text-fill-color: #ffffff !important;
+                }
+            }
+
+            &.text-danger {
+                color: #ef4444 !important;
+                -webkit-text-fill-color: #ef4444 !important;
+                &, span, * {
+                    color: #ef4444 !important;
+                    -webkit-text-fill-color: #ef4444 !important;
+                }
+
+                &:hover, &:focus {
+                    background-color: rgba(239, 68, 68, 0.2) !important;
+                    color: #f87171 !important;
+                    -webkit-text-fill-color: #f87171 !important;
+                }
+            }
+        }
+    }
+}
+
+
+
+

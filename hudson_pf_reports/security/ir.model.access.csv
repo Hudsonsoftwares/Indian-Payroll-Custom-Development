@@ -1,0 +1,15 @@
+id,name,model_id:id,group_id:id,perm_read,perm_write,perm_create,perm_unlink
+access_hds_statutory_report_tile_user,hds.statutory.report.tile.user,model_hds_statutory_report_tile,hudson_payroll_base.group_payroll_user,1,0,0,0
+access_hds_statutory_report_tile_manager,hds.statutory.report.tile.manager,model_hds_statutory_report_tile,hudson_payroll_base.group_payroll_manager,1,1,1,1
+access_hds_pf_ecr_wizard_user,hds.pf.ecr.wizard.user,model_hds_pf_ecr_wizard,hudson_payroll_base.group_payroll_user,1,1,1,1
+access_hds_pf_register_wizard_user,hds.pf.register.wizard.user,model_hds_pf_register_wizard,hudson_payroll_base.group_payroll_user,1,1,1,1
+access_hds_pf_monthly_summary_wizard_user,hds.pf.monthly.summary.wizard.user,model_hds_pf_monthly_summary_wizard,hudson_payroll_base.group_payroll_user,1,1,1,1
+access_hds_pf_contribution_wizard_user,hds.pf.contribution.wizard.user,model_hds_pf_contribution_wizard,hudson_payroll_base.group_payroll_user,1,1,1,1
+access_hds_pf_ledger_wizard_user,hds.pf.ledger.wizard.user,model_hds_pf_ledger_wizard,hudson_payroll_base.group_payroll_user,1,1,1,1
+access_hds_pf_basis_wizard_user,hds.pf.basis.wizard.user,model_hds_pf_basis_wizard,hudson_payroll_base.group_payroll_user,1,1,1,1
+access_hds_pf_ceiling_exception_wizard_user,hds.pf.ceiling.exception.wizard.user,model_hds_pf_ceiling_exception_wizard,hudson_payroll_base.group_payroll_user,1,1,1,1
+access_hds_pf_variance_wizard_user,hds.pf.variance.wizard.user,model_hds_pf_variance_wizard,hudson_payroll_base.group_payroll_user,1,1,1,1
+access_hds_pf_joiners_resigned_wizard_user,hds.pf.joiners.resigned.wizard.user,model_hds_pf_joiners_resigned_wizard,hudson_payroll_base.group_payroll_user,1,1,1,1
+access_hds_pf_reconciliation_wizard_user,hds.pf.reconciliation.wizard.user,model_hds_pf_reconciliation_wizard,hudson_payroll_base.group_payroll_user,1,1,1,1
+access_hds_pf_salary_revision_wizard_user,hds.pf.salary.revision.wizard.user,model_hds_pf_salary_revision_wizard,hudson_payroll_base.group_payroll_user,1,1,1,1
+access_hds_pf_uan_register_wizard_user,hds.pf.uan.register.wizard.user,model_hds_pf_uan_register_wizard,hudson_payroll_base.group_payroll_user,1,1,1,1

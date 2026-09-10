@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <!-- View Inheritance for Payroll Dashboard in Final Settlement Module -->
+    <record id="hds_payroll_dashboard_view_form_inherit_final_settlement" model="ir.ui.view">
+        <field name="name">hds.payroll.dashboard.form.inherit.final.settlement</field>
+        <field name="model">hds.payroll.dashboard</field>
+        <field name="inherit_id" ref="hudson_in_payroll.hds_payroll_dashboard_view_form"/>
+        <field name="arch" type="xml">
+            <xpath expr="//header" position="inside">
+                <button name="action_view_final_settlements_due" string="Final Settlements Due →" type="object" class="btn-secondary"/>
+            </xpath>
+        </field>
+    </record>
+</odoo>

@@ -1,0 +1,140 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <!-- List / Tree View for Statutory Payroll Audit Log -->
+    <record id="hds_in_payroll_audit_view_tree" model="ir.ui.view">
+        <field name="name">hds.in.payroll.audit.list</field>
+        <field name="model">hds.in.payroll.audit</field>
+        <field name="arch" type="xml">
+            <list string="Statutory Audit Logs" create="false" edit="false" delete="true"
+                  decoration-success="status == 'success'"
+                  decoration-warning="status == 'warning'"
+                  decoration-danger="status == 'error'">
+                <field name="calculation_date"/>
+                <field name="statutory_module" optional="show"/>
+                <field name="rule_code" optional="show"/>
+                <field name="employee_id"/>
+                <field name="payslip_id" optional="show"/>
+                <field name="execution_time_ms" optional="show"/>
+                <field name="status" widget="badge"
+                       decoration-success="status == 'success'"
+                       decoration-warning="status == 'warning'"
+                       decoration-danger="status == 'error'"/>
+                <field name="company_id" groups="base.group_multi_company" optional="hide"/>
+            </list>
+        </field>
+    </record>
+
+    <!-- Form View for Statutory Payroll Audit Log -->
+    <record id="hds_in_payroll_audit_view_form" model="ir.ui.view">
+        <field name="name">hds.in.payroll.audit.form</field>
+        <field name="model">hds.in.payroll.audit</field>
+        <field name="arch" type="xml">
+            <form string="Statutory Calculation Audit Log" create="false" edit="false">
+                <header>
+                    <field name="status" widget="statusbar" statusbar_visible="success,warning,error"/>
+                </header>
+                <sheet>
+                    <div class="oe_title">
+                        <h1>
+                            <field name="display_name"/>
+                        </h1>
+                    </div>
+                    <group>
+                        <group string="Calculation Context">
+                            <field name="employee_id"/>
+                            <field name="payslip_id"/>
+                            <field name="statutory_module"/>
+                            <field name="rule_code"/>
+                        </group>
+                        <group string="Execution Metrics">
+                            <field name="calculation_date"/>
+                            <field name="calculation_type"/>
+                            <field name="execution_time_ms"/>
+                            <field name="version"/>
+                            <field name="company_id" groups="base.group_multi_company"/>
+                        </group>
+                    </group>
+
+                    <notebook>
+                        <page string="Inputs (JSON)" name="inputs">
+                            <field name="inputs_json"/>
+                        </page>
+                        <page string="Outputs (JSON)" name="outputs">
+                            <field name="outputs_json"/>
+                        </page>
+                        <page string="Applied Parameters (JSON)" name="parameters">
+                            <field name="parameters_json"/>
+                        </page>
+                        <page string="Messages &amp; Warnings" name="messages" invisible="not messages and not warnings">
+                            <group string="Audit Messages" invisible="not messages">
+                                <field name="messages" nolabel="1"/>
+                            </group>
+                            <group string="Warnings" invisible="not warnings">
+                                <field name="warnings" nolabel="1"/>
+                            </group>
+                        </page>
+                        <page string="Exception Trace" name="exception" invisible="status != 'error'">
+                            <field name="exception_trace"/>
+                        </page>
+                    </notebook>
+                </sheet>
+            </form>
+        </field>
+    </record>
+
+    <!-- Search View for Statutory Payroll Audit Log -->
+    <record id="hds_in_payroll_audit_view_search" model="ir.ui.view">
+        <field name="name">hds.in.payroll.audit.search</field>
+        <field name="model">hds.in.payroll.audit</field>
+        <field name="arch" type="xml">
+            <search string="Search Statutory Audit Logs">
+                <field name="employee_id"/>
+                <field name="payslip_id"/>
+                <field name="rule_code"/>
+                <field name="statutory_module"/>
+
+                <filter string="Success" name="filter_success" domain="[('status', '=', 'success')]"/>
+                <filter string="Warnings" name="filter_warning" domain="[('status', '=', 'warning')]"/>
+                <filter string="Errors" name="filter_error" domain="[('status', '=', 'error')]"/>
+
+                <separator/>
+                <filter string="EPF Audits" name="filter_epf" domain="[('statutory_module', '=', 'epf')]"/>
+                <filter string="ESIC Audits" name="filter_esic" domain="[('statutory_module', '=', 'esic')]"/>
+                <filter string="PT Audits" name="filter_pt" domain="[('statutory_module', '=', 'pt')]"/>
+                <filter string="TDS Audits" name="filter_tds" domain="[('statutory_module', '=', 'tds')]"/>
+
+                <group>
+                    <filter string="Employee" name="group_by_employee" context="{'group_by': 'employee_id'}"/>
+                    <filter string="Statutory Module" name="group_by_module" context="{'group_by': 'statutory_module'}"/>
+                    <filter string="Rule Code" name="group_by_rule" context="{'group_by': 'rule_code'}"/>
+                    <filter string="Status" name="group_by_status" context="{'group_by': 'status'}"/>
+                    <filter string="Calculation Date" name="group_by_date" context="{'group_by': 'calculation_date'}"/>
+                    <filter string="Company" name="group_by_company" context="{'group_by': 'company_id'}" groups="base.group_multi_company"/>
+                </group>
+            </search>
+        </field>
+    </record>
+
+    <!-- Window Action for Statutory Audit Logs -->
+    <record id="hds_in_payroll_audit_action" model="ir.actions.act_window">
+        <field name="name">Statutory Audit Logs</field>
+        <field name="res_model">hds.in.payroll.audit</field>
+        <field name="view_mode">list,form</field>
+        <field name="search_view_id" ref="hds_in_payroll_audit_view_search"/>
+        <field name="help" type="html">
+            <p class="o_view_nocontent_smiling_face">
+                No statutory calculation audit logs recorded yet.
+            </p>
+            <p>
+                Statutory audit records are generated automatically during payslip compute_sheet execution.
+            </p>
+        </field>
+    </record>
+
+    <!-- Menuitem for Statutory Audit Logs under Operations -->
+    <menuitem id="menu_hds_in_payroll_audit"
+              name="Statutory Audit Logs"
+              action="hds_in_payroll_audit_action"
+              parent="hudson_payroll_base.menu_hr_payroll_operations"
+              sequence="40"/>
+</odoo>

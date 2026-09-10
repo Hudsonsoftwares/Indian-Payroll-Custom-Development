@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo noupdate="1">
+
+    <!-- Email Template for Payment Advice -->
+    <record id="mail_template_payment_advice" model="mail.template">
+        <field name="name">Payment Advice: Send to Bank</field>
+        <field name="model_id" ref="model_hudson_payroll_payment_advice"/>
+        <field name="subject">Salary Disbursement Advice - {{ object.name }} - {{ object.company_id.name }}</field>
+        <field name="email_from">{{ (object.company_id.email_formatted or object.company_id.email or user.email_formatted) }}</field>
+        <field name="partner_to"></field>
+        <field name="body_html" type="html">
+            <div style="font-family: Arial, Helvetica, sans-serif; font-size: 14px; color: #333333;">
+                <p>Dear Bank Manager / Corporate Desk,</p>
+                <p>
+                    Please find attached the official Salary Payment Advice (Ref: <strong><t t-out="object.name"/></strong>) 
+                    for <strong><t t-out="object.company_id.name"/></strong> dated <t t-out="object.date"/>.
+                </p>
+                <p>
+                    <strong>Total Disbursement Amount:</strong> 
+                    <strong style="color: #28a745;">
+                        <t t-out="format_amount(object.total_amount, object.company_id.currency_id)"/>
+                    </strong>
+                </p>
+                <p>
+                    <strong>Disbursing Account:</strong> 
+                    <t t-out="object.company_bank_id.acc_number"/> 
+                    (<t t-out="object.company_bank_id.bank_id.name or 'Bank'"/>)
+                </p>
+                <p>
+                    Kindly execute the salary transfers to the respective employee accounts listed in the attached advice statement.
+                </p>
+                <t t-if="object.note">
+                    <p><strong>Additional Instructions:</strong><br/>
+                    <t t-out="object.note"/></p>
+                </t>
+                <br/>
+                <p>Best regards,</p>
+                <p>
+                    <strong><t t-out="user.name"/></strong><br/>
+                    <t t-out="object.company_id.name"/>
+                </p>
+            </div>
+        </field>
+        <field name="report_template_ids" eval="[(4, ref('action_report_payment_advice'))]"/>
+    </record>
+
+</odoo>
