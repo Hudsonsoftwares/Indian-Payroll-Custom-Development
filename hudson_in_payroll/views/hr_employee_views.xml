@@ -35,13 +35,86 @@
 
             <!-- Position Employer Cost fields in Left Column (Contract Overview) right below wage -->
             <xpath expr="//div[@name='wage']" position="after">
-                <field name="hds_in_employer_cost_monthly" widget="monetary" readonly="1"/>
-                <field name="hds_in_employer_cost_annual" string="Employer Cost to Company (Annual CTC)" widget="monetary" readonly="1"/>
+                <label for="hds_in_employer_cost_annual" string="Employer Cost"/>
+                <div class="o_row" name="employer_cost_row">
+                    <field name="hds_in_employer_cost_annual" class="oe_inline o_hr_narrow_field" widget="monetary" readonly="1" nolabel="1"/>
+                    <span class="text-muted ms-2">/ year</span>
+                </div>
             </xpath>
 
-            <!-- Right Column: Benefits and ESIC stacked in a single 2nd column -->
+            <!-- Right Column: Salary Components and Benefits stacked in 2nd column matching Screenshot 5 -->
             <xpath expr="//group[@name='contract']" position="after">
-                <group name="benefits_group" string="Benefits">
+                <group name="salary_components_and_benefits">
+                    <div colspan="2" class="col-lg-6 w-100 mt-4 mb-3 o_horizontal_separator text-uppercase fw-bolder small d-flex">
+                        <span>Salary Components</span>
+                    </div>
+
+                    <label for="basic_salary"/>
+                    <div class="o_row w-100 d-flex align-items-center justify-content-between">
+                        <div class="d-flex align-items-center">
+                            <field name="basic_salary" class="oe_inline o_hr_narrow_field" widget="monetary" nolabel="1" style="max-width: 120px;"/>
+                            <span class="text-muted ms-2 text-nowrap">/ month</span>
+                        </div>
+                        <span class="ms-auto text-muted text-nowrap text-end pe-2" style="min-width: 4.5rem;"><field name="basic_salary_percent" readonly="1"/> %</span>
+                    </div>
+
+                    <label for="da" string="Dearness Allowance"/>
+                    <div class="o_row w-100 d-flex align-items-center justify-content-between">
+                        <div class="d-flex align-items-center">
+                            <field name="da" class="oe_inline o_hr_narrow_field" widget="monetary" nolabel="1" style="max-width: 120px;"/>
+                            <span class="text-muted ms-2 text-nowrap">/ month</span>
+                        </div>
+                        <span class="ms-auto text-muted text-nowrap text-end pe-2" style="min-width: 4.5rem;"><field name="da_percent" readonly="1"/> %</span>
+                    </div>
+
+                    <label for="hra" string="House Rent Allowance"/>
+                    <div class="o_row w-100 d-flex align-items-center justify-content-between">
+                        <div class="d-flex align-items-center">
+                            <field name="hra" class="oe_inline o_hr_narrow_field" widget="monetary" nolabel="1" style="max-width: 120px;"/>
+                            <span class="text-muted ms-2 text-nowrap">/ month</span>
+                        </div>
+                        <span class="ms-auto text-muted text-nowrap text-end pe-2" style="min-width: 4.5rem;"><field name="hra_percent" readonly="1"/> %</span>
+                    </div>
+
+                    <label for="standard_allowance"/>
+                    <div class="o_row w-100 d-flex align-items-center justify-content-between">
+                        <div class="d-flex align-items-center">
+                            <field name="standard_allowance" class="oe_inline o_hr_narrow_field" widget="monetary" nolabel="1" style="max-width: 120px;"/>
+                            <span class="text-muted ms-2 text-nowrap">/ month</span>
+                        </div>
+                        <span class="ms-auto text-muted text-nowrap text-end pe-2" style="min-width: 4.5rem;"><field name="standard_allowance_percent" readonly="1"/> %</span>
+                    </div>
+
+                    <label for="performance_bonus"/>
+                    <div class="o_row w-100 d-flex align-items-center justify-content-between">
+                        <div class="d-flex align-items-center">
+                            <field name="performance_bonus" class="oe_inline o_hr_narrow_field" widget="monetary" nolabel="1" style="max-width: 120px;"/>
+                            <span class="text-muted ms-2 text-nowrap">/ month</span>
+                        </div>
+                        <span class="ms-auto text-muted text-nowrap text-end pe-2" style="min-width: 4.5rem;"><field name="performance_bonus_percent" readonly="1"/> %</span>
+                    </div>
+
+                    <label for="lta_allowance"/>
+                    <div class="o_row w-100 d-flex align-items-center justify-content-between">
+                        <div class="d-flex align-items-center">
+                            <field name="lta_allowance" class="oe_inline o_hr_narrow_field" widget="monetary" nolabel="1" style="max-width: 120px;"/>
+                            <span class="text-muted ms-2 text-nowrap">/ month</span>
+                        </div>
+                        <span class="ms-auto text-muted text-nowrap text-end pe-2" style="min-width: 4.5rem;"><field name="lta_percent" readonly="1"/> %</span>
+                    </div>
+
+                    <label for="fixed_allowance"/>
+                    <div class="o_row w-100 d-flex align-items-center justify-content-between">
+                        <div class="d-flex align-items-center">
+                            <field name="fixed_allowance" class="oe_inline o_hr_narrow_field" widget="monetary" nolabel="1" style="max-width: 120px;"/>
+                            <span class="text-muted ms-2 text-nowrap">/ month</span>
+                        </div>
+                        <span class="ms-auto text-muted text-nowrap text-end pe-2" style="min-width: 4.5rem;"><field name="fixed_allowance_percent" readonly="1"/> %</span>
+                    </div>
+
+                    <div colspan="2" class="col-lg-6 w-100 mt-4 mb-3 o_horizontal_separator text-uppercase fw-bolder small d-flex">
+                        <span>Benefits</span>
+                    </div>
                     <label for="benefit_phone" string="Phone Subscription"/>
                     <div class="o_row" name="benefit_phone_row">
                         <field name="benefit_phone" class="oe_inline o_hr_narrow_field" widget="monetary" nolabel="1"/>

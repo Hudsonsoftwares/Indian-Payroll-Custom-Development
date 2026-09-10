@@ -111,8 +111,171 @@ class TdsFinancialYear(models.Model):
         for rec in self:
             dist_m = max(1, min(12, int(rec.tds_recalculation_distribution_months or 3)))
             start_fy_idx = 12 - dist_m + 1
-            cal_m = start_fy_idx + 3 if start_fy_idx <= 9 else start_fy_idx - 9
             rec.tds_recalculation_from_month = str(cal_m)
+
+    @api.model
+    def default_get(self, fields_list):
+        res = super(TdsFinancialYear, self).default_get(fields_list)
+        # 1. Look for the latest financial year to clone slabs and surcharges from
+        source_fy = self.search([('active', '=', True)], order='end_date desc, id desc', limit=1)
+        if not source_fy:
+            source_fy = self.with_context(active_test=False).search([], order='end_date desc, id desc', limit=1)
+
+        if source_fy:
+            try:
+                start_yr = source_fy.start_date.year + 1
+                end_yr = source_fy.end_date.year + 1
+                if 'start_date' in fields_list and not res.get('start_date'):
+                    res['start_date'] = fields.Date.from_string(f"{start_yr}-04-01")
+                if 'end_date' in fields_list and not res.get('end_date'):
+                    res['end_date'] = fields.Date.from_string(f"{end_yr}-03-31")
+                if 'code' in fields_list and not res.get('code'):
+                    res['code'] = f"{start_yr}-{end_yr}"
+                if 'assessment_year' in fields_list and not res.get('assessment_year'):
+                    res['assessment_year'] = f"{end_yr}-{end_yr + 1}"
+                if 'name' in fields_list and not res.get('name'):
+                    res['name'] = f"FY {start_yr}-{str(end_yr)[-2:]} (AY {end_yr}-{str(end_yr + 1)[-2:]})"
+            except Exception:
+                pass
+
+            target_date = res.get('start_date') or source_fy.start_date
+            # Pre-populate tax slabs from source_fy
+            if 'tax_slab_ids' in fields_list and not res.get('tax_slab_ids'):
+                tax_slabs = []
+                for slab in source_fy.tax_slab_ids:
+                    tax_slabs.append((0, 0, {
+                        'regime_id': slab.regime_id.id,
+                        'regime_code': slab.regime_code,
+                        'sequence': slab.sequence,
+                        'income_from': slab.income_from,
+                        'income_to': slab.income_to,
+                        'rate': slab.rate,
+                        'date_from': target_date,
+                        'active': True,
+                    }))
+                if tax_slabs:
+                    res['tax_slab_ids'] = tax_slabs
+
+            # Pre-populate surcharge slabs from source_fy
+            if 'surcharge_ids' in fields_list and not res.get('surcharge_ids'):
+                surcharges = []
+                for sur in source_fy.surcharge_ids:
+                    surcharges.append((0, 0, {
+                        'regime_id': sur.regime_id.id,
+                        'regime_code': sur.regime_code,
+                        'sequence': sur.sequence,
+                        'income_from': sur.income_from,
+                        'income_to': sur.income_to,
+                        'surcharge_rate': sur.surcharge_rate,
+                        'date_from': target_date,
+                        'active': True,
+                    }))
+                if surcharges:
+                    res['surcharge_ids'] = surcharges
+        else:
+            # Fallback if no financial year exists at all in the database: propose 2026-2027 defaults
+            if 'start_date' in fields_list and not res.get('start_date'):
+                res['start_date'] = fields.Date.from_string("2026-04-01")
+            if 'end_date' in fields_list and not res.get('end_date'):
+                res['end_date'] = fields.Date.from_string("2027-03-31")
+            if 'code' in fields_list and not res.get('code'):
+                res['code'] = "2026-2027"
+            if 'assessment_year' in fields_list and not res.get('assessment_year'):
+                res['assessment_year'] = "2027-2028"
+            if 'name' in fields_list and not res.get('name'):
+                res['name'] = "FY 2026-27 (AY 2027-28)"
+
+            regime_new = self.env.ref('hudson_in_payroll.hds_in_tds_regime_new', raise_if_not_found=False) or self.env['tds.tax.regime'].search([('code', '=', 'new')], limit=1)
+            regime_old = self.env.ref('hudson_in_payroll.hds_in_tds_regime_old', raise_if_not_found=False) or self.env['tds.tax.regime'].search([('code', '=', 'old')], limit=1)
+            date_from = res.get('start_date') or fields.Date.from_string("2026-04-01")
+
+            if 'tax_slab_ids' in fields_list and not res.get('tax_slab_ids'):
+                default_slabs = []
+                if regime_new:
+                    new_slabs = [
+                        (1, 0.0, 400000.0, 0.0),
+                        (2, 400000.0, 800000.0, 5.0),
+                        (3, 800000.0, 1200000.0, 10.0),
+                        (4, 1200000.0, 1600000.0, 15.0),
+                        (5, 1600000.0, 2000000.0, 20.0),
+                        (6, 2000000.0, 2400000.0, 25.0),
+                        (7, 2400000.0, 0.0, 30.0),
+                    ]
+                    for seq, inc_from, inc_to, rate in new_slabs:
+                        default_slabs.append((0, 0, {
+                            'regime_id': regime_new.id,
+                            'regime_code': 'new',
+                            'sequence': seq,
+                            'income_from': inc_from,
+                            'income_to': inc_to,
+                            'rate': rate,
+                            'date_from': date_from,
+                            'active': True,
+                        }))
+                if regime_old:
+                    old_slabs = [
+                        (10, 0.0, 250000.0, 0.0),
+                        (11, 250000.0, 500000.0, 5.0),
+                        (12, 500000.0, 1000000.0, 20.0),
+                        (13, 1000000.0, 0.0, 30.0),
+                    ]
+                    for seq, inc_from, inc_to, rate in old_slabs:
+                        default_slabs.append((0, 0, {
+                            'regime_id': regime_old.id,
+                            'regime_code': 'old',
+                            'sequence': seq,
+                            'income_from': inc_from,
+                            'income_to': inc_to,
+                            'rate': rate,
+                            'date_from': date_from,
+                            'active': True,
+                        }))
+                if default_slabs:
+                    res['tax_slab_ids'] = default_slabs
+
+            if 'surcharge_ids' in fields_list and not res.get('surcharge_ids'):
+                default_sur = []
+                if regime_new:
+                    sur_new = [
+                        (1, 0.0, 5000000.0, 0.0),
+                        (2, 5000000.0, 10000000.0, 10.0),
+                        (3, 10000000.0, 20000000.0, 15.0),
+                        (4, 20000000.0, 0.0, 25.0),
+                    ]
+                    for seq, inc_from, inc_to, srate in sur_new:
+                        default_sur.append((0, 0, {
+                            'regime_id': regime_new.id,
+                            'regime_code': 'new',
+                            'sequence': seq,
+                            'income_from': inc_from,
+                            'income_to': inc_to,
+                            'surcharge_rate': srate,
+                            'date_from': date_from,
+                            'active': True,
+                        }))
+                if regime_old:
+                    sur_old = [
+                        (10, 0.0, 5000000.0, 0.0),
+                        (11, 5000000.0, 10000000.0, 10.0),
+                        (12, 10000000.0, 20000000.0, 15.0),
+                        (13, 20000000.0, 50000000.0, 25.0),
+                        (14, 50000000.0, 0.0, 37.0),
+                    ]
+                    for seq, inc_from, inc_to, srate in sur_old:
+                        default_sur.append((0, 0, {
+                            'regime_id': regime_old.id,
+                            'regime_code': 'old',
+                            'sequence': seq,
+                            'income_from': inc_from,
+                            'income_to': inc_to,
+                            'surcharge_rate': srate,
+                            'date_from': date_from,
+                            'active': True,
+                        }))
+                if default_sur:
+                    res['surcharge_ids'] = default_sur
+
+        return res
 
     _sql_constraints = [
         ('code_unique', 'unique(code)', 'The Financial Year Code must be unique!')

@@ -3,56 +3,29 @@
     <record id="res_config_settings_view_form" model="ir.ui.view">
         <field name="name">res.config.settings.view.form.inherit.hudson.attendance.payroll.link</field>
         <field name="model">res.config.settings</field>
-        <field name="inherit_id" ref="hudson_payroll_base.res_config_settings_view_form"/>
+        <field name="inherit_id" ref="hr_attendance.res_config_settings_view_form"/>
         <field name="arch" type="xml">
-            <xpath expr="//app[@name='hudson_payroll_base']" position="inside">
-                <h2>Attendance &amp; Payroll Connection</h2>
-                <div class="row mt16 o_settings_container">
-                    <div class="col-12 col-lg-6 o_setting_box">
-                        <div class="o_setting_right_pane">
-                            <span class="o_form_label">Standard Working Days / Month</span>
-                            <div class="text-muted">
-                                Standard divisor days per month for hourly rate calculation.
-                            </div>
-                            <div class="content-group mt8">
-                                <field name="standard_working_days_per_month"/>
-                            </div>
+            <xpath expr="//app[@name='hr_attendance']" position="inside">
+                <block title="Attendance &amp; Payroll Connection" name="attendance_payroll_connection_setting_container">
+                    <setting id="standard_working_days_setting" string="Standard Working Days / Month" help="Standard divisor days per month for hourly rate calculation.">
+                        <div class="content-group mt4">
+                            <field name="standard_working_days_per_month"/>
                         </div>
-                    </div>
-                    <div class="col-12 col-lg-6 o_setting_box">
-                        <div class="o_setting_right_pane">
-                            <span class="o_form_label">Standard Hours / Day</span>
-                            <div class="text-muted">
-                                Standard hours per day for hourly rate calculation.
-                            </div>
-                            <div class="content-group mt8">
-                                <field name="standard_hours_per_day"/>
-                            </div>
+                    </setting>
+                    <setting id="standard_hours_per_day_setting" string="Standard Hours / Day" help="Standard hours per day for hourly rate calculation.">
+                        <div class="content-group mt4">
+                            <field name="standard_hours_per_day"/>
                         </div>
-                    </div>
-                    <div class="col-12 col-lg-6 o_setting_box">
-                        <div class="o_setting_right_pane">
-                            <span class="o_form_label">Overtime Rate Multiplier</span>
-                            <div class="text-muted">
-                                Default multiplier for overtime rate calculation.
-                            </div>
-                            <div class="content-group mt8">
-                                <field name="overtime_multiplier"/>
-                            </div>
+                    </setting>
+                    <setting id="overtime_multiplier_setting" string="Overtime Rate Multiplier" help="Default multiplier for overtime rate calculation.">
+                        <div class="content-group mt4">
+                            <field name="overtime_multiplier"/>
                         </div>
-                    </div>
-                    <div class="col-12 col-lg-6 o_setting_box">
-                        <div class="o_setting_left_pane">
-                            <field name="pay_overtime"/>
-                        </div>
-                        <div class="o_setting_right_pane">
-                            <span class="o_form_label">Pay Overtime</span>
-                            <div class="text-muted">
-                                Enable or disable overtime salary calculations and payouts on payslips.
-                            </div>
-                        </div>
-                    </div>
-                </div>
+                    </setting>
+                    <setting id="pay_overtime_setting" string="Pay Overtime" help="Enable or disable overtime salary calculations and payouts on payslips.">
+                        <field name="pay_overtime"/>
+                    </setting>
+                </block>
             </xpath>
         </field>
     </record>

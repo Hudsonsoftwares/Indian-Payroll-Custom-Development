@@ -26,20 +26,7 @@ class HrVersion(models.Model):
         help="Annual Employer Cost to Company (CTC)."
     )
 
-    # Allowances & Benefits (Indian Payroll)
-    lta_allowance = fields.Monetary(
-        string='Leave Travel Allowance',
-        tracking=True,
-        currency_field='currency_id',
-        help="Monthly Leave Travel Allowance (LTA)"
-    )
-    lta_percent = fields.Float(
-        string='LTA %',
-        compute='_compute_lta_percent',
-        store=True,
-        digits=(16, 2),
-        help="LTA percentage relative to wage"
-    )
+    # Benefits (Indian Payroll)
     benefit_phone = fields.Monetary(
         string='Phone Subscription',
         tracking=True,
@@ -64,14 +51,6 @@ class HrVersion(models.Model):
         currency_field='currency_id',
         help="Monthly Company Transport benefit"
     )
-
-    @api.depends('lta_allowance', 'wage')
-    def _compute_lta_percent(self):
-        for rec in self:
-            if rec.wage and rec.lta_allowance:
-                rec.lta_percent = round((rec.lta_allowance / rec.wage) * 100.0, 2)
-            else:
-                rec.lta_percent = 0.0
 
 
 

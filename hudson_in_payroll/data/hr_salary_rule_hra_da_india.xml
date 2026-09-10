@@ -41,5 +41,41 @@
             <field name="appears_on_payslip" eval="True"/>
         </record>
 
+        <record id="hr_rule_standard_allowance_india" model="hr.salary.rule">
+            <field name="name">Standard Allowance</field>
+            <field name="code">STD_ALW</field>
+            <field name="sequence">18</field>
+            <field name="category_id" ref="hudson_payroll_base.rule_category_alw"/>
+            <field name="struct_id" ref="hudson_payroll_base.structure_base"/>
+            <field name="condition_select">none</field>
+            <field name="amount_select">code</field>
+            <field name="amount_python_compute"><![CDATA[result = contract.standard_allowance or 0.0]]></field>
+            <field name="appears_on_payslip" eval="True"/>
+        </record>
+
+        <record id="hr_rule_performance_bonus_india" model="hr.salary.rule">
+            <field name="name">Performance Bonus</field>
+            <field name="code">PERF_BONUS</field>
+            <field name="sequence">19</field>
+            <field name="category_id" ref="hudson_payroll_base.rule_category_alw"/>
+            <field name="struct_id" ref="hudson_payroll_base.structure_base"/>
+            <field name="condition_select">none</field>
+            <field name="amount_select">code</field>
+            <field name="amount_python_compute"><![CDATA[result = contract.performance_bonus or 0.0]]></field>
+            <field name="appears_on_payslip" eval="True"/>
+        </record>
+
+        <record id="hr_rule_lta_india" model="hr.salary.rule">
+            <field name="name">Leave Travel Allowance</field>
+            <field name="code">LTA</field>
+            <field name="sequence">20</field>
+            <field name="category_id" ref="hudson_payroll_base.rule_category_alw"/>
+            <field name="struct_id" ref="hudson_payroll_base.structure_base"/>
+            <field name="condition_select">none</field>
+            <field name="amount_select">code</field>
+            <field name="amount_python_compute"><![CDATA[result = contract.lta_allowance or 0.0]]></field>
+            <field name="appears_on_payslip" eval="True"/>
+        </record>
+
     </data>
 </odoo>

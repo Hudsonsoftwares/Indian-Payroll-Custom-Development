@@ -17,6 +17,26 @@
             <field name="hds_in_include_in_pf_wage">False</field>
         </record>
 
+        <!-- Standard Allowance -> Include in PF Wage = False -->
+        <record id="hr_rule_standard_allowance_india" model="hr.salary.rule">
+            <field name="hds_in_include_in_pf_wage">False</field>
+        </record>
+
+        <!-- Performance Bonus -> Include in PF Wage = False -->
+        <record id="hr_rule_performance_bonus_india" model="hr.salary.rule">
+            <field name="hds_in_include_in_pf_wage">False</field>
+        </record>
+
+        <!-- Leave Travel Allowance (LTA) -> Include in PF Wage = False -->
+        <record id="hr_rule_lta_india" model="hr.salary.rule">
+            <field name="hds_in_include_in_pf_wage">False</field>
+        </record>
+
+        <!-- Fixed Allowance -> Include in PF Wage = False -->
+        <record id="hr_rule_fixed_allowance_india" model="hr.salary.rule">
+            <field name="hds_in_include_in_pf_wage">False</field>
+        </record>
+
         <!-- Unpaid Leave Deduction (UNPAID) -> Include in PF Wage = False -->
         <record id="hudson_attendance_payroll_link.hr_rule_unpaid" model="hr.salary.rule">
             <field name="hds_in_include_in_pf_wage">False</field>

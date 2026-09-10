@@ -41,6 +41,7 @@ This module establishes the statutory configuration foundation for UAE Payroll:
         'views/hr_salary_rule_views.xml',
         'views/hr_rule_parameter_views.xml',
     ],
+    'post_init_hook': 'post_init_hook',
     'installable': True,
     'application': False,
     'auto_install': False,

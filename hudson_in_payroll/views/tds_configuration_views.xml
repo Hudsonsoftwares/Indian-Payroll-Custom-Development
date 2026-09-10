@@ -93,17 +93,39 @@
         </field>
     </record>
 
+    <!-- Financial Year Search View -->
+    <record id="tds_financial_year_view_search" model="ir.ui.view">
+        <field name="name">tds.financial.year.search</field>
+        <field name="model">tds.financial.year</field>
+        <field name="arch" type="xml">
+            <search string="Search Financial Years">
+                <field name="name" string="Financial Year" filter_domain="['|', ('name', 'ilike', self), ('code', 'ilike', self)]"/>
+                <field name="code"/>
+                <field name="assessment_year"/>
+                <filter string="Open" name="filter_open" domain="[('is_closed', '=', False)]"/>
+                <filter string="Closed" name="filter_closed" domain="[('is_closed', '=', True)]"/>
+                <separator/>
+                <filter string="Archived" name="inactive" domain="[('active', '=', False)]"/>
+                <group>
+                    <filter string="Assessment Year" name="group_assessment_year" context="{'group_by': 'assessment_year'}"/>
+                    <filter string="Status" name="group_status" context="{'group_by': 'is_closed'}"/>
+                </group>
+            </search>
+        </field>
+    </record>
+
     <!-- Financial Year Action -->
     <record id="action_tds_financial_year" model="ir.actions.act_window">
         <field name="name">Financial Years</field>
         <field name="res_model">tds.financial.year</field>
         <field name="view_mode">list,form</field>
+        <field name="search_view_id" ref="tds_financial_year_view_search"/>
         <field name="help" type="html">
             <p class="o_view_nocontent_smiling_face">
                 Create a new TDS Financial Year
             </p>
             <p>
-                Manage Indian Income Tax Financial Years (e.g. FY 2025-26) and Assessment Years (AY 2026-27).
+                Manage Indian Income Tax Financial Years (e.g. FY 2026-27) and Assessment Years (AY 2027-28).
             </p>
         </field>
     </record>

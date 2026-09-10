@@ -2,7 +2,7 @@
 <odoo>
     <data noupdate="0">
         <!-- ============================================================= -->
-        <!-- NEW TAX REGIME SURCHARGE SLABS (FY 2025-26 / AY 2026-27)      -->
+        <!-- NEW TAX REGIME SURCHARGE SLABS (FY 2026-27 / AY 2027-28)      -->
         <!-- ============================================================= -->
 
         <!-- Surcharge 1: 0 - 50,00,000 (0%) -->
@@ -14,7 +14,7 @@
             <field name="income_from">0.0</field>
             <field name="income_to">5000000.0</field>
             <field name="surcharge_rate">0.0</field>
-            <field name="date_from">2025-04-01</field>
+            <field name="date_from">2026-04-01</field>
         </record>
 
         <!-- Surcharge 2: 50,00,000 - 1,00,00,000 (10%) -->
@@ -26,7 +26,7 @@
             <field name="income_from">5000000.0</field>
             <field name="income_to">10000000.0</field>
             <field name="surcharge_rate">10.0</field>
-            <field name="date_from">2025-04-01</field>
+            <field name="date_from">2026-04-01</field>
         </record>
 
         <!-- Surcharge 3: 1,00,00,000 - 2,00,00,000 (15%) -->
@@ -38,7 +38,7 @@
             <field name="income_from">10000000.0</field>
             <field name="income_to">20000000.0</field>
             <field name="surcharge_rate">15.0</field>
-            <field name="date_from">2025-04-01</field>
+            <field name="date_from">2026-04-01</field>
         </record>
 
         <!-- Surcharge 4: Above 2,00,00,000 (25% capped) -->
@@ -50,11 +50,11 @@
             <field name="income_from">20000000.0</field>
             <field name="income_to">0.0</field>
             <field name="surcharge_rate">25.0</field>
-            <field name="date_from">2025-04-01</field>
+            <field name="date_from">2026-04-01</field>
         </record>
 
         <!-- ============================================================= -->
-        <!-- OLD TAX REGIME SURCHARGE SLABS (FY 2025-26 / AY 2026-27)      -->
+        <!-- OLD TAX REGIME SURCHARGE SLABS (FY 2026-27 / AY 2027-28)      -->
         <!-- ============================================================= -->
 
         <!-- Surcharge 1: 0 - 50,00,000 (0%) -->
@@ -66,7 +66,7 @@
             <field name="income_from">0.0</field>
             <field name="income_to">5000000.0</field>
             <field name="surcharge_rate">0.0</field>
-            <field name="date_from">2025-04-01</field>
+            <field name="date_from">2026-04-01</field>
         </record>
 
         <!-- Surcharge 2: 50,00,000 - 1,00,00,000 (10%) -->
@@ -78,7 +78,7 @@
             <field name="income_from">5000000.0</field>
             <field name="income_to">10000000.0</field>
             <field name="surcharge_rate">10.0</field>
-            <field name="date_from">2025-04-01</field>
+            <field name="date_from">2026-04-01</field>
         </record>
 
         <!-- Surcharge 3: 1,00,00,000 - 2,00,00,000 (15%) -->
@@ -90,7 +90,7 @@
             <field name="income_from">10000000.0</field>
             <field name="income_to">20000000.0</field>
             <field name="surcharge_rate">15.0</field>
-            <field name="date_from">2025-04-01</field>
+            <field name="date_from">2026-04-01</field>
         </record>
 
         <!-- Surcharge 4: 2,00,00,000 - 5,00,00,000 (25%) -->
@@ -102,7 +102,7 @@
             <field name="income_from">20000000.0</field>
             <field name="income_to">50000000.0</field>
             <field name="surcharge_rate">25.0</field>
-            <field name="date_from">2025-04-01</field>
+            <field name="date_from">2026-04-01</field>
         </record>
 
         <!-- Surcharge 5: Above 5,00,00,000 (37%) -->
@@ -114,7 +114,7 @@
             <field name="income_from">50000000.0</field>
             <field name="income_to">0.0</field>
             <field name="surcharge_rate">37.0</field>
-            <field name="date_from">2025-04-01</field>
+            <field name="date_from">2026-04-01</field>
         </record>
 
     </data>

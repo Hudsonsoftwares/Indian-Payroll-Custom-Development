@@ -82,6 +82,7 @@
     ],
 
 
+    'post_init_hook': 'post_init_hook',
     'installable': True,
     'application': False,
     'license': 'LGPL-3',

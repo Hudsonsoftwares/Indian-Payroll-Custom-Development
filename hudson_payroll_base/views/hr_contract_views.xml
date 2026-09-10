@@ -38,6 +38,24 @@
                             <span>/ month</span>
                             <span class="ms-2 text-muted">(<field name="da_percent" readonly="1"/>%)</span>
                         </div>
+                        <label for="standard_allowance"/>
+                        <div class="o_row">
+                            <field name="standard_allowance" nolabel="1"/>
+                            <span>/ month</span>
+                            <span class="ms-2 text-muted">(<field name="standard_allowance_percent" readonly="1"/>%)</span>
+                        </div>
+                        <label for="performance_bonus"/>
+                        <div class="o_row">
+                            <field name="performance_bonus" nolabel="1"/>
+                            <span>/ month</span>
+                            <span class="ms-2 text-muted">(<field name="performance_bonus_percent" readonly="1"/>%)</span>
+                        </div>
+                        <label for="lta_allowance"/>
+                        <div class="o_row">
+                            <field name="lta_allowance" nolabel="1"/>
+                            <span>/ month</span>
+                            <span class="ms-2 text-muted">(<field name="lta_percent" readonly="1"/>%)</span>
+                        </div>
                         <label for="fixed_allowance"/>
                         <div class="o_row">
                             <field name="fixed_allowance" nolabel="1"/>

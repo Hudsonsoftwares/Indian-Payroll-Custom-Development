@@ -2,7 +2,7 @@
 <odoo>
     <data noupdate="0">
         <!-- ============================================================= -->
-        <!-- NEW TAX REGIME SLABS (FY 2025-26 / AY 2026-27 - SECTION 115BAC)-->
+        <!-- NEW TAX REGIME SLABS (FY 2026-27 / AY 2027-28 - SECTION 115BAC)-->
         <!-- ============================================================= -->
 
         <!-- Slab 1: 0 - 4,00,000 (0%) -->
@@ -14,7 +14,7 @@
             <field name="income_from">0.0</field>
             <field name="income_to">400000.0</field>
             <field name="rate">0.0</field>
-            <field name="date_from">2025-04-01</field>
+            <field name="date_from">2026-04-01</field>
         </record>
 
         <!-- Slab 2: 4,00,000 - 8,00,000 (5%) -->
@@ -26,7 +26,7 @@
             <field name="income_from">400000.0</field>
             <field name="income_to">800000.0</field>
             <field name="rate">5.0</field>
-            <field name="date_from">2025-04-01</field>
+            <field name="date_from">2026-04-01</field>
         </record>
 
         <!-- Slab 3: 8,00,000 - 12,00,000 (10%) -->
@@ -38,7 +38,7 @@
             <field name="income_from">800000.0</field>
             <field name="income_to">1200000.0</field>
             <field name="rate">10.0</field>
-            <field name="date_from">2025-04-01</field>
+            <field name="date_from">2026-04-01</field>
         </record>
 
         <!-- Slab 4: 12,00,000 - 16,00,000 (15%) -->
@@ -50,7 +50,7 @@
             <field name="income_from">1200000.0</field>
             <field name="income_to">1600000.0</field>
             <field name="rate">15.0</field>
-            <field name="date_from">2025-04-01</field>
+            <field name="date_from">2026-04-01</field>
         </record>
 
         <!-- Slab 5: 16,00,000 - 20,00,000 (20%) -->
@@ -62,7 +62,7 @@
             <field name="income_from">1600000.0</field>
             <field name="income_to">2000000.0</field>
             <field name="rate">20.0</field>
-            <field name="date_from">2025-04-01</field>
+            <field name="date_from">2026-04-01</field>
         </record>
 
         <!-- Slab 6: 20,00,000 - 24,00,000 (25%) -->
@@ -74,7 +74,7 @@
             <field name="income_from">2000000.0</field>
             <field name="income_to">2400000.0</field>
             <field name="rate">25.0</field>
-            <field name="date_from">2025-04-01</field>
+            <field name="date_from">2026-04-01</field>
         </record>
 
         <!-- Slab 7: Above 24,00,000 (30%) -->
@@ -86,11 +86,11 @@
             <field name="income_from">2400000.0</field>
             <field name="income_to">0.0</field>
             <field name="rate">30.0</field>
-            <field name="date_from">2025-04-01</field>
+            <field name="date_from">2026-04-01</field>
         </record>
 
         <!-- ============================================================= -->
-        <!-- OLD TAX REGIME SLABS (FY 2025-26 / AY 2026-27)                -->
+        <!-- OLD TAX REGIME SLABS (FY 2026-27 / AY 2027-28)                -->
         <!-- ============================================================= -->
 
         <!-- Slab 1: 0 - 2,50,000 (0%) -->
@@ -102,7 +102,7 @@
             <field name="income_from">0.0</field>
             <field name="income_to">250000.0</field>
             <field name="rate">0.0</field>
-            <field name="date_from">2025-04-01</field>
+            <field name="date_from">2026-04-01</field>
         </record>
 
         <!-- Slab 2: 2,50,000 - 5,00,000 (5%) -->
@@ -114,7 +114,7 @@
             <field name="income_from">250000.0</field>
             <field name="income_to">500000.0</field>
             <field name="rate">5.0</field>
-            <field name="date_from">2025-04-01</field>
+            <field name="date_from">2026-04-01</field>
         </record>
 
         <!-- Slab 3: 5,00,000 - 10,00,000 (20%) -->
@@ -126,7 +126,7 @@
             <field name="income_from">500000.0</field>
             <field name="income_to">1000000.0</field>
             <field name="rate">20.0</field>
-            <field name="date_from">2025-04-01</field>
+            <field name="date_from">2026-04-01</field>
         </record>
 
         <!-- Slab 4: Above 10,00,000 (30%) -->
@@ -138,7 +138,7 @@
             <field name="income_from">1000000.0</field>
             <field name="income_to">0.0</field>
             <field name="rate">30.0</field>
-            <field name="date_from">2025-04-01</field>
+            <field name="date_from">2026-04-01</field>
         </record>
 
     </data>
