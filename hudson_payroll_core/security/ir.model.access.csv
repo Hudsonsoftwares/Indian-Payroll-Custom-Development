@@ -1,8 +1,0 @@
-id,name,model_id:id,group_id:id,perm_read,perm_write,perm_create,perm_unlink
-access_hr_rule_parameter_manager,access.hr.rule.parameter.manager,model_hr_rule_parameter,hr_payroll_community.group_hr_payroll_community_manager,1,1,1,1
-access_hr_rule_parameter_value_manager,access.hr.rule.parameter.value.manager,model_hr_rule_parameter_value,hr_payroll_community.group_hr_payroll_community_manager,1,1,1,1
-access_hr_payslip_input_type_manager,access.hr.payslip.input.type.manager,model_hr_payslip_input_type,hr_payroll_community.group_hr_payroll_community_manager,1,1,1,1
-access_hr_payslip_input_section_manager,access.hr.payslip.input.section.manager,model_hr_payslip_input_section,hr_payroll_community.group_hr_payroll_community_manager,1,1,1,1
-access_hr_payroll_structure_type_manager,access.hr.payroll.structure.type.manager,model_hr_payroll_structure_type,hr_payroll_community.group_hr_payroll_community_manager,1,1,1,1
-access_hr_payroll_structure_type_user,access.hr.payroll.structure.type.user,model_hr_payroll_structure_type,hr_payroll_community.group_hr_payroll_community_user,1,1,1,0
-access_hr_payroll_structure_type_hr_user,access.hr.payroll.structure.type.hr.user,model_hr_payroll_structure_type,hr.group_hr_user,1,0,0,0

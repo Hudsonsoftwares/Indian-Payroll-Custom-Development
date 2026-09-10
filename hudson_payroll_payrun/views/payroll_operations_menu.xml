@@ -1,8 +1,0 @@
-<?xml version="1.0" encoding="utf-8"?>
-<odoo>
-    <!-- Operations Parent Menu -->
-    <menuitem id="menu_hds_payroll_operations"
-              name="Operations"
-              parent="hr_payroll_community.menu_hr_payroll_community_root"
-              sequence="50"/>
-</odoo>
