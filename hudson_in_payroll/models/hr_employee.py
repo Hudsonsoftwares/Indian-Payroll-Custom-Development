@@ -210,9 +210,11 @@ class HrEmployee(models.Model):
             if emp.id and isinstance(emp.id, int):
                 version = self.env['hr.version'].search([
                     ('employee_id', '=', emp.id)
-                ], order='date_start desc', limit=1)
-                if version and getattr(version, 'date_start', None) and version.date_start > today:
-                    ref_date = version.date_start
+                ], order='date_version desc, id desc', limit=1)
+                if version:
+                    v_start = getattr(version, 'date_start', None) or getattr(version, 'date_version', None)
+                    if v_start and v_start > today:
+                        ref_date = v_start
 
             year = ref_date.year
             month = ref_date.month

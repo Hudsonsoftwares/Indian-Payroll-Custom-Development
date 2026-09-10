@@ -14,6 +14,11 @@ class TdsFinancialYear(models.Model):
     _description = 'TDS Financial Year'
     _order = 'code desc, id desc'
 
+    _code_uniq = models.Constraint(
+        'unique(code)',
+        'A Financial Year with this code already exists. Financial Year Code must be unique!'
+    )
+
     name = fields.Char(
         string="Financial Year Name",
         required=True,
@@ -52,12 +57,36 @@ class TdsFinancialYear(models.Model):
     tax_slab_ids = fields.One2many(
         'tds.tax.slab',
         'financial_year_id',
-        string="Income Tax Slabs"
+        string="All Income Tax Slabs"
+    )
+    new_regime_tax_slab_ids = fields.One2many(
+        'tds.tax.slab',
+        'financial_year_id',
+        domain=[('regime_code', '=', 'new')],
+        string="New Regime Tax Slabs"
+    )
+    old_regime_tax_slab_ids = fields.One2many(
+        'tds.tax.slab',
+        'financial_year_id',
+        domain=[('regime_code', '=', 'old')],
+        string="Old Regime Tax Slabs"
     )
     surcharge_ids = fields.One2many(
         'tds.surcharge',
         'financial_year_id',
-        string="Surcharge Slabs"
+        string="All Surcharge Slabs"
+    )
+    new_regime_surcharge_ids = fields.One2many(
+        'tds.surcharge',
+        'financial_year_id',
+        domain=[('regime_code', '=', 'new')],
+        string="New Regime Surcharge Slabs"
+    )
+    old_regime_surcharge_ids = fields.One2many(
+        'tds.surcharge',
+        'financial_year_id',
+        domain=[('regime_code', '=', 'old')],
+        string="Old Regime Surcharge Slabs"
     )
     is_proof_submission_open = fields.Boolean(
         string="Proof Submission Window Open",
@@ -111,6 +140,7 @@ class TdsFinancialYear(models.Model):
         for rec in self:
             dist_m = max(1, min(12, int(rec.tds_recalculation_distribution_months or 3)))
             start_fy_idx = 12 - dist_m + 1
+            cal_m = (start_fy_idx + 2) % 12 + 1
             rec.tds_recalculation_from_month = str(cal_m)
 
     @api.model

@@ -1,4 +1,5 @@
 # -*- coding: utf-8 -*-
+import re
 from odoo import api, fields, models, _
 from odoo.exceptions import ValidationError
 
@@ -52,6 +53,12 @@ class TdsSurcharge(models.Model):
         default=0.0,
         help="Upper threshold limit of total net income in Rupees. Set to 0.0 or leave blank for open-ended top surcharge slab."
     )
+    display_income_to = fields.Char(
+        string="Income To (₹)",
+        compute='_compute_display_income_to',
+        inverse='_inverse_display_income_to',
+        help="Upper threshold limit of total net income in Rupees, or 'Above' for open-ended top surcharge slab."
+    )
     surcharge_rate = fields.Float(
         string="Surcharge Rate (%)",
         required=True,
@@ -84,6 +91,27 @@ class TdsSurcharge(models.Model):
             reg_str = 'New Regime' if rec.regime_code == 'new' else 'Old Regime'
             to_str = f"₹{rec.income_to:,.0f}" if rec.income_to > 0 else "Above"
             rec.name = f"{fy_str} ({reg_str}) Surcharge: ₹{rec.income_from:,.0f} - {to_str} @ {rec.surcharge_rate}%"
+
+    @api.depends('income_to')
+    def _compute_display_income_to(self):
+        for rec in self:
+            if rec.income_to and rec.income_to > 0:
+                rec.display_income_to = f"{rec.income_to:,.2f}"
+            else:
+                rec.display_income_to = "Above"
+
+    def _inverse_display_income_to(self):
+        for rec in self:
+            val = (rec.display_income_to or '').strip().lower()
+            if not val or any(k in val for k in ('above', 'limit', 'inf', 'none', 'na', 'n/a', '-', 'nil')):
+                rec.income_to = 0.0
+            else:
+                cleaned = re.sub(r'[^\d.]', '', val)
+                try:
+                    num = float(cleaned) if cleaned else 0.0
+                    rec.income_to = num if num > 0 else 0.0
+                except ValueError:
+                    rec.income_to = 0.0
 
     @api.constrains('income_from', 'income_to')
     def _check_income_bounds(self):

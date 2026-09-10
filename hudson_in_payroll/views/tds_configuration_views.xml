@@ -16,7 +16,7 @@
                 <field name="start_date" optional="show"/>
                 <field name="end_date" optional="show"/>
                 <field name="is_closed" optional="show"/>
-                <field name="active" optional="hide"/>
+                <field name="active" widget="boolean_toggle" optional="show"/>
             </list>
         </field>
     </record>
@@ -33,7 +33,6 @@
                     <button name="%(action_tds_financial_year_wizard)d" string="Run Roll-Over Wizard for Next FY" type="action" class="btn-primary" icon="fa-forward"/>
                 </header>
                 <sheet>
-
                     <widget name="web_ribbon" title="Archived" bg_color="text-bg-danger" invisible="active"/>
                     <widget name="web_ribbon" title="Closed" bg_color="text-bg-warning" invisible="not is_closed"/>
                     <div class="oe_title">
@@ -55,36 +54,80 @@
                             <field name="proof_submission_start_date"/>
                             <field name="proof_submission_end_date"/>
                             <field name="declaration_cutoff_date"/>
-                            <field name="active"/>
+                            <field name="active" widget="boolean_toggle"/>
                             <field name="is_closed"/>
                         </group>
                     </group>
                     <notebook>
-                        <page string="Income Tax Slabs" name="tax_slabs">
-                            <field name="tax_slab_ids" context="{'default_financial_year_id': id}">
-                                <list editable="bottom" string="Slabs">
+                        <page string="New Tax Regime Slabs (Default)" name="new_tax_slabs">
+                            <div class="alert alert-info py-2 px-3 mb-3 d-flex align-items-center">
+                                <i class="fa fa-star fa-lg me-2 text-primary"/>
+                                <div><strong>New Tax Regime (Section 115BAC — Default):</strong> Standard statutory regime automatically applied to all employees unless opted out.</div>
+                            </div>
+                            <field name="new_regime_tax_slab_ids" context="{'default_financial_year_id': id, 'default_regime_code': 'new'}">
+                                <list editable="bottom" string="New Regime Slabs">
                                     <field name="sequence" widget="handle"/>
-                                    <field name="regime_code"/>
-                                    <field name="income_from"/>
-                                    <field name="income_to"/>
-                                    <field name="rate"/>
-                                    <field name="date_from" optional="show"/>
-                                    <field name="active" optional="hide"/>
-                                 </list>
-                            </field>
-                        </page>
-                        <page string="Surcharge Slabs" name="surcharge_slabs">
-                            <field name="surcharge_ids" context="{'default_financial_year_id': id}">
-                                <list editable="bottom" string="Surcharges">
-                                    <field name="sequence" widget="handle"/>
-                                    <field name="regime_code"/>
-                                    <field name="income_from"/>
-                                    <field name="income_to"/>
-                                    <field name="surcharge_rate"/>
-                                    <field name="date_from" optional="show"/>
+                                    <field name="income_from" string="Income From (₹)"/>
+                                    <field name="income_to" column_invisible="True"/>
+                                    <field name="display_income_to" string="Income To (₹)" decoration-bf="income_to == 0" decoration-warning="income_to == 0"/>
+                                    <field name="rate" string="Tax Rate (%)"/>
+                                    <field name="date_from" optional="show" string="Effective From"/>
                                     <field name="active" optional="hide"/>
                                 </list>
                             </field>
+                        </page>
+                        <page string="Old Tax Regime Slabs (Optional)" name="old_tax_slabs">
+                            <div class="alert alert-warning py-2 px-3 mb-3 d-flex align-items-center">
+                                <i class="fa fa-history fa-lg me-2 text-warning"/>
+                                <div><strong>Old Tax Regime (Regular Provisions — Optional):</strong> Available for employees claiming Chapter VI-A deductions (80C, 80D, HRA, etc.) who opt out of 115BAC.</div>
+                            </div>
+                            <field name="old_regime_tax_slab_ids" context="{'default_financial_year_id': id, 'default_regime_code': 'old'}">
+                                <list editable="bottom" string="Old Regime Slabs">
+                                    <field name="sequence" widget="handle"/>
+                                    <field name="income_from" string="Income From (₹)"/>
+                                    <field name="income_to" column_invisible="True"/>
+                                    <field name="display_income_to" string="Income To (₹)" decoration-bf="income_to == 0" decoration-warning="income_to == 0"/>
+                                    <field name="rate" string="Tax Rate (%)"/>
+                                    <field name="date_from" optional="show" string="Effective From"/>
+                                    <field name="active" optional="hide"/>
+                                </list>
+                            </field>
+                        </page>
+                        <page string="Surcharge Slabs" name="surcharge_slabs">
+                            <div class="mb-4">
+                                <div class="d-flex align-items-center mb-2 pb-1 border-bottom border-primary">
+                                    <span class="badge text-bg-primary me-2 px-2 py-1"><i class="fa fa-star me-1"/> NEW REGIME</span>
+                                    <h5 class="text-primary fw-bold mb-0">New Tax Regime Surcharges (Section 115BAC)</h5>
+                                </div>
+                                <field name="new_regime_surcharge_ids" context="{'default_financial_year_id': id, 'default_regime_code': 'new'}">
+                                    <list editable="bottom" string="New Regime Surcharges">
+                                        <field name="sequence" widget="handle"/>
+                                        <field name="income_from" string="Income From (₹)"/>
+                                        <field name="income_to" column_invisible="True"/>
+                                        <field name="display_income_to" string="Income To (₹)" decoration-bf="income_to == 0" decoration-warning="income_to == 0"/>
+                                        <field name="surcharge_rate" string="Surcharge Rate (%)"/>
+                                        <field name="date_from" optional="show" string="Effective From"/>
+                                        <field name="active" optional="hide"/>
+                                    </list>
+                                </field>
+                            </div>
+                            <div class="mt-4">
+                                <div class="d-flex align-items-center mb-2 pb-1 border-bottom border-warning">
+                                    <span class="badge text-bg-warning text-dark me-2 px-2 py-1"><i class="fa fa-history me-1"/> OLD REGIME</span>
+                                    <h5 class="text-warning fw-bold mb-0">Old Tax Regime Surcharges (Regular / Old Provisions)</h5>
+                                </div>
+                                <field name="old_regime_surcharge_ids" context="{'default_financial_year_id': id, 'default_regime_code': 'old'}">
+                                    <list editable="bottom" string="Old Regime Surcharges">
+                                        <field name="sequence" widget="handle"/>
+                                        <field name="income_from" string="Income From (₹)"/>
+                                        <field name="income_to" column_invisible="True"/>
+                                        <field name="display_income_to" string="Income To (₹)" decoration-bf="income_to == 0" decoration-warning="income_to == 0"/>
+                                        <field name="surcharge_rate" string="Surcharge Rate (%)"/>
+                                        <field name="date_from" optional="show" string="Effective From"/>
+                                        <field name="active" optional="hide"/>
+                                    </list>
+                                </field>
+                            </div>
                         </page>
                     </notebook>
                 </sheet>
@@ -102,10 +145,11 @@
                 <field name="name" string="Financial Year" filter_domain="['|', ('name', 'ilike', self), ('code', 'ilike', self)]"/>
                 <field name="code"/>
                 <field name="assessment_year"/>
+                <filter string="Active" name="filter_active" domain="[('active', '=', True)]"/>
+                <filter string="Archived" name="filter_archived" domain="[('active', '=', False)]"/>
+                <separator/>
                 <filter string="Open" name="filter_open" domain="[('is_closed', '=', False)]"/>
                 <filter string="Closed" name="filter_closed" domain="[('is_closed', '=', True)]"/>
-                <separator/>
-                <filter string="Archived" name="inactive" domain="[('active', '=', False)]"/>
                 <group>
                     <filter string="Assessment Year" name="group_assessment_year" context="{'group_by': 'assessment_year'}"/>
                     <filter string="Status" name="group_status" context="{'group_by': 'is_closed'}"/>
@@ -120,6 +164,7 @@
         <field name="res_model">tds.financial.year</field>
         <field name="view_mode">list,form</field>
         <field name="search_view_id" ref="tds_financial_year_view_search"/>
+        <field name="context">{'active_test': False}</field>
         <field name="help" type="html">
             <p class="o_view_nocontent_smiling_face">
                 Create a new TDS Financial Year
@@ -203,8 +248,9 @@
                 <field name="sequence" widget="handle"/>
                 <field name="financial_year_id"/>
                 <field name="regime_code"/>
-                <field name="income_from" optional="show"/>
-                <field name="income_to" optional="show"/>
+                <field name="income_from" optional="show" string="Income From (₹)"/>
+                <field name="income_to" column_invisible="True"/>
+                <field name="display_income_to" string="Income To (₹)" optional="show" decoration-bf="income_to == 0" decoration-warning="income_to == 0"/>
                 <field name="rate"/>
                 <field name="date_from" optional="show"/>
                 <field name="active" optional="hide"/>
@@ -253,8 +299,9 @@
                 <field name="sequence" widget="handle"/>
                 <field name="financial_year_id"/>
                 <field name="regime_code"/>
-                <field name="income_from" optional="show"/>
-                <field name="income_to" optional="show"/>
+                <field name="income_from" optional="show" string="Income From (₹)"/>
+                <field name="income_to" column_invisible="True"/>
+                <field name="display_income_to" string="Income To (₹)" optional="show" decoration-bf="income_to == 0" decoration-warning="income_to == 0"/>
                 <field name="surcharge_rate"/>
                 <field name="date_from" optional="show"/>
                 <field name="active" optional="hide"/>
