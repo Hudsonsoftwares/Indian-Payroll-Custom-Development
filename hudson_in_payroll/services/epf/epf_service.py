@@ -21,6 +21,7 @@ class ContractPayslipAdapter:
     """
     def __init__(self, contract):
         self.contract = contract
+        self.contract_id = contract
         self.employee_id = contract.employee_id
         self.date_to = getattr(contract, 'date_start', False) or fields.Date.today()
         self.date_from = getattr(contract, 'date_start', False) or fields.Date.today()

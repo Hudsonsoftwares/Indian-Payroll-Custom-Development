@@ -368,17 +368,93 @@ class HrEmployee(models.Model):
                         if emp.hds_in_esic_ip_status == 'exempt':
                             update_vals['hds_in_esic_ip_status'] = 'active'
                             update_vals['hds_in_esic_exit_reason'] = False
-                    super(HrEmployee, emp).write(update_vals)
+        if any(k in vals for k in (
+            'wage', 'basic_salary', 'da', 'hra', 'fixed_allowance', 'standard_allowance',
+            'performance_bonus', 'retention_bonus', 'lta_allowance',
+            'hds_in_pf_contribution_basis', 'hds_in_pf_employer_basis',
+            'hds_in_epf_applicable', 'hds_in_eps_applicable', 'hds_in_esic_applicable', 'hds_in_lwf_applicable'
+        )):
+            for emp in self:
+                emp._sync_and_compute_employer_cost()
         return res
 
+    @api.onchange(
+        'wage', 'basic_salary', 'da', 'hra', 'fixed_allowance', 'standard_allowance',
+        'performance_bonus', 'retention_bonus', 'lta_allowance',
+        'hds_in_pf_contribution_basis', 'hds_in_pf_employer_basis',
+        'hds_in_epf_applicable', 'hds_in_eps_applicable', 'hds_in_esic_applicable', 'hds_in_lwf_applicable'
+    )
+    def _onchange_ctc_and_statutory_inputs(self):
+        """Immediately recomputes Monthly Employer Cost and Annual CTC dynamically on employee form."""
+        self._sync_and_compute_employer_cost()
 
+    @api.depends(
+        'wage', 'basic_salary', 'da', 'hra', 'fixed_allowance', 'standard_allowance',
+        'performance_bonus', 'retention_bonus', 'lta_allowance',
+        'hds_in_pf_contribution_basis', 'hds_in_pf_employer_basis',
+        'hds_in_epf_applicable', 'hds_in_eps_applicable', 'hds_in_esic_applicable', 'hds_in_lwf_applicable',
+        'version_id.hds_in_employer_cost_monthly', 'version_id.hds_in_employer_cost_annual',
+        'version_id.wage', 'version_id.basic_salary', 'version_id.da'
+    )
     def _compute_hds_in_employer_cost(self):
         for emp in self:
+            emp._sync_and_compute_employer_cost()
+
+    def _sync_and_compute_employer_cost(self):
+        if self.env.context.get('in_employer_cost_sync'):
+            return
+        for emp in self.with_context(in_employer_cost_sync=True):
             contracts = self.env['hr.version'].search([('employee_id', '=', emp.id)])
             active_contract = contracts.sorted(lambda c: c.date_start or fields.Date.today(), reverse=True)[0] if contracts else False
-            monthly_cost = active_contract.hds_in_employer_cost_monthly if active_contract else 0.0
-            emp.hds_in_employer_cost_monthly = monthly_cost
-            emp.hds_in_employer_cost_annual = monthly_cost * 12.0
+            if active_contract:
+                if emp.wage and active_contract.wage != emp.wage:
+                    active_contract.wage = emp.wage
+                if emp.basic_salary and active_contract.basic_salary != emp.basic_salary:
+                    active_contract.basic_salary = emp.basic_salary
+                if emp.da and active_contract.da != emp.da:
+                    active_contract.da = emp.da
+                active_contract._compute_employer_cost()
+                emp.hds_in_employer_cost_monthly = active_contract.hds_in_employer_cost_monthly
+                emp.hds_in_employer_cost_annual = active_contract.hds_in_employer_cost_annual
+            else:
+                gross_wage = float(emp.wage or 0.0)
+                breakdown = float(
+                    (getattr(emp, 'basic_salary', 0.0) or 0.0) + (getattr(emp, 'hra', 0.0) or 0.0) +
+                    (getattr(emp, 'da', 0.0) or 0.0) + (getattr(emp, 'standard_allowance', 0.0) or 0.0) +
+                    (getattr(emp, 'performance_bonus', 0.0) or 0.0) + (getattr(emp, 'retention_bonus', 0.0) or 0.0) +
+                    (getattr(emp, 'lta_allowance', 0.0) or 0.0) + (getattr(emp, 'fixed_allowance', 0.0) or 0.0)
+                )
+                if gross_wage <= 0.0 and breakdown > 0.0:
+                    gross_wage = breakdown
+                elif breakdown > gross_wage > 0.0:
+                    gross_wage = breakdown
+
+                basic = float(emp.basic_salary or 0.0)
+                if basic <= 0.0 and gross_wage > 0.0:
+                    basic = round(gross_wage * 0.50, 2)
+                actual_pf_wage = basic + float(emp.da or 0.0)
+
+                employer_contrib = 0.0
+                if emp.hds_in_epf_applicable and actual_pf_wage > 0.0:
+                    if emp.hds_in_pf_employer_basis in ('actual_pf_wage', 'actual_basic'):
+                        pf_basis_wage = actual_pf_wage
+                    else:
+                        pf_basis_wage = min(actual_pf_wage, 15000.0)
+                    er_pf = round(pf_basis_wage * 0.12, 2)
+                    edli = round(min(actual_pf_wage, 15000.0) * 0.005, 2)
+                    admin = round(pf_basis_wage * 0.005, 2)
+                    employer_contrib += (er_pf + edli + admin)
+
+                esic_ceiling = 25000.0 if emp.hds_in_is_pwd else 21000.0
+                if emp.hds_in_esic_applicable and 0.0 < gross_wage <= esic_ceiling:
+                    employer_contrib += round(gross_wage * 0.0325, 2)
+
+                if emp.hds_in_lwf_applicable and gross_wage > 0.0:
+                    employer_contrib += 20.0
+
+                monthly_ctc = round(gross_wage + employer_contrib, 2)
+                emp.hds_in_employer_cost_monthly = monthly_ctc
+                emp.hds_in_employer_cost_annual = round(monthly_ctc * 12.0, 2)
 
     def _compute_hds_in_statutory_audit_count(self):
         for emp in self:

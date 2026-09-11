@@ -35,7 +35,12 @@
 
             <!-- Position Employer Cost fields in Left Column (Contract Overview) right below wage -->
             <xpath expr="//div[@name='wage']" position="after">
-                <label for="hds_in_employer_cost_annual" string="Employer Cost"/>
+                <label for="hds_in_employer_cost_monthly" string="Employer Cost (Monthly)"/>
+                <div class="o_row" name="employer_cost_monthly_row">
+                    <field name="hds_in_employer_cost_monthly" class="oe_inline o_hr_narrow_field" widget="monetary" readonly="1" nolabel="1"/>
+                    <span class="text-muted ms-2">/ month</span>
+                </div>
+                <label for="hds_in_employer_cost_annual" string="Employer Cost (Annual CTC)"/>
                 <div class="o_row" name="employer_cost_row">
                     <field name="hds_in_employer_cost_annual" class="oe_inline o_hr_narrow_field" widget="monetary" readonly="1" nolabel="1"/>
                     <span class="text-muted ms-2">/ year</span>

@@ -62,17 +62,36 @@ class HrVersion(models.Model):
         self.ensure_one()
         return bool(self.is_india_localization)
 
-    @api.depends('wage', 'struct_id', 'struct_id.rule_ids', 'company_id', 'company_id.country_id')
+    @api.depends(
+        'wage', 'basic_salary', 'da', 'struct_id', 'struct_id.rule_ids', 'company_id', 'company_id.country_id',
+        'employee_id.hds_in_pf_contribution_basis', 'employee_id.hds_in_pf_employer_basis',
+        'employee_id.hds_in_epf_applicable', 'employee_id.hds_in_eps_applicable',
+        'employee_id.hds_in_esic_applicable', 'employee_id.hds_in_lwf_applicable'
+    )
     def _compute_employer_cost(self):
         for contract in self:
             if not contract._is_india_localization():
                 contract.hds_in_employer_cost_monthly = 0.0
                 contract.hds_in_employer_cost_annual = 0.0
                 if contract.employee_id:
-                    contract.employee_id._compute_hds_in_employer_cost()
+                    contract.employee_id.hds_in_employer_cost_monthly = 0.0
+                    contract.employee_id.hds_in_employer_cost_annual = 0.0
                 continue
 
-            wage = contract.wage or 0.0
+            wage = float(contract.wage or 0.0)
+            breakdown = float(getattr(contract, 'breakdown_total', 0.0) or 0.0)
+            if breakdown <= 0.0:
+                breakdown = float(
+                    (getattr(contract, 'basic_salary', 0.0) or 0.0) + (getattr(contract, 'hra', 0.0) or 0.0) +
+                    (getattr(contract, 'da', 0.0) or 0.0) + (getattr(contract, 'standard_allowance', 0.0) or 0.0) +
+                    (getattr(contract, 'performance_bonus', 0.0) or 0.0) + (getattr(contract, 'retention_bonus', 0.0) or 0.0) +
+                    (getattr(contract, 'lta_allowance', 0.0) or 0.0) + (getattr(contract, 'fixed_allowance', 0.0) or 0.0)
+                )
+            if wage <= 0.0 and breakdown > 0.0:
+                wage = breakdown
+            elif breakdown > wage > 0.0:
+                wage = breakdown
+
             employer_contrib_monthly = 0.0
 
             if contract.struct_id:
@@ -95,11 +114,17 @@ class HrVersion(models.Model):
                 elif rule.amount_select == 'code':
                     employer_contrib_monthly += self._estimate_statutory_rule_amount(contract, rule)
 
-            monthly_ctc = wage + employer_contrib_monthly
+            monthly_ctc = round(wage + employer_contrib_monthly, 2)
             contract.hds_in_employer_cost_monthly = monthly_ctc
-            contract.hds_in_employer_cost_annual = monthly_ctc * 12.0
+            contract.hds_in_employer_cost_annual = round(monthly_ctc * 12.0, 2)
             if contract.employee_id:
-                contract.employee_id._compute_hds_in_employer_cost()
+                contract.employee_id.hds_in_employer_cost_monthly = monthly_ctc
+                contract.employee_id.hds_in_employer_cost_annual = round(monthly_ctc * 12.0, 2)
+
+    @api.onchange('wage', 'basic_salary', 'da', 'struct_id', 'employee_id')
+    def _onchange_contract_ctc_inputs(self):
+        if self._is_india_localization():
+            self._compute_employer_cost()
 
     @api.onchange('contract_template_id')
     def _onchange_contract_template_id(self):
@@ -181,7 +206,7 @@ class HrVersion(models.Model):
     def _estimate_statutory_rule_amount(self, contract, rule):
         """
         Estimates contract-level statutory employer cost by delegating directly
-        to EPFService and reusing the exact same statutory calculation engine,
+        to EPFService and ESICService and reusing the exact same statutory calculation engine,
         wage rules, applicability flags, contribution basis, and effective-dated parameters.
         No statutory constants or rates are hardcoded.
         """
@@ -189,24 +214,42 @@ class HrVersion(models.Model):
             return 0.0
 
         code_text = rule.amount_python_compute or ''
+        rule_code = rule.code or ''
         employee = contract.employee_id
-        if employee and hasattr(employee, 'hds_in_epf_applicable') and not employee.hds_in_epf_applicable:
-            return 0.0
 
         from ..services.epf.epf_service import EPFService, ContractPayslipAdapter
         adapter = ContractPayslipAdapter(contract)
-        epf_svc = EPFService(self.env)
 
-        if 'compute_employer_total_pf' in code_text or ('compute_employer_epf' in code_text and 'compute_employer_epf_share' not in code_text):
-            return epf_svc.compute_employer_epf(adapter)
-        elif 'compute_employer_epf_share' in code_text:
-            return epf_svc.compute_employer_epf_share(adapter)
-        elif 'compute_employer_eps' in code_text:
-            return epf_svc.compute_employer_eps(adapter)
-        elif 'compute_employer_edli' in code_text:
-            return epf_svc.compute_employer_edli(adapter)
-        elif 'compute_epf_admin' in code_text:
-            return epf_svc.compute_epf_admin(adapter)
-        elif 'compute_edli_admin' in code_text:
-            return epf_svc.compute_edli_admin(adapter)
+        # EPF Contribution Rules
+        if any(k in code_text for k in ('compute_employer_total_pf', 'compute_employer_epf', 'compute_employer_eps', 'compute_employer_edli', 'compute_epf_admin', 'compute_edli_admin')) or rule_code in ('EMPLOYER_EPF', 'EPS', 'EPF_SHARE', 'EDLI', 'EPF_ADMIN', 'EDLI_ADMIN'):
+            if employee and hasattr(employee, 'hds_in_epf_applicable') and not employee.hds_in_epf_applicable:
+                return 0.0
+            epf_svc = EPFService(self.env)
+            if 'compute_employer_total_pf' in code_text or ('compute_employer_epf' in code_text and 'compute_employer_epf_share' not in code_text) or rule_code == 'EMPLOYER_EPF':
+                return epf_svc.compute_employer_epf(adapter)
+            elif 'compute_employer_epf_share' in code_text or rule_code == 'EPF_SHARE':
+                return epf_svc.compute_employer_epf_share(adapter)
+            elif 'compute_employer_eps' in code_text or rule_code == 'EPS':
+                return epf_svc.compute_employer_eps(adapter)
+            elif 'compute_employer_edli' in code_text or rule_code == 'EDLI':
+                return epf_svc.compute_employer_edli(adapter)
+            elif 'compute_epf_admin' in code_text or rule_code == 'EPF_ADMIN':
+                return epf_svc.compute_epf_admin(adapter)
+            elif 'compute_edli_admin' in code_text or rule_code == 'EDLI_ADMIN':
+                return epf_svc.compute_edli_admin(adapter)
+
+        # ESIC Employer Contribution Rule
+        elif 'compute_esic_employer' in code_text or rule_code == 'ESIC_ER':
+            if employee and hasattr(employee, 'hds_in_esic_applicable') and not employee.hds_in_esic_applicable:
+                return 0.0
+            from ..services.esic.esic_service import ESICService
+            esic_svc = ESICService(self.env)
+            return esic_svc.compute_esic_employer(adapter)
+
+        # LWF Employer Contribution Rule
+        elif 'compute_lwf_employer' in code_text or rule_code == 'LWF_ER':
+            if employee and hasattr(employee, 'hds_in_lwf_applicable') and not employee.hds_in_lwf_applicable:
+                return 0.0
+            return 20.0
+
         return 0.0

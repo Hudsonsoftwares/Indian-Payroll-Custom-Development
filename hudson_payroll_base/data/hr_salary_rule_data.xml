@@ -142,14 +142,9 @@
             <field name="code">DEDUCTION</field>
             <field name="category_id" ref="rule_category_ded"/>
             <field name="condition_select">python</field>
-            <field name="condition_python"><![CDATA[result = ('DEDUCTION' in inputs) or ('UNPAID' in worked_days) or ('LEAVE110' in worked_days)]]></field>
+            <field name="condition_python"><![CDATA[result = 'DEDUCTION' in inputs]]></field>
             <field name="amount_select">code</field>
-            <field name="amount_python_compute"><![CDATA[
-unpaid_days = (worked_days.get('LEAVE110') and worked_days['LEAVE110'].number_of_days) or (worked_days.get('UNPAID') and worked_days['UNPAID'].number_of_days) or 0.0
-unpaid_ded = - ((contract.wage or 0.0) / 30.0 * unpaid_days) if unpaid_days else 0.0
-input_ded = -(inputs.DEDUCTION.amount) if 'DEDUCTION' in inputs else 0.0
-result = unpaid_ded + input_ded
-]]></field>
+            <field name="amount_python_compute"><![CDATA[result = -(inputs.DEDUCTION.amount) if 'DEDUCTION' in inputs else 0.0]]></field>
         </record>
 
         <!-- 8. Net Salary -->
