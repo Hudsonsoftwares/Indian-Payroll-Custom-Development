@@ -61,10 +61,16 @@
                     </notebook>
                 </sheet>
                 <footer>
+                    <button name="action_print_pdf"
+                            string="Print PDF"
+                            type="object"
+                            class="btn-primary"
+                            icon="fa-print"/>
                     <button name="action_export_xlsx"
                             string="Export XLSX"
                             type="object"
-                            class="btn-primary"/>
+                            class="btn-success"
+                            icon="fa-file-excel-o"/>
                     <button string="Discard"
                             class="btn-secondary"
                             special="cancel"/>

@@ -50,6 +50,50 @@
         <field name="paperformat_id" ref="paperformat_salary_reports_landscape"/>
     </record>
 
+    <!-- 4. ESIC Monthly Contribution Report Action -->
+    <record id="action_report_esic" model="ir.actions.report">
+        <field name="name">ESIC Monthly Contribution Report</field>
+        <field name="model">hds.esic.report.wizard</field>
+        <field name="report_type">qweb-pdf</field>
+        <field name="report_name">hudson_in_payroll.report_esic_template</field>
+        <field name="report_file">ESIC_Monthly_Report</field>
+        <field name="print_report_name">'ESIC_Report_%s_%s' % (object.month, object.year)</field>
+        <field name="paperformat_id" ref="paperformat_salary_reports_landscape"/>
+    </record>
+
+    <!-- 5. Professional Tax (PT) Report Action -->
+    <record id="action_report_pt" model="ir.actions.report">
+        <field name="name">Professional Tax Report</field>
+        <field name="model">hds.pt.report.wizard</field>
+        <field name="report_type">qweb-pdf</field>
+        <field name="report_name">hudson_in_payroll.report_pt_template</field>
+        <field name="report_file">Professional_Tax_Report</field>
+        <field name="print_report_name">'PT_Report_%s_%s' % (object.month, object.year)</field>
+        <field name="paperformat_id" ref="paperformat_salary_reports_landscape"/>
+    </record>
+
+    <!-- 6. Labour Welfare Fund (LWF) Report Action -->
+    <record id="action_report_lwf" model="ir.actions.report">
+        <field name="name">Labour Welfare Fund Report</field>
+        <field name="model">hds.lwf.report.wizard</field>
+        <field name="report_type">qweb-pdf</field>
+        <field name="report_name">hudson_in_payroll.report_lwf_template</field>
+        <field name="report_file">LWF_Report</field>
+        <field name="print_report_name">'LWF_Report_%s' % (object.date_from.year if object.date_from else '')</field>
+        <field name="paperformat_id" ref="paperformat_salary_reports_landscape"/>
+    </record>
+
+    <!-- 7. Gratuity Calculation Report Action -->
+    <record id="action_report_gratuity" model="ir.actions.report">
+        <field name="name">Gratuity Calculation Report</field>
+        <field name="model">hds.gratuity.report.wizard</field>
+        <field name="report_type">qweb-pdf</field>
+        <field name="report_name">hudson_in_payroll.report_gratuity_template</field>
+        <field name="report_file">Gratuity_Calculation_Report</field>
+        <field name="print_report_name">'Gratuity_Report_%s' % object.id</field>
+        <field name="paperformat_id" ref="paperformat_salary_reports_landscape"/>
+    </record>
+
     <!-- Common CSS Styles Template -->
     <template id="salary_reports_style">
         <style>
@@ -613,6 +657,307 @@
                                 <td class="text-right"><span t-esc="'{:,.2f}'.format(d['lwf_er'])"/></td>
                                 <td class="text-right"><span t-esc="'{:,.2f}'.format(d['other_er_contrib'])"/></td>
                                 <td class="text-right" style="font-weight: bold; background-color: #EBF1F5;"><span t-esc="'{:,.2f}'.format(d['total_employer_cost'])"/></td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </t>
+        </t>
+    </template>
+
+    <!-- ═══════════════════════════════════════════════════════════════════ -->
+    <!-- TEMPLATE 4: ESIC MONTHLY CONTRIBUTION REPORT                       -->
+    <!-- ═══════════════════════════════════════════════════════════════════ -->
+    <template id="report_esic_template">
+        <t t-call="web.html_container">
+            <t t-call="hudson_in_payroll.salary_reports_style"/>
+            <t t-foreach="docs" t-as="o">
+                <t t-set="data" t-value="o._get_esic_data()"/>
+                <t t-set="rows" t-value="data['esic_rows']"/>
+                <div class="page rpt-container">
+                    <div class="rpt-header">
+                        <table style="width: 100%;">
+                            <tr>
+                                <td style="border: none; width: 70%;">
+                                    <div class="rpt-title">EMPLOYEES' STATE INSURANCE CORPORATION (ESIC) MONTHLY REPORT</div>
+                                    <div class="rpt-subtitle">
+                                        Company: <strong><span t-esc="o.company_id.name"/></strong>
+                                        <t t-if="data.get('est_code')"> | Est. Code: <strong><span t-esc="data['est_code']"/></strong></t>
+                                        | Period: <strong><span t-esc="o.month"/> / <span t-esc="o.year"/></strong>
+                                        | Filter: <strong><span t-esc="dict(o._fields['payslip_state'].selection).get(o.payslip_state, '')"/></strong>
+                                    </div>
+                                </td>
+                                <td style="border: none; width: 30%; text-align: right;">
+                                    <span class="badge-status">Statutory Form 5</span><br/>
+                                    <span style="font-size: 8px; color: #777;">Printed: <span t-esc="context_timestamp(datetime.datetime.now()).strftime('%d-%m-%Y %H:%M')"/></span>
+                                </td>
+                            </tr>
+                        </table>
+                    </div>
+
+                    <table class="rpt-table">
+                        <thead>
+                            <tr>
+                                <th style="width: 14%;">IP Number</th>
+                                <th style="width: 20%;">Employee Name</th>
+                                <th style="width: 8%;">Days Worked</th>
+                                <th style="width: 14%;" class="th-earn">Total Monthly Wages (₹)</th>
+                                <th style="width: 10%;">Reason Code</th>
+                                <th style="width: 11%;" class="th-ded">Employee Contrib (0.75%)</th>
+                                <th style="width: 11%;" class="th-er">Employer Contrib (3.25%)</th>
+                                <th style="width: 12%;" class="th-net">Total Remittance (4.0%)</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr t-foreach="rows" t-as="r">
+                                <td class="text-center"><span t-esc="r['ip_number']"/></td>
+                                <td class="text-left"><strong><span t-esc="r['employee_name']"/></strong></td>
+                                <td class="text-center"><span t-esc="r['number_of_days']"/></td>
+                                <td class="text-right"><span t-esc="'{:,.2f}'.format(r['total_monthly_wages'])"/></td>
+                                <td class="text-center"><span t-esc="r['reason_code'] or '-'"/></td>
+                                <td class="text-right"><span t-esc="'{:,.2f}'.format(r['employee_contribution'])"/></td>
+                                <td class="text-right"><span t-esc="'{:,.2f}'.format(r['employer_contribution'])"/></td>
+                                <td class="text-right" style="font-weight: bold; background-color: #EAF2E8;"><span t-esc="'{:,.2f}'.format(r['total_contribution'])"/></td>
+                            </tr>
+                            <tr class="total-row">
+                                <td colspan="2" class="text-left">TOTAL (Total IPs: <span t-esc="len(rows)"/>)</td>
+                                <td class="text-center">-</td>
+                                <td class="text-right"><span t-esc="'{:,.2f}'.format(data['tot_wages'])"/></td>
+                                <td class="text-center">-</td>
+                                <td class="text-right"><span t-esc="'{:,.2f}'.format(data['tot_ee'])"/></td>
+                                <td class="text-right"><span t-esc="'{:,.2f}'.format(data['tot_er'])"/></td>
+                                <td class="text-right"><span t-esc="'{:,.2f}'.format(data['total_payable'])"/></td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </t>
+        </t>
+    </template>
+
+    <!-- ═══════════════════════════════════════════════════════════════════ -->
+    <!-- TEMPLATE 5: PROFESSIONAL TAX (PT) REPORT                           -->
+    <!-- ═══════════════════════════════════════════════════════════════════ -->
+    <template id="report_pt_template">
+        <t t-call="web.html_container">
+            <t t-call="hudson_in_payroll.salary_reports_style"/>
+            <t t-foreach="docs" t-as="o">
+                <t t-set="data" t-value="o._get_pt_data()"/>
+                <t t-set="rows" t-value="data['pt_rows']"/>
+                <t t-set="state_summaries" t-value="data['state_summary_rows']"/>
+                <div class="page rpt-container">
+                    <div class="rpt-header">
+                        <table style="width: 100%;">
+                            <tr>
+                                <td style="border: none; width: 70%;">
+                                    <div class="rpt-title">PROFESSIONAL TAX (PT) STATUTORY REPORT</div>
+                                    <div class="rpt-subtitle">
+                                        Company: <strong><span t-esc="o.company_id.name"/></strong>
+                                        | Period: <strong><span t-esc="o.month"/> / <span t-esc="o.year"/></strong>
+                                        | Report Type: <strong><span t-esc="dict(o._fields['report_type'].selection).get(o.report_type, '')"/></strong>
+                                        | State Filter: <strong><span t-esc="data.get('state_label', 'All States')"/></strong>
+                                        | Payslip Status: <strong><span t-esc="dict(o._fields['payslip_state'].selection).get(o.payslip_state, '')"/></strong>
+                                    </div>
+                                </td>
+                                <td style="border: none; width: 30%; text-align: right;">
+                                    <span class="badge-status">PT Statutory Statement</span><br/>
+                                    <span style="font-size: 8px; color: #777;">Printed: <span t-esc="context_timestamp(datetime.datetime.now()).strftime('%d-%m-%Y %H:%M')"/></span>
+                                </td>
+                            </tr>
+                        </table>
+                    </div>
+
+                    <!-- Summary by State if available -->
+                    <t t-if="state_summaries">
+                        <div style="font-size: 10px; font-weight: bold; color: #1F4E78; margin-top: 4px; margin-bottom: 2px;">Summary by State</div>
+                        <table class="rpt-table" style="margin-bottom: 10px;">
+                            <thead>
+                                <tr>
+                                    <th style="width: 30%;">State</th>
+                                    <th style="width: 20%;">Covered Employees</th>
+                                    <th style="width: 25%;" class="th-earn">Gross Taxable Wages (₹)</th>
+                                    <th style="width: 25%;" class="th-ded">Total PT Deducted (₹)</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr t-foreach="state_summaries" t-as="st">
+                                    <td class="text-left"><strong><span t-esc="st['state_name']"/></strong></td>
+                                    <td class="text-center"><span t-esc="st['count']"/></td>
+                                    <td class="text-right"><span t-esc="'{:,.2f}'.format(st['wages'])"/></td>
+                                    <td class="text-right" style="font-weight: bold; background-color: #FDF2E9;"><span t-esc="'{:,.2f}'.format(st['pt'])"/></td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </t>
+
+                    <!-- Detailed Employee Rows -->
+                    <t t-if="o.report_type != 'pt_state_summary'">
+                        <div style="font-size: 10px; font-weight: bold; color: #1F4E78; margin-top: 6px; margin-bottom: 2px;">Employee Deductions Detail</div>
+                        <table class="rpt-table">
+                            <thead>
+                                <tr>
+                                    <th style="width: 14%;">Employee Code</th>
+                                    <th style="width: 24%;">Employee Name</th>
+                                    <th style="width: 18%;">State</th>
+                                    <th style="width: 16%;">Payslip Ref</th>
+                                    <th style="width: 14%;" class="th-earn">Gross Wages (₹)</th>
+                                    <th style="width: 14%;" class="th-ded">PT Deducted (₹)</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr t-foreach="rows" t-as="r">
+                                    <td class="text-center"><span t-esc="r['employee_code']"/></td>
+                                    <td class="text-left"><strong><span t-esc="r['employee_name']"/></strong></td>
+                                    <td class="text-left"><span t-esc="r['state_name']"/></td>
+                                    <td class="text-center"><span t-esc="r.get('payslip_number') or '-'"/></td>
+                                    <td class="text-right"><span t-esc="'{:,.2f}'.format(r['gross_wage'])"/></td>
+                                    <td class="text-right" style="font-weight: bold; background-color: #FDF2E9;"><span t-esc="'{:,.2f}'.format(r['pt_amount'])"/></td>
+                                </tr>
+                                <tr class="total-row">
+                                    <td colspan="4" class="text-left">TOTAL (Employees: <span t-esc="len(rows)"/>)</td>
+                                    <td class="text-right"><span t-esc="'{:,.2f}'.format(data['tot_wages'])"/></td>
+                                    <td class="text-right"><span t-esc="'{:,.2f}'.format(data['tot_pt'])"/></td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </t>
+                </div>
+            </t>
+        </t>
+    </template>
+
+    <!-- ═══════════════════════════════════════════════════════════════════ -->
+    <!-- TEMPLATE 6: LABOUR WELFARE FUND (LWF) REPORT                       -->
+    <!-- ═══════════════════════════════════════════════════════════════════ -->
+    <template id="report_lwf_template">
+        <t t-call="web.html_container">
+            <t t-call="hudson_in_payroll.salary_reports_style"/>
+            <t t-foreach="docs" t-as="o">
+                <t t-set="data" t-value="o._get_lwf_data()"/>
+                <t t-set="rows" t-value="data['lwf_rows']"/>
+                <div class="page rpt-container">
+                    <div class="rpt-header">
+                        <table style="width: 100%;">
+                            <tr>
+                                <td style="border: none; width: 70%;">
+                                    <div class="rpt-title">LABOUR WELFARE FUND (LWF) STATUTORY REPORT</div>
+                                    <div class="rpt-subtitle">
+                                        Company: <strong><span t-esc="o.company_id.name"/></strong>
+                                        | Period: <strong><span t-esc="o.date_from"/> to <span t-esc="o.date_to"/></strong>
+                                        | Department: <strong><span t-esc="data['dept_label']"/></strong>
+                                        | Status Filter: <strong><span t-esc="dict(o._fields['payslip_state'].selection).get(o.payslip_state, '')"/></strong>
+                                    </div>
+                                </td>
+                                <td style="border: none; width: 30%; text-align: right;">
+                                    <span class="badge-status">LWF Compliance</span><br/>
+                                    <span style="font-size: 8px; color: #777;">Printed: <span t-esc="context_timestamp(datetime.datetime.now()).strftime('%d-%m-%Y %H:%M')"/></span>
+                                </td>
+                            </tr>
+                        </table>
+                    </div>
+
+                    <table class="rpt-table">
+                        <thead>
+                            <tr>
+                                <th style="width: 14%;">LWF / Employee No</th>
+                                <th style="width: 22%;">Employee Name</th>
+                                <th style="width: 16%;">Department</th>
+                                <th style="width: 14%;">Work State</th>
+                                <th style="width: 11%;" class="th-ded">Employee Contrib (₹)</th>
+                                <th style="width: 11%;" class="th-er">Employer Contrib (₹)</th>
+                                <th style="width: 12%;" class="th-net">Total Remittance (₹)</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr t-foreach="rows" t-as="r">
+                                <td class="text-center"><span t-esc="r['lwf_no'] or '-'"/></td>
+                                <td class="text-left"><strong><span t-esc="r['emp_name']"/></strong></td>
+                                <td class="text-left"><span t-esc="r['department']"/></td>
+                                <td class="text-left"><span t-esc="r['state']"/></td>
+                                <td class="text-right"><span t-esc="'{:,.2f}'.format(r['ee_contrib'])"/></td>
+                                <td class="text-right"><span t-esc="'{:,.2f}'.format(r['er_contrib'])"/></td>
+                                <td class="text-right" style="font-weight: bold; background-color: #EAF2E8;"><span t-esc="'{:,.2f}'.format(r['total_contrib'])"/></td>
+                            </tr>
+                            <tr class="total-row">
+                                <td colspan="4" class="text-left">TOTAL (Covered Employees: <span t-esc="len(rows)"/>)</td>
+                                <td class="text-right"><span t-esc="'{:,.2f}'.format(data['tot_ee_contrib'])"/></td>
+                                <td class="text-right"><span t-esc="'{:,.2f}'.format(data['tot_er_contrib'])"/></td>
+                                <td class="text-right"><span t-esc="'{:,.2f}'.format(data['tot_total_contrib'])"/></td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </t>
+        </t>
+    </template>
+
+    <!-- ═══════════════════════════════════════════════════════════════════ -->
+    <!-- TEMPLATE 7: GRATUITY CALCULATION REPORT                            -->
+    <!-- ═══════════════════════════════════════════════════════════════════ -->
+    <template id="report_gratuity_template">
+        <t t-call="web.html_container">
+            <t t-call="hudson_in_payroll.salary_reports_style"/>
+            <t t-foreach="docs" t-as="o">
+                <t t-set="data" t-value="o._get_gratuity_data()"/>
+                <t t-set="rows" t-value="data['gratuity_rows']"/>
+                <div class="page rpt-container">
+                    <div class="rpt-header">
+                        <table style="width: 100%;">
+                            <tr>
+                                <td style="border: none; width: 70%;">
+                                    <div class="rpt-title">GRATUITY CALCULATION STATUTORY REPORT</div>
+                                    <div class="rpt-subtitle">
+                                        Company: <strong><span t-esc="o.company_id.name"/></strong>
+                                        | Scope Mode: <strong><span t-esc="data['mode_label']"/></strong>
+                                        | Total Employees Evaluated: <strong><span t-esc="data['record_count']"/></strong>
+                                        | Payment of Gratuity Act, 1972
+                                    </div>
+                                </td>
+                                <td style="border: none; width: 30%; text-align: right;">
+                                    <span class="badge-status">Capped ₹20,00,000</span><br/>
+                                    <span style="font-size: 8px; color: #777;">Printed: <span t-esc="context_timestamp(datetime.datetime.now()).strftime('%d-%m-%Y %H:%M')"/></span>
+                                </td>
+                            </tr>
+                        </table>
+                    </div>
+
+                    <table class="rpt-table">
+                        <thead>
+                            <tr>
+                                <th style="width: 9%;">Emp ID</th>
+                                <th style="width: 17%;">Employee Name</th>
+                                <th style="width: 13%;">Department</th>
+                                <th style="width: 13%;">Job Position</th>
+                                <th style="width: 9%;">Joining Date</th>
+                                <th style="width: 6%;">Tenure (Yrs)</th>
+                                <th style="width: 11%;" class="th-earn">Last Basic + DA (₹)</th>
+                                <th style="width: 8%;">Eligibility</th>
+                                <th style="width: 12%;" class="th-er">Calculated Gratuity (₹)</th>
+                                <th style="width: 12%;" class="th-net">Payable Gratuity (₹)</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr t-foreach="rows" t-as="r">
+                                <td class="text-center"><span t-esc="r['emp_code']"/></td>
+                                <td class="text-left"><strong><span t-esc="r['emp_name']"/></strong></td>
+                                <td class="text-left"><span t-esc="r['department']"/></td>
+                                <td class="text-left"><span t-esc="r['job']"/></td>
+                                <td class="text-center"><span t-esc="r['joining_date']"/></td>
+                                <td class="text-center"><span t-esc="r['completed_years']"/></td>
+                                <td class="text-right"><span t-esc="'{:,.2f}'.format(r['wage_base'])"/></td>
+                                <td class="text-center">
+                                    <span t-if="r['status'] == 'Eligible'" style="color: #1e4620; font-weight: bold;">Eligible</span>
+                                    <span t-else="" style="color: #856404;">Not Eligible</span>
+                                </td>
+                                <td class="text-right"><span t-esc="'{:,.2f}'.format(r['raw_gratuity'])"/></td>
+                                <td class="text-right" style="font-weight: bold; background-color: #EAF2E8;"><span t-esc="'{:,.2f}'.format(r['final_gratuity'])"/></td>
+                            </tr>
+                            <tr class="total-row">
+                                <td colspan="6" class="text-left">TOTAL (Evaluated Employees: <span t-esc="len(rows)"/>)</td>
+                                <td class="text-right"><span t-esc="'{:,.2f}'.format(data['tot_wage_base'])"/></td>
+                                <td class="text-center">-</td>
+                                <td class="text-right"><span t-esc="'{:,.2f}'.format(data['tot_raw_gratuity'])"/></td>
+                                <td class="text-right"><span t-esc="'{:,.2f}'.format(data['tot_final_gratuity'])"/></td>
                             </tr>
                         </tbody>
                     </table>

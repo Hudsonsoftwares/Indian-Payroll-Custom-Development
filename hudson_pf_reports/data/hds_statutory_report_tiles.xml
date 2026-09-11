@@ -138,6 +138,7 @@
             <field name="country_code">IN</field>
         </record>
 
+        <!--
         <record id="tile_pf_hr_snapshot" model="hds.statutory.report.tile">
             <field name="name">HR Snapshot Report</field>
             <field name="description">View frozen statutory snapshot records for compliance audit</field>
@@ -148,6 +149,7 @@
             <field name="sequence">20</field>
             <field name="country_code">IN</field>
         </record>
+        -->
 
         <record id="tile_pf_uan_register" model="hds.statutory.report.tile">
             <field name="name">UAN Register</field>

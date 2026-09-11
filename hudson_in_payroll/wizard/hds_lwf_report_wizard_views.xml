@@ -15,16 +15,23 @@
                             <field name="date_to" required="1"/>
                         </group>
                         <group string="Filter Criteria">
+                            <field name="payslip_state"/>
                             <field name="department_id" options="{'no_create': True}"/>
                             <field name="company_id" groups="base.group_multi_company" required="1"/>
                         </group>
                     </group>
                 </sheet>
                 <footer>
+                    <button name="action_print_pdf"
+                            string="Print PDF"
+                            type="object"
+                            class="btn-primary"
+                            icon="fa-print"/>
                     <button name="action_export_xlsx"
                             string="Export XLSX"
                             type="object"
-                            class="btn-primary"/>
+                            class="btn-success"
+                            icon="fa-file-excel-o"/>
                     <button string="Close"
                             class="btn-secondary"
                             special="cancel"/>

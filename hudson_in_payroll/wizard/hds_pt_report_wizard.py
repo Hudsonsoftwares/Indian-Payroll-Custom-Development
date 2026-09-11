@@ -55,6 +55,13 @@ class HdsPtReportWizard(models.TransientModel):
         ('pt_state_summary', 'State-wise PT Summary'),
     ], string='Report Type', default='pt_report', required=True)
 
+    payslip_state = fields.Selection([
+        ('all', 'All States (Draft, Verify, Done, Paid)'),
+        ('confirmed', 'Confirmed & Paid (Done, Paid)'),
+        ('done', 'Done Only'),
+        ('paid', 'Paid Only'),
+    ], string='Payslip Status', default='all', required=True)
+
     company_id = fields.Many2one(
         'res.company',
         string='Company',
@@ -120,12 +127,22 @@ class HdsPtReportWizard(models.TransientModel):
             return emp.company_id.state_id.name or ''
         return 'Not Specified'
 
-    def action_generate_xlsx(self):
+    def _get_pt_data(self):
         self.ensure_one()
         date_from, date_to = self._get_date_range()
 
+        state_sel = getattr(self, 'payslip_state', 'all')
+        if state_sel == 'done':
+            states = ['done']
+        elif state_sel == 'paid':
+            states = ['paid']
+        elif state_sel == 'confirmed':
+            states = ['done', 'paid']
+        else:
+            states = ['draft', 'verify', 'done', 'paid']
+
         domain = [
-            ('state', '=', 'done'),
+            ('state', 'in', states),
             ('company_id', '=', self.company_id.id),
             ('date_from', '>=', date_from),
             ('date_to', '<=', date_to),
@@ -133,21 +150,35 @@ class HdsPtReportWizard(models.TransientModel):
         if self.employee_id:
             domain.append(('employee_id', '=', self.employee_id.id))
 
-        payslips = self.env['hr.payslip'].search(domain)
+        all_slips = self.env['hr.payslip'].search(domain, order='date_to desc, id desc')
 
         # Filter payslips where employee or contract matches state_id if state_id is selected
         if self.state_id:
-            filtered_payslips = self.env['hr.payslip']
-            for p in payslips:
+            filtered_slips = self.env['hr.payslip']
+            for p in all_slips:
                 emp_state = getattr(p.contract_id, 'hds_in_work_state_id', False) or (
                     p.employee_id.work_location_id.address_id.state_id if (p.employee_id.work_location_id and p.employee_id.work_location_id.address_id) else False
                 ) or p.company_id.state_id
                 if emp_state and emp_state.id == self.state_id.id:
-                    filtered_payslips |= p
-            payslips = filtered_payslips
+                    filtered_slips |= p
+            all_slips = filtered_slips
+
+        priority = {'paid': 4, 'done': 3, 'verify': 2, 'draft': 1}
+        best_slip_by_emp = {}
+        for slip in all_slips:
+            emp_id = slip.employee_id.id
+            if emp_id not in best_slip_by_emp:
+                best_slip_by_emp[emp_id] = slip
+            else:
+                curr_prio = priority.get(slip.state, 0)
+                best_prio = priority.get(best_slip_by_emp[emp_id].state, 0)
+                if curr_prio > best_prio:
+                    best_slip_by_emp[emp_id] = slip
+
+        payslips = self.env['hr.payslip'].browse([s.id for s in best_slip_by_emp.values()])
 
         if not payslips:
-            raise UserError(_("No confirmed payslips found for the selected period (%s) matching criteria.") % self._get_month_label())
+            raise UserError(_("No payslips found for the selected period (%s) matching criteria.") % self._get_month_label())
 
         # Pre-export statutory PT compliance validation
         from odoo.addons.hudson_in_payroll.services.compliance.statutory_compliance_service import StatutoryComplianceValidationService
@@ -172,7 +203,7 @@ class HdsPtReportWizard(models.TransientModel):
             gross_lines = lines.filtered(lambda l: l.code in ('PT_GROSS', 'PT_WAGE', 'GROSS'))
             gross_wage = abs(gross_lines[0].total) if gross_lines else (payslip.contract_id.wage if payslip.contract_id else 0.0)
 
-            emp_code = emp.identification_id or getattr(emp, 'registration_number', False) or ''
+            emp_code = emp.identification_id or getattr(emp, 'registration_number', False) or getattr(emp, 'barcode', False) or f"EMP{emp.id:04d}"
             state_name = self._get_employee_state_name(emp, payslip.contract_id)
 
             pt_rows.append({
@@ -187,6 +218,45 @@ class HdsPtReportWizard(models.TransientModel):
 
             tot_wages += gross_wage
             tot_pt += pt_amount
+
+        # State-wise grouping
+        state_groups = {}
+        for r in pt_rows:
+            st = r['state_name']
+            if st not in state_groups:
+                state_groups[st] = {'count': 0, 'wages': 0.0, 'pt': 0.0}
+            state_groups[st]['count'] += 1
+            state_groups[st]['wages'] += r['gross_wage']
+            state_groups[st]['pt'] += r['pt_amount']
+
+        state_summary_rows = [
+            {'state_name': st, 'count': d['count'], 'wages': round(d['wages'], 2), 'pt': round(d['pt'], 2)}
+            for st, d in sorted(state_groups.items())
+        ]
+
+        return {
+            'pt_rows': pt_rows,
+            'state_summary_rows': state_summary_rows,
+            'tot_wages': round(tot_wages, 2),
+            'tot_pt': round(tot_pt, 2),
+            'record_count': len(pt_rows),
+            'company_name': self.company_id.name or '',
+            'state_label': self.state_id.name if self.state_id else 'All Work States',
+        }
+
+    def action_print_pdf(self):
+        self.ensure_one()
+        data = self._get_pt_data()
+        if not data.get('pt_rows'):
+            raise UserError(_("No employee records found for the selected period (%s).") % self._get_month_label())
+        return self.env.ref('hudson_in_payroll.action_report_pt').report_action(self)
+
+    def action_generate_xlsx(self):
+        self.ensure_one()
+        data = self._get_pt_data()
+        pt_rows = data['pt_rows']
+        tot_wages = data['tot_wages']
+        tot_pt = data['tot_pt']
 
         month_label = self._get_month_label().replace(' ', '_')
         xlsx_filename = f"PT_Report_{self.report_type}_{month_label}.xlsx"
@@ -204,17 +274,17 @@ class HdsPtReportWizard(models.TransientModel):
             num_fmt = workbook.add_format({'num_format': '#,##0.00', 'border': 1})
             text_fmt = workbook.add_format({'border': 1})
             tot_fmt = workbook.add_format({
-                'bold': True, 'bg_color': '#D9D9D9', 'border': 1, 'num_format': '#,##0.00'
+                'bold': True, 'bg_color': '#D9E1F2', 'border': 1, 'num_format': '#,##0.00'
             })
             tot_label_fmt = workbook.add_format({
-                'bold': True, 'bg_color': '#D9D9D9', 'border': 1, 'align': 'center'
+                'bold': True, 'bg_color': '#D9E1F2', 'border': 1, 'align': 'center'
             })
 
             if self.report_type == 'pt_summary':
                 sheet = workbook.add_worksheet('PT Summary')
                 headers = [
-                    'Establishment / Company', 'Reporting Period', 'Total Employees Covered',
-                    'Total Gross / PT Wages', 'Total PT Deductions'
+                    'Establishment / Company', 'Period (Month-Year)',
+                    'Total Covered Employees', 'Total Gross Wages (Rs)', 'Total PT Deductions (Rs)'
                 ]
                 for col_idx, text in enumerate(headers):
                     sheet.write(0, col_idx, text, header_fmt)
@@ -234,22 +304,12 @@ class HdsPtReportWizard(models.TransientModel):
                 for col_idx, text in enumerate(headers):
                     sheet.write(0, col_idx, text, header_fmt)
 
-                # Group by state
-                state_groups = {}
-                for r in pt_rows:
-                    st = r['state_name']
-                    if st not in state_groups:
-                        state_groups[st] = {'count': 0, 'wages': 0.0, 'pt': 0.0}
-                    state_groups[st]['count'] += 1
-                    state_groups[st]['wages'] += r['gross_wage']
-                    state_groups[st]['pt'] += r['pt_amount']
-
                 row_idx = 1
-                for st, data in sorted(state_groups.items()):
-                    sheet.write(row_idx, 0, st, text_fmt)
-                    sheet.write(row_idx, 1, data['count'], text_fmt)
-                    sheet.write(row_idx, 2, round(data['wages'], 2), num_fmt)
-                    sheet.write(row_idx, 3, round(data['pt'], 2), num_fmt)
+                for s in data['state_summary_rows']:
+                    sheet.write(row_idx, 0, s['state_name'], text_fmt)
+                    sheet.write(row_idx, 1, s['count'], text_fmt)
+                    sheet.write(row_idx, 2, s['wages'], num_fmt)
+                    sheet.write(row_idx, 3, s['pt'], num_fmt)
                     row_idx += 1
 
                 sheet.write(row_idx, 0, 'TOTAL', tot_label_fmt)

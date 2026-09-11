@@ -99,7 +99,7 @@ class HdsGratuityReportWizard(models.TransientModel):
 
         return self.env['hr.employee'].search(domain)
 
-    def action_export_xlsx(self):
+    def _get_gratuity_data(self):
         self.ensure_one()
         employees = self._get_target_employees()
 
@@ -160,6 +160,30 @@ class HdsGratuityReportWizard(models.TransientModel):
             tot_wage_base += calc_data.wage_base
             tot_raw_gratuity += calc_res.raw_gratuity_amount
             tot_final_gratuity += calc_res.final_gratuity_amount
+
+        mode_label = dict(self._fields['selection_mode'].selection).get(self.selection_mode, '')
+
+        return {
+            'gratuity_rows': gratuity_rows,
+            'tot_wage_base': round(tot_wage_base, 2),
+            'tot_raw_gratuity': round(tot_raw_gratuity, 2),
+            'tot_final_gratuity': round(tot_final_gratuity, 2),
+            'mode_label': mode_label,
+            'record_count': len(gratuity_rows),
+        }
+
+    def action_print_pdf(self):
+        self.ensure_one()
+        return self.env.ref('hudson_in_payroll.action_report_gratuity').report_action(self)
+
+    def action_export_xlsx(self):
+        self.ensure_one()
+        data = self._get_gratuity_data()
+        gratuity_rows = data['gratuity_rows']
+        tot_wage_base = data['tot_wage_base']
+        tot_raw_gratuity = data['tot_raw_gratuity']
+        tot_final_gratuity = data['tot_final_gratuity']
+        mode_label = data['mode_label']
 
         today_str = fields.Date.today().strftime('%d_%b_%Y')
         xlsx_filename = f"Gratuity_Calculation_Report_{today_str}.xlsx"

@@ -49,6 +49,13 @@ class HdsEsicReportWizard(models.TransientModel):
         ('esi_summary', 'ESI Summary'),
     ], string='Report Type', default='esic_report', required=True)
 
+    payslip_state = fields.Selection([
+        ('all', 'All States (Draft, Verify, Done, Paid)'),
+        ('confirmed', 'Confirmed & Paid (Done, Paid)'),
+        ('done', 'Done Only'),
+        ('paid', 'Paid Only'),
+    ], string='Payslip Status', default='all', required=True)
+
     company_id = fields.Many2one(
         'res.company',
         string='Company',
@@ -93,21 +100,45 @@ class HdsEsicReportWizard(models.TransientModel):
         month_dict = dict(self._fields['month'].selection)
         return f"{month_dict.get(self.month, '')} {self.year}"
 
-    def action_generate_xlsx(self):
+    def _get_esic_data(self):
         self.ensure_one()
         date_from, date_to = self._get_date_range()
 
+        state_sel = getattr(self, 'payslip_state', 'all')
+        if state_sel == 'done':
+            states = ['done']
+        elif state_sel == 'paid':
+            states = ['paid']
+        elif state_sel == 'confirmed':
+            states = ['done', 'paid']
+        else:
+            states = ['draft', 'verify', 'done', 'paid']
+
         domain = [
-            ('state', '=', 'done'),
+            ('state', 'in', states),
             ('company_id', '=', self.company_id.id),
             ('date_from', '>=', date_from),
             ('date_to', '<=', date_to),
             ('employee_id.hds_in_esic_applicable', '=', True),
         ]
-        payslips = self.env['hr.payslip'].search(domain)
+        all_slips = self.env['hr.payslip'].search(domain, order='date_to desc, id desc')
+
+        priority = {'paid': 4, 'done': 3, 'verify': 2, 'draft': 1}
+        best_slip_by_emp = {}
+        for slip in all_slips:
+            emp_id = slip.employee_id.id
+            if emp_id not in best_slip_by_emp:
+                best_slip_by_emp[emp_id] = slip
+            else:
+                curr_prio = priority.get(slip.state, 0)
+                best_prio = priority.get(best_slip_by_emp[emp_id].state, 0)
+                if curr_prio > best_prio:
+                    best_slip_by_emp[emp_id] = slip
+
+        payslips = self.env['hr.payslip'].browse([s.id for s in best_slip_by_emp.values()])
 
         if not payslips:
-            raise UserError(_("No confirmed payslips found for ESIC-applicable employees in the selected period (%s).") % self._get_month_label())
+            raise UserError(_("No payslips found for ESIC-applicable employees in the selected period (%s).") % self._get_month_label())
 
         # Pre-export statutory ESIC compliance validation
         from odoo.addons.hudson_in_payroll.services.compliance.statutory_compliance_service import StatutoryComplianceValidationService
@@ -127,11 +158,11 @@ class HdsEsicReportWizard(models.TransientModel):
             emp = payslip.employee_id
             lines = payslip.line_ids
 
-            ip_number = getattr(emp, 'hds_in_esic_ip_number', False) or ''
+            ip_number = getattr(emp, 'hds_in_esic_ip_number', False) or getattr(emp, 'esic_number', False) or ''
             emp_name = emp.name or ''
 
             # Calculate worked / payable days
-            unpaid_lines = payslip.worked_days_line_ids.filtered(lambda l: l.code == 'UNPAID')
+            unpaid_lines = payslip.worked_days_line_ids.filtered(lambda l: l.code in ('UNPAID', 'ABSENT', 'LEAVE_UNPAID'))
             lop_days = sum(unpaid_lines.mapped('number_of_days')) if unpaid_lines else 0
             if getattr(payslip, 'hds_snapshot_id', False) and payslip.hds_snapshot_id.lop_days:
                 lop_days = payslip.hds_snapshot_id.lop_days
@@ -148,7 +179,7 @@ class HdsEsicReportWizard(models.TransientModel):
                 esi_wage = abs(gross_lines[0].total) if gross_lines else (payslip.contract_id.wage if payslip.contract_id else 0.0)
 
             # Employee ESI Deduction (0.75%)
-            ee_lines = lines.filtered(lambda l: l.code in ('ESIC_EE', 'ESI_EE', 'EMPLOYEE_ESIC', 'ESIC_DED'))
+            ee_lines = lines.filtered(lambda l: l.code in ('ESIC_EE', 'ESI_EE', 'EMPLOYEE_ESIC', 'ESIC_DED', 'ESI', 'ESIC'))
             if ee_lines:
                 ee_contrib = abs(sum(ee_lines.mapped('total')))
             else:
@@ -162,7 +193,6 @@ class HdsEsicReportWizard(models.TransientModel):
                 er_contrib = round(esi_wage * 0.0325, 2) if (emp.hds_in_esic_applicable and esi_wage <= 21000.0) else 0.0
 
             reason_code = getattr(emp, 'hds_in_esic_exit_reason', False) or ''
-
             tot_contrib = round(ee_contrib + er_contrib, 2)
 
             esic_rows.append({
@@ -179,6 +209,33 @@ class HdsEsicReportWizard(models.TransientModel):
             tot_wages += esi_wage
             tot_ee += ee_contrib
             tot_er += er_contrib
+
+        est_code = getattr(self.company_id, 'hds_in_esic_employer_code', False) or getattr(self.company_id, 'vat', '') or ''
+        return {
+            'esic_rows': esic_rows,
+            'tot_wages': round(tot_wages, 2),
+            'tot_ee': round(tot_ee, 2),
+            'tot_er': round(tot_er, 2),
+            'total_payable': round(tot_ee + tot_er, 2),
+            'record_count': len(esic_rows),
+            'est_name': self.company_id.name or '',
+            'est_code': est_code,
+        }
+
+    def action_print_pdf(self):
+        self.ensure_one()
+        data = self._get_esic_data()
+        if not data.get('esic_rows'):
+            raise UserError(_("No employee records found for the selected period (%s).") % self._get_month_label())
+        return self.env.ref('hudson_in_payroll.action_report_esic').report_action(self)
+
+    def action_generate_xlsx(self):
+        self.ensure_one()
+        data = self._get_esic_data()
+        esic_rows = data['esic_rows']
+        tot_wages = data['tot_wages']
+        tot_ee = data['tot_ee']
+        tot_er = data['tot_er']
 
         month_label = self._get_month_label().replace(' ', '_')
         if self.report_type == 'esi_summary':

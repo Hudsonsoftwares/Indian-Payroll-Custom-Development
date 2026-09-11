@@ -6,10 +6,16 @@
         <field name="arch" type="xml">
             <form string="EPF-ECR Report Wizard">
                 <header>
+                    <button name="action_print_pdf"
+                            string="Print PDF"
+                            type="object"
+                            class="btn-primary"
+                            icon="fa-print"/>
                     <button name="action_generate_ecr"
                             string="Export XLSX File"
                             type="object"
-                            class="btn-primary"/>
+                            class="btn-success"
+                            icon="fa-file-excel-o"/>
                     <field name="state" widget="statusbar" statusbar_visible="draft,generated"/>
                 </header>
                 <sheet>
@@ -23,6 +29,7 @@
                             <field name="year" required="1"/>
                             <field name="month" required="1"/>
                             <field name="report_type" required="1" widget="radio"/>
+                            <field name="payslip_state"/>
                             <field name="company_id" groups="base.group_multi_company" required="1"/>
                         </group>
                         <group string="Summary Statistics" invisible="state == 'draft'">

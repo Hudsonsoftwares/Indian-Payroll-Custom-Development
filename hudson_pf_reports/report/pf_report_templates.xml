@@ -109,4 +109,153 @@
             </t>
         </t>
     </template>
+
+    <!-- QWeb PDF Template for EPFO ECR Report -->
+    <template id="report_hds_pf_ecr_document">
+        <t t-call="web.html_container">
+            <t t-foreach="docs" t-as="o">
+                <t t-set="data" t-value="o._get_ecr_data()"/>
+                <t t-set="ecr_rows" t-value="data['ecr_rows']"/>
+                <t t-set="summary_rows" t-value="data['summary_rows']"/>
+
+                <div class="article" style="font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; font-size: 8px; color: #2c3e50; width: 100%;">
+                    <!-- Header -->
+                    <div style="border-bottom: 2px solid #1F4E78; padding-bottom: 6px; margin-bottom: 8px;">
+                        <table style="width: 100%;">
+                            <tr>
+                                <td style="width: 65%; vertical-align: middle;">
+                                    <div style="font-size: 14px; font-weight: bold; color: #1F4E78; text-transform: uppercase;">
+                                        <t t-if="o.report_type == 'epf_summary'">EPF MONTHLY SUMMARY STATEMENT</t>
+                                        <t t-else="">EPFO ELECTRONIC CHALLAN CUM RETURN (ECR) REPORT</t>
+                                    </div>
+                                    <div style="font-size: 9px; color: #555555; margin-top: 2px;">
+                                        <strong>Company / Establishment:</strong> <span t-esc="data['est_name']"/> |
+                                        <strong>Est. ID / Code:</strong> <span t-esc="data['est_id'] or 'N/A'"/> |
+                                        <strong>Wage Month:</strong> <span t-esc="o._get_month_label()"/>
+                                    </div>
+                                </td>
+                                <td style="width: 35%; text-align: right; vertical-align: middle;">
+                                    <div style="font-size: 9px; color: #555555;">
+                                        <strong>Generated:</strong> <span t-esc="context_timestamp(datetime.datetime.now()).strftime('%d-%b-%Y %H:%M')"/><br/>
+                                        <strong>Total Members:</strong> <span t-esc="data['record_count']"/> |
+                                        <strong>Total Wages:</strong> ₹<span t-esc="'{:,.2f}'.format(data['tot_wages'])"/>
+                                    </div>
+                                </td>
+                            </tr>
+                        </table>
+                    </div>
+
+                    <!-- Layout 1: ECR Detail Report -->
+                    <t t-if="o.report_type != 'epf_summary'">
+                        <table style="width: 100%; border-collapse: collapse; margin-top: 6px; table-layout: fixed;">
+                            <thead>
+                                <tr style="background-color: #1F4E78; color: #ffffff; font-size: 7.5px; font-weight: bold; text-align: center;">
+                                    <th style="width: 3%; padding: 4px 2px; border: 0.5px solid #dcdcdc;">#</th>
+                                    <th style="width: 11%; padding: 4px 2px; border: 0.5px solid #dcdcdc;">UAN</th>
+                                    <th style="width: 16%; padding: 4px 2px; border: 0.5px solid #dcdcdc; text-align: left;">Member Name</th>
+                                    <th style="width: 8%; padding: 4px 2px; border: 0.5px solid #dcdcdc;">Gross Wages</th>
+                                    <th style="width: 8%; padding: 4px 2px; border: 0.5px solid #dcdcdc;">EPF Wages</th>
+                                    <th style="width: 8%; padding: 4px 2px; border: 0.5px solid #dcdcdc;">EPS Wages</th>
+                                    <th style="width: 8%; padding: 4px 2px; border: 0.5px solid #dcdcdc;">EDLI Wages</th>
+                                    <th style="width: 8%; padding: 4px 2px; border: 0.5px solid #dcdcdc; background-color: #2E75B6;">EE EPF (12%)</th>
+                                    <th style="width: 8%; padding: 4px 2px; border: 0.5px solid #dcdcdc; background-color: #4B6F96;">EPS (8.33%)</th>
+                                    <th style="width: 8%; padding: 4px 2px; border: 0.5px solid #dcdcdc; background-color: #4B6F96;">ER EPF (3.67%)</th>
+                                    <th style="width: 4%; padding: 4px 2px; border: 0.5px solid #dcdcdc;">NCP</th>
+                                    <th style="width: 8%; padding: 4px 2px; border: 0.5px solid #dcdcdc; background-color: #1E4620;">Total Remitted</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <t t-set="idx" t-value="1"/>
+                                <tr t-foreach="ecr_rows" t-as="r" style="border-bottom: 0.5px solid #e0e0e0; font-size: 7px;">
+                                    <td style="text-align: center; padding: 3px 2px;"><span t-esc="idx"/></td>
+                                    <td style="text-align: center; padding: 3px 2px; font-family: monospace;"><span t-esc="r['uan'] or '-'"/></td>
+                                    <td style="text-align: left; padding: 3px 2px;"><strong><span t-esc="r['name']"/></strong></td>
+                                    <td style="text-align: right; padding: 3px 2px;"><span t-esc="'{:,.2f}'.format(r['gross'])"/></td>
+                                    <td style="text-align: right; padding: 3px 2px;"><span t-esc="'{:,.2f}'.format(r['epf_wages'])"/></td>
+                                    <td style="text-align: right; padding: 3px 2px;"><span t-esc="'{:,.2f}'.format(r['eps_wages'])"/></td>
+                                    <td style="text-align: right; padding: 3px 2px;"><span t-esc="'{:,.2f}'.format(r['edli_wages'])"/></td>
+                                    <td style="text-align: right; padding: 3px 2px; font-weight: bold; background-color: #F2F7FA;"><span t-esc="'{:,.2f}'.format(r['ee_epf'])"/></td>
+                                    <td style="text-align: right; padding: 3px 2px; background-color: #F5F7FA;"><span t-esc="'{:,.2f}'.format(r['er_eps'])"/></td>
+                                    <td style="text-align: right; padding: 3px 2px; background-color: #F5F7FA;"><span t-esc="'{:,.2f}'.format(r['er_epf'])"/></td>
+                                    <td style="text-align: center; padding: 3px 2px;"><span t-esc="r['ncp_days']"/></td>
+                                    <td style="text-align: right; padding: 3px 2px; font-weight: bold; background-color: #EAF2E8; color: #1e4620;">
+                                        <span t-esc="'{:,.2f}'.format(r['ee_epf'] + r['er_epf'] + r['er_eps'])"/>
+                                    </td>
+                                    <t t-set="idx" t-value="idx + 1"/>
+                                </tr>
+                                <!-- Totals Row -->
+                                <tr style="background-color: #EBF1F5; font-weight: bold; font-size: 7.5px; border-top: 1.5px solid #1F4E78; border-bottom: 1.5px solid #1F4E78;">
+                                    <td colspan="3" style="text-align: center; padding: 4px 2px;">TOTAL (<span t-esc="data['record_count']"/> MEMBERS)</td>
+                                    <td style="text-align: right; padding: 4px 2px;">-</td>
+                                    <td style="text-align: right; padding: 4px 2px;"><span t-esc="'{:,.2f}'.format(data['tot_wages'])"/></td>
+                                    <td style="text-align: right; padding: 4px 2px;">-</td>
+                                    <td style="text-align: right; padding: 4px 2px;">-</td>
+                                    <td style="text-align: right; padding: 4px 2px; color: #2E75B6;"><span t-esc="'{:,.2f}'.format(data['tot_ee_epf'])"/></td>
+                                    <td style="text-align: right; padding: 4px 2px;"><span t-esc="'{:,.2f}'.format(data['tot_er_eps'])"/></td>
+                                    <td style="text-align: right; padding: 4px 2px;"><span t-esc="'{:,.2f}'.format(data['tot_er_epf'])"/></td>
+                                    <td style="text-align: center; padding: 4px 2px;">-</td>
+                                    <td style="text-align: right; padding: 4px 2px; color: #1E4620;"><span t-esc="'{:,.2f}'.format(data['tot_ee_epf'] + data['tot_er_epf'] + data['tot_er_eps'])"/></td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </t>
+
+                    <!-- Layout 2: EPF Summary Report -->
+                    <t t-if="o.report_type == 'epf_summary'">
+                        <table style="width: 100%; border-collapse: collapse; margin-top: 6px; table-layout: fixed;">
+                            <thead>
+                                <tr style="background-color: #1F4E78; color: #ffffff; font-size: 7.5px; font-weight: bold; text-align: center;">
+                                    <th style="width: 6%; padding: 4px 2px; border: 0.5px solid #dcdcdc;">Emp ID</th>
+                                    <th style="width: 14%; padding: 4px 2px; border: 0.5px solid #dcdcdc; text-align: left;">Employee Name</th>
+                                    <th style="width: 11%; padding: 4px 2px; border: 0.5px solid #dcdcdc;">Account No</th>
+                                    <th style="width: 11%; padding: 4px 2px; border: 0.5px solid #dcdcdc;">UAN</th>
+                                    <th style="width: 8%; padding: 4px 2px; border: 0.5px solid #dcdcdc;">PF Wages</th>
+                                    <th style="width: 8%; padding: 4px 2px; border: 0.5px solid #dcdcdc; background-color: #2E75B6;">EE PF</th>
+                                    <th style="width: 6%; padding: 4px 2px; border: 0.5px solid #dcdcdc;">VPF</th>
+                                    <th style="width: 8%; padding: 4px 2px; border: 0.5px solid #dcdcdc;">Total PF</th>
+                                    <th style="width: 8%; padding: 4px 2px; border: 0.5px solid #dcdcdc; background-color: #4B6F96;">EPS</th>
+                                    <th style="width: 6%; padding: 4px 2px; border: 0.5px solid #dcdcdc;">EDLI</th>
+                                    <th style="width: 6%; padding: 4px 2px; border: 0.5px solid #dcdcdc;">Admin</th>
+                                    <th style="width: 8%; padding: 4px 2px; border: 0.5px solid #dcdcdc; background-color: #1E4620;">Total Contrib</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr t-foreach="summary_rows" t-as="s" style="border-bottom: 0.5px solid #e0e0e0; font-size: 7px;">
+                                    <td style="text-align: center; padding: 3px 2px;"><span t-esc="s['employee_id']"/></td>
+                                    <td style="text-align: left; padding: 3px 2px;"><strong><span t-esc="s['employee_name']"/></strong></td>
+                                    <td style="text-align: center; padding: 3px 2px; font-family: monospace;"><span t-esc="s['account_number'] or '-'"/></td>
+                                    <td style="text-align: center; padding: 3px 2px; font-family: monospace;"><span t-esc="s['uan'] or '-'"/></td>
+                                    <td style="text-align: right; padding: 3px 2px;"><span t-esc="'{:,.2f}'.format(s['pf_wages'])"/></td>
+                                    <td style="text-align: right; padding: 3px 2px; font-weight: bold; background-color: #F2F7FA;"><span t-esc="'{:,.2f}'.format(s['employee_pf_amount'])"/></td>
+                                    <td style="text-align: right; padding: 3px 2px;"><span t-esc="'{:,.2f}'.format(s['vpf_amount'])"/></td>
+                                    <td style="text-align: right; padding: 3px 2px;"><span t-esc="'{:,.2f}'.format(s['pf_amount'])"/></td>
+                                    <td style="text-align: right; padding: 3px 2px; background-color: #F5F7FA;"><span t-esc="'{:,.2f}'.format(s['eps_amount'])"/></td>
+                                    <td style="text-align: right; padding: 3px 2px;"><span t-esc="'{:,.2f}'.format(s['edli'])"/></td>
+                                    <td style="text-align: right; padding: 3px 2px;"><span t-esc="'{:,.2f}'.format(s['admin_charge'])"/></td>
+                                    <td style="text-align: right; padding: 3px 2px; font-weight: bold; background-color: #EAF2E8; color: #1e4620;"><span t-esc="'{:,.2f}'.format(s['total_contribution'])"/></td>
+                                </tr>
+                                <!-- Totals Row -->
+                                <tr style="background-color: #EBF1F5; font-weight: bold; font-size: 7.5px; border-top: 1.5px solid #1F4E78; border-bottom: 1.5px solid #1F4E78;">
+                                    <td colspan="4" style="text-align: center; padding: 4px 2px;">TOTAL (<span t-esc="data['record_count']"/> EMPLOYEES)</td>
+                                    <td style="text-align: right; padding: 4px 2px;"><span t-esc="'{:,.2f}'.format(data['tot_wages'])"/></td>
+                                    <td style="text-align: right; padding: 4px 2px; color: #2E75B6;"><span t-esc="'{:,.2f}'.format(data['tot_ee_epf'])"/></td>
+                                    <td style="text-align: right; padding: 4px 2px;"><span t-esc="'{:,.2f}'.format(data['tot_vpf'])"/></td>
+                                    <td style="text-align: right; padding: 4px 2px;"><span t-esc="'{:,.2f}'.format(data['tot_ee_epf'] + data['tot_vpf'])"/></td>
+                                    <td style="text-align: right; padding: 4px 2px;"><span t-esc="'{:,.2f}'.format(data['tot_er_eps'])"/></td>
+                                    <td style="text-align: right; padding: 4px 2px;"><span t-esc="'{:,.2f}'.format(data['tot_edli'])"/></td>
+                                    <td style="text-align: right; padding: 4px 2px;"><span t-esc="'{:,.2f}'.format(data['tot_admin'])"/></td>
+                                    <td style="text-align: right; padding: 4px 2px; color: #1E4620;"><span t-esc="'{:,.2f}'.format(data['tot_overall_contrib'])"/></td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </t>
+
+                    <!-- Statutory Disclaimer Footer -->
+                    <div style="margin-top: 20px; padding-top: 8px; border-top: 1px solid #dcdcdc; text-align: center; color: #888888; font-size: 7px;">
+                        <p>This is a computer-generated statutory payroll document for EPFO compliance verification. Authorized Signature Not Required.</p>
+                    </div>
+                </div>
+            </t>
+        </t>
+    </template>
 </odoo>

@@ -55,6 +55,13 @@ class HdsPfReportWizardBase(models.AbstractModel):
         string='Employee',
         help="Optional filter by specific employee."
     )
+    payslip_state = fields.Selection([
+        ('all', 'All States (Draft, Verify, Done, Paid)'),
+        ('confirmed', 'Confirmed & Paid (Done, Paid)'),
+        ('done', 'Done Only'),
+        ('paid', 'Paid Only'),
+    ], string='Payslip Status', default='all', required=True)
+
     generated_on_date = fields.Date(
         string='Generated On Date',
         default=fields.Date.today,
@@ -78,8 +85,19 @@ class HdsPfReportWizardBase(models.AbstractModel):
     def _get_confirmed_payslips(self, extra_domain=None):
         self.ensure_one()
         date_from, date_to = self._get_date_range()
+
+        state_sel = getattr(self, 'payslip_state', 'all')
+        if state_sel == 'done':
+            states = ['done']
+        elif state_sel == 'paid':
+            states = ['paid']
+        elif state_sel == 'confirmed':
+            states = ['done', 'paid']
+        else:
+            states = ['draft', 'verify', 'done', 'paid']
+
         domain = [
-            ('state', '=', 'done'),
+            ('state', 'in', states),
             ('company_id', '=', self.company_id.id),
             ('date_from', '>=', date_from),
             ('date_to', '<=', date_to),
@@ -90,7 +108,22 @@ class HdsPfReportWizardBase(models.AbstractModel):
             domain.append(('employee_id.department_id', '=', self.department_id.id))
         if extra_domain:
             domain.extend(extra_domain)
-        return self.env['hr.payslip'].search(domain)
+
+        all_slips = self.env['hr.payslip'].search(domain, order='date_to desc, id desc')
+        # Deduplicate per employee preferring paid > done > verify > draft
+        priority = {'paid': 4, 'done': 3, 'verify': 2, 'draft': 1}
+        best_slip_by_emp = {}
+        for slip in all_slips:
+            emp_id = slip.employee_id.id
+            if emp_id not in best_slip_by_emp:
+                best_slip_by_emp[emp_id] = slip
+            else:
+                curr_prio = priority.get(slip.state, 0)
+                best_prio = priority.get(best_slip_by_emp[emp_id].state, 0)
+                if curr_prio > best_prio:
+                    best_slip_by_emp[emp_id] = slip
+
+        return self.env['hr.payslip'].browse([s.id for s in best_slip_by_emp.values()])
 
     def action_print_pdf(self):
         self.ensure_one()

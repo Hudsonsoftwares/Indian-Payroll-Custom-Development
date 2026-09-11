@@ -49,6 +49,13 @@ class HdsLwfReportWizard(models.TransientModel):
         required=True
     )
 
+    payslip_state = fields.Selection([
+        ('all', 'All States (Draft, Verify, Done, Paid)'),
+        ('confirmed', 'Confirmed & Paid (Done, Paid)'),
+        ('done', 'Done Only'),
+        ('paid', 'Paid Only'),
+    ], string='Payslip State', default='all', required=True)
+
     xlsx_file = fields.Binary(string='LWF Report Excel File (.xlsx)', readonly=True)
     xlsx_filename = fields.Char(string='Excel Filename', readonly=True)
 
@@ -64,7 +71,7 @@ class HdsLwfReportWizard(models.TransientModel):
 
         return self.env['hr.employee'].search(domain)
 
-    def action_export_xlsx(self):
+    def _get_lwf_data(self):
         self.ensure_one()
         employees = self._get_target_employees()
 
@@ -86,6 +93,17 @@ class HdsLwfReportWizard(models.TransientModel):
         tot_er_contrib = 0.0
         tot_total_contrib = 0.0
 
+        if self.payslip_state == 'all':
+            state_domain = [('state', 'in', ['draft', 'verify', 'done', 'paid'])]
+        elif self.payslip_state == 'confirmed':
+            state_domain = [('state', 'in', ['done', 'paid'])]
+        elif self.payslip_state == 'done':
+            state_domain = [('state', '=', 'done')]
+        elif self.payslip_state == 'paid':
+            state_domain = [('state', '=', 'paid')]
+        else:
+            state_domain = [('state', 'in', ['draft', 'verify', 'done', 'paid'])]
+
         for emp in employees:
             lwf_no = getattr(emp, 'hds_in_lwf_number', False) or ''
             emp_name = emp.name or ''
@@ -99,13 +117,13 @@ class HdsLwfReportWizard(models.TransientModel):
 
             state_name = state_rec.name if state_rec else ''
 
-            # Find confirmed payslips within the date range
-            payslips = self.env['hr.payslip'].search([
+            # Find matching payslips within the date range according to selected state filter
+            domain = [
                 ('employee_id', '=', emp.id),
-                ('state', '=', 'done'),
                 ('date_from', '>=', self.date_from),
                 ('date_to', '<=', self.date_to)
-            ])
+            ] + state_domain
+            payslips = self.env['hr.payslip'].search(domain)
 
             ee_contrib = 0.0
             er_contrib = 0.0
@@ -146,6 +164,27 @@ class HdsLwfReportWizard(models.TransientModel):
             tot_ee_contrib += ee_contrib
             tot_er_contrib += er_contrib
             tot_total_contrib += total_contrib
+
+        return {
+            'lwf_rows': lwf_rows,
+            'tot_ee_contrib': round(tot_ee_contrib, 2),
+            'tot_er_contrib': round(tot_er_contrib, 2),
+            'tot_total_contrib': round(tot_total_contrib, 2),
+            'dept_label': self.department_id.name if self.department_id else 'All Departments',
+        }
+
+    def action_print_pdf(self):
+        self.ensure_one()
+        return self.env.ref('hudson_in_payroll.action_report_lwf').report_action(self)
+
+    def action_export_xlsx(self):
+        self.ensure_one()
+        data = self._get_lwf_data()
+        lwf_rows = data['lwf_rows']
+        tot_ee_contrib = data['tot_ee_contrib']
+        tot_er_contrib = data['tot_er_contrib']
+        tot_total_contrib = data['tot_total_contrib']
+        dept_label = data['dept_label']
 
         year_str = self.date_from.strftime('%Y') if self.date_from else str(fields.Date.today().year)
         xlsx_filename = f"LWF_Report_{year_str}.xlsx"

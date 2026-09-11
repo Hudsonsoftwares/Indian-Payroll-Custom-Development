@@ -46,7 +46,7 @@ class HdsPfEcrWizard(models.TransientModel):
             r_label = report_dict.get(rec.report_type, 'EPF Report')
             rec.name = f"{r_label} / {m_label}-{rec.year}"
 
-    def action_generate_ecr(self):
+    def _get_ecr_data(self):
         self.ensure_one()
         payslips = self._get_confirmed_payslips([('employee_id.hds_in_epf_applicable', '=', True)])
 
@@ -62,12 +62,17 @@ class HdsPfEcrWizard(models.TransientModel):
             report_title='EPF-ECR'
         )
 
+        eps_ceiling = 15000.0
         ecr_rows = []
         summary_rows = []
         tot_wages = 0.0
         tot_ee_epf = 0.0
         tot_er_eps = 0.0
         tot_er_epf = 0.0
+        tot_edli = 0.0
+        tot_admin = 0.0
+        tot_vpf = 0.0
+        tot_overall_contrib = 0.0
 
         for payslip in payslips:
             emp = payslip.employee_id
@@ -137,6 +142,46 @@ class HdsPfEcrWizard(models.TransientModel):
             tot_ee_epf += ee_epf
             tot_er_eps += er_eps
             tot_er_epf += er_epf
+            tot_edli += edli_amt
+            tot_admin += admin_amt
+            tot_vpf += vpf_amt
+            tot_overall_contrib += tot_contrib
+
+        est_name = self.company_id.name or ''
+        est_id = getattr(self.company_id, 'hds_in_epf_employer_id', False) or getattr(self.company_id, 'vat', False) or ''
+
+        return {
+            'ecr_rows': ecr_rows,
+            'summary_rows': summary_rows,
+            'tot_wages': round(tot_wages, 2),
+            'tot_ee_epf': round(tot_ee_epf, 2),
+            'tot_er_eps': round(tot_er_eps, 2),
+            'tot_er_epf': round(tot_er_epf, 2),
+            'tot_edli': round(tot_edli, 2),
+            'tot_admin': round(tot_admin, 2),
+            'tot_vpf': round(tot_vpf, 2),
+            'tot_overall_contrib': round(tot_overall_contrib, 2),
+            'record_count': len(ecr_rows),
+            'est_name': est_name,
+            'est_id': est_id,
+        }
+
+    def action_print_pdf(self):
+        self.ensure_one()
+        data = self._get_ecr_data()
+        if not data.get('ecr_rows'):
+            raise UserError(_("No employee records found for the selected period (%s).") % self._get_month_label())
+        return self.env.ref('hudson_pf_reports.action_report_pf_ecr').report_action(self)
+
+    def action_generate_ecr(self):
+        self.ensure_one()
+        data = self._get_ecr_data()
+        ecr_rows = data['ecr_rows']
+        summary_rows = data['summary_rows']
+        tot_wages = data['tot_wages']
+        tot_ee_epf = data['tot_ee_epf']
+        tot_er_eps = data['tot_er_eps']
+        tot_er_epf = data['tot_er_epf']
 
         month_label = self._get_month_label().replace('-', '_')
         txt_filename = f"EPFO_ECR_{month_label}.txt"
@@ -188,14 +233,10 @@ class HdsPfEcrWizard(models.TransientModel):
             else:
                 sheet = workbook.add_worksheet('EPF Report')
 
-                # Establishment Header Info
-                est_name = self.company_id.name or ''
-                est_id = getattr(self.company_id, 'hds_in_epf_employer_id', False) or getattr(self.company_id, 'vat', False) or ''
-
                 sheet.write(0, 0, "Establishment Name", meta_label_fmt)
-                sheet.write(0, 1, est_name, meta_val_fmt)
+                sheet.write(0, 1, data['est_name'], meta_val_fmt)
                 sheet.write(1, 0, "Establishment ID", meta_label_fmt)
-                sheet.write(1, 1, est_id, meta_val_fmt)
+                sheet.write(1, 1, data['est_id'], meta_val_fmt)
                 sheet.write(2, 0, "Total Members", meta_label_fmt)
                 sheet.write(2, 1, len(ecr_rows), meta_val_fmt)
 
