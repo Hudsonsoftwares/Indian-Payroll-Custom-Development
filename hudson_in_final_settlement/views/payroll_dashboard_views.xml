@@ -11,4 +11,11 @@
             </xpath>
         </field>
     </record>
+    <!-- Window Action for Clickable Final Settlements Due Dashboard Card -->
+    <record id="action_dashboard_final_settlements_due" model="ir.actions.act_window">
+        <field name="name">Final Settlements Due</field>
+        <field name="res_model">final.settlement</field>
+        <field name="view_mode">list,form</field>
+        <field name="domain">[('state', '!=', 'cancel')]</field>
+    </record>
 </odoo>

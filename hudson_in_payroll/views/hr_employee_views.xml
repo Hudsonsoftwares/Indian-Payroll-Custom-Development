@@ -188,7 +188,7 @@
                     <field name="hds_in_uan" string="UAN" placeholder="12 digit Universal Account Number"/>
                     <field name="hds_in_pf_member_id" string="PF Account Number" placeholder="22 character PF A/c Number"/>
                     <field name="hds_in_lwf_number" string="LWF Account Number" placeholder="Labour Welfare Fund Account Number"/>
-                    <field name="hds_in_esic_ip_number" string="ESIC Number" placeholder="17 digit ESIC Number"/>
+                    <field name="hds_in_esic_ip_number" string="ESIC Number" placeholder="10 digit ESIC Number"/>
                 </group>
                 <group string="Disability &amp; Special Status" name="group_disability_status">
                     <field name="hds_in_is_pwd"/>

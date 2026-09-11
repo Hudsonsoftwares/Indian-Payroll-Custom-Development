@@ -32,6 +32,12 @@ class HrSalaryRule(models.Model):
         string='Partner',
         help="Eventual third party involved in the salary payment of this rule."
     )
+    section_id = fields.Many2one(
+        'hr.salary.rule.section',
+        string='Salary Rule Section',
+        index=True,
+        help="Section under which this rule is grouped in salary structures."
+    )
     condition_select = fields.Selection([
         ('none', 'Always True'),
         ('range', 'Range'),

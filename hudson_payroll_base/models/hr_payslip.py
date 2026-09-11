@@ -5,18 +5,48 @@ from odoo import api, fields, models, _
 from odoo.exceptions import UserError, ValidationError
 
 
+class DummyInput:
+    """Safe fallback for missing inputs or worked day lines in rule formulas."""
+    def __init__(self):
+        self.amount = 0.0
+        self.number_of_days = 0.0
+        self.number_of_hours = 0.0
+        self.total = 0.0
+
+    def __bool__(self):
+        return False
+
+    def __call__(self, *args, **kwargs):
+        return self
+
+    def __getattr__(self, name):
+        return 0.0
+
+
 class BrowsableObject:
     """Helper object for safe dot-notation access in salary rule formulas."""
     def __init__(self, dict_data):
         self._dict_data = dict_data
 
+    def get(self, key, default=None):
+        return self._dict_data.get(key, default)
+
+    def keys(self):
+        return self._dict_data.keys()
+
+    def values(self):
+        return self._dict_data.values()
+
+    def items(self):
+        return self._dict_data.items()
+
     def __getattr__(self, name):
         if name in self._dict_data:
             return self._dict_data[name]
-        return None
+        return DummyInput()
 
     def __getitem__(self, key):
-        return self._dict_data.get(key)
+        return self._dict_data.get(key, DummyInput())
 
     def __contains__(self, key):
         return key in self._dict_data
@@ -561,24 +591,27 @@ class HrPayslip(models.Model):
             self._populate_worked_days()
 
     def _populate_inputs(self):
-        """Populates configured external inputs for the structure."""
+        """Populates configured external inputs for the structure without wiping existing user amounts."""
         self.ensure_one()
-        inputs = []
-        if self.struct_id:
-            input_types = self.env['hr.payslip.input.type'].search([
-                ('input_line_type_ids', 'in', self.struct_id.id)
-            ])
-            for itype in input_types:
-                inputs.append({
+        if not self.struct_id:
+            return
+        input_types = self.env['hr.payslip.input.type'].search([
+            ('input_line_type_ids', 'in', self.struct_id.id)
+        ])
+        existing_codes = set(self.input_line_ids.mapped('code'))
+        new_lines = []
+        for itype in input_types:
+            if itype.code not in existing_codes:
+                new_lines.append((0, 0, {
                     'name': itype.name,
                     'code': itype.code,
                     'input_type_id': itype.id,
-                    'contract_id': self.contract_id.id,
+                    'contract_id': self.contract_id.id if self.contract_id else False,
                     'sequence': itype.sequence,
                     'amount': 0.0,
-                })
-        if inputs:
-            self.input_line_ids = [(5, 0, 0)] + [(0, 0, vals) for vals in inputs]
+                }))
+        if new_lines:
+            self.input_line_ids = new_lines
 
     def _get_eval_context(self):
         """Prepares the clean Python safe_eval dictionary context."""

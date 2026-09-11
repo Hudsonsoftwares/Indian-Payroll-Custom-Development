@@ -37,6 +37,7 @@ Key Features:
         'data/hr_employee_type_data.xml',
         'data/hr_payroll_dashboard_warning_data.xml',
         'data/hr_payment_advice_sequence.xml',
+        'data/hr_payslip_input_type_data.xml',
         'reports/payment_advice_report.xml',
         'reports/hr_payslip_report.xml',
         'data/mail_template_data.xml',

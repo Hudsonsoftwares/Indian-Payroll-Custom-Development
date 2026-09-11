@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-from odoo import fields, models
+from odoo import api, fields, models
 
 
 class HrPayslipInputType(models.Model):
@@ -17,7 +17,13 @@ class HrPayslipInputType(models.Model):
         'hr_payslip_input_type_structure_rel',
         'input_type_id',
         'struct_id',
-        string='Applicable Structures'
+        string='Availability in Structure'
+    )
+    struct_ids = fields.Many2many(
+        'hr.payroll.structure',
+        related='input_line_type_ids',
+        string='Availability in Structure',
+        readonly=False
     )
 
 
@@ -63,3 +69,31 @@ class HrPayslipInput(models.Model):
         string='Contract',
         help="The contract related to this input"
     )
+
+    @api.onchange('input_type_id')
+    def _onchange_input_type_id(self):
+        if self.input_type_id:
+            self.name = self.input_type_id.name
+            self.code = self.input_type_id.code
+            if self.input_type_id.sequence:
+                self.sequence = self.input_type_id.sequence
+
+    @api.model_create_multi
+    def create(self, vals_list):
+        for vals in vals_list:
+            if vals.get('input_type_id'):
+                input_type = self.env['hr.payslip.input.type'].browse(vals['input_type_id'])
+                if not vals.get('name') and input_type.exists():
+                    vals['name'] = input_type.name
+                if not vals.get('code') and input_type.exists():
+                    vals['code'] = input_type.code
+        return super().create(vals_list)
+
+    def write(self, vals):
+        if vals.get('input_type_id'):
+            input_type = self.env['hr.payslip.input.type'].browse(vals['input_type_id'])
+            if not vals.get('code') and not self.code and input_type.exists():
+                vals['code'] = input_type.code
+            if not vals.get('name') and not self.name and input_type.exists():
+                vals['name'] = input_type.name
+        return super().write(vals)

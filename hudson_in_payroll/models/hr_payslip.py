@@ -871,12 +871,35 @@ final_HDS_IN_TDS=%s""",
             def __getattr__(self, attr):
                 return self
 
+            def __call__(self, *args, **kwargs):
+                return self
+
         class BrowsableObject(object):
             def __init__(self, employee_id, dict_val, env):
                 self.employee_id = employee_id
                 self.dict = dict_val
                 self.env = env
                 self.amount = 0.0
+
+            def get(self, attr, default=None):
+                if isinstance(self.dict, dict):
+                    return self.dict.get(attr, default)
+                return getattr(self.dict, attr, default)
+
+            def keys(self):
+                if isinstance(self.dict, dict):
+                    return self.dict.keys()
+                return []
+
+            def values(self):
+                if isinstance(self.dict, dict):
+                    return self.dict.values()
+                return []
+
+            def items(self):
+                if isinstance(self.dict, dict):
+                    return self.dict.items()
+                return []
 
             def __contains__(self, attr):
                 if isinstance(self.dict, dict):

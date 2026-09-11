@@ -17,7 +17,8 @@ Generic employee profile enhancements reusable across all companies and localiza
     'author': 'Hudson Software Solutions',
     'depends': [
         'hr',
-        'hr_payroll_community',
+        'hudson_payroll_base',
+        'account',
     ],
     'data': [
         'views/hr_employee_views.xml',

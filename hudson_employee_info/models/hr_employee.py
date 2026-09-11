@@ -53,6 +53,10 @@ class HrEmployee(models.Model):
         string='Spouse Birthdate',
         help="Date of birth of the employee's spouse."
     )
+    child_residing_in_hostel = fields.Integer(
+        string='Child Residing in hostel',
+        help="Number of children residing in hostel."
+    )
 
     # ---------------------------------------------------------
     # Employee Documents
@@ -77,3 +81,51 @@ class HrEmployee(models.Model):
         for employee in self:
             if employee.spouse_birthdate and employee.spouse_birthdate > today:
                 raise ValidationError(_("Spouse Birthdate cannot be in the future."))
+                
+    # ---------------------------------------------------------
+    # Appraisal Information
+    # ---------------------------------------------------------
+    next_appraisal_date = fields.Date(
+        string='Next Appraisal Date',
+        help="Date of the next appraisal"
+    )
+
+    # ---------------------------------------------------------
+    # Approvers
+    # ---------------------------------------------------------
+    expense_manager_id = fields.Many2one(
+        'res.users',
+        string='Expense',
+        domain="[('share', '=', False), ('company_ids', 'in', company_id)]",
+        help="User responsible for approving employee expenses."
+    )
+    timesheet_manager_id = fields.Many2one(
+        'res.users',
+        string='Timesheet',
+        domain="[('share', '=', False), ('company_ids', 'in', company_id)]",
+        help="User responsible for approving employee timesheets."
+    )
+
+    # ---------------------------------------------------------
+    # Application Settings
+    # ---------------------------------------------------------
+    employee_hourly_cost = fields.Monetary(
+        string='Hourly Cost',
+        currency_field='currency_id',
+        default=0.0,
+        help="Employee's hourly cost used in timesheet and project costing."
+    )
+    employee_analytic_account_id = fields.Many2one(
+        'account.analytic.account',
+        string='Analytic Distribution',
+        help="Analytic account for employee cost allocation."
+    )
+
+    # ---------------------------------------------------------
+    # Export
+    # ---------------------------------------------------------
+    export_external_code = fields.Char(
+        string='External Code',
+        help="Code used in work entry exports.",
+        placeholder="Code used in work entry exports"
+    )

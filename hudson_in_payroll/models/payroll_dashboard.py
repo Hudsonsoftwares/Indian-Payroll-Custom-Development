@@ -237,17 +237,22 @@ class HdsPayrollDashboard(models.Model):
                 rec.final_settlement_approved_count = 0
                 rec.final_settlement_paid_count = 0
 
-            # Payslips and Payroll Financial Metrics for period (Company-aware & Date Overlap Domain)
+            # Payslips and Payroll Financial Metrics for period (Company-aware, Non-cancelled & Deduplicated)
             company_domain = [('company_id', 'in', self.env.companies.ids)]
             period_domain = [
                 ('date_from', '<=', month_end),
                 ('date_to', '>=', month_start),
+                ('state', '!=', 'cancel'),
             ] + company_domain
-            slips = self.env['hr.payslip'].search(period_domain)
+            all_slips = self.env['hr.payslip'].search(period_domain)
 
-            # Fallback if no slips found for the exact month window
-            if not slips:
-                slips = self.env['hr.payslip'].search([('state', '!=', 'cancel')] + company_domain, limit=20, order='date_to desc')
+            # Deduplicate by employee so multiple draft or re-computed slips don't double count
+            state_priority = {'paid': 4, 'done': 3, 'verify': 2, 'draft': 1}
+            latest_slips_by_emp = {}
+            for slip in all_slips.sorted(key=lambda s: (state_priority.get(s.state, 0), s.id), reverse=True):
+                if slip.employee_id.id not in latest_slips_by_emp:
+                    latest_slips_by_emp[slip.employee_id.id] = slip
+            slips = self.env['hr.payslip'].browse([s.id for s in latest_slips_by_emp.values()])
 
             rec.attendance_pending_count = len(slips.filtered(lambda s: getattr(s, 'has_attendance_discrepancy', False) or s.state in ('draft', 'verify')))
 
@@ -262,8 +267,22 @@ class HdsPayrollDashboard(models.Model):
             tot_days = 0.0
 
             for slip in slips:
-                tot_gross += float(getattr(slip, 'gross_amount', None) or getattr(slip, 'gross_wage', 0.0) or 0.0)
-                tot_net += float(getattr(slip, 'net_amount', None) or getattr(slip, 'net_wage', 0.0) or 0.0)
+                gross_val = float(getattr(slip, 'gross_amount', None) or getattr(slip, 'gross_wage', 0.0) or 0.0)
+                net_val = float(getattr(slip, 'net_amount', None) or getattr(slip, 'net_wage', 0.0) or 0.0)
+                if not gross_val:
+                    for line in slip.line_ids:
+                        if (line.code or '').upper() == 'GROSS':
+                            gross_val = abs(float(line.total or 0.0))
+                            break
+                if not net_val:
+                    for line in slip.line_ids:
+                        if (line.code or '').upper() == 'NET':
+                            net_val = abs(float(line.total or 0.0))
+                            break
+
+                tot_gross += gross_val
+                tot_net += net_val
+
                 for line in slip.line_ids:
                     code = (line.code or '').upper()
                     amt = float(line.total or 0.0)
@@ -271,9 +290,9 @@ class HdsPayrollDashboard(models.Model):
                         tot_basic += abs(amt)
                     elif code in ('TDS', 'INCOME_TAX', 'IT', 'HDS_IN_TDS'):
                         tot_tds += abs(amt)
-                    elif code in ('PF', 'EPF', 'EE_PF', 'ER_PF'):
+                    elif code in ('PF', 'EPF', 'EE_PF', 'ER_PF', 'EMPLOYER_EPF', 'EPS', 'EPF_SHARE', 'EDLI', 'EPF_ADMIN', 'EDLI_ADMIN'):
                         tot_epf += abs(amt)
-                    elif code in ('ESI', 'ESIC', 'EE_ESI', 'ER_ESI'):
+                    elif code in ('ESI', 'ESIC', 'ESIC_EE', 'ESIC_ER', 'EE_ESI', 'ER_ESI'):
                         tot_esi += abs(amt)
                     elif code in ('PT', 'PROF_TAX'):
                         tot_pt += abs(amt)
@@ -282,13 +301,13 @@ class HdsPayrollDashboard(models.Model):
                     tot_hours += float(wd.number_of_hours or 0.0)
                     tot_days += float(wd.number_of_days or 0.0)
 
-            rec.total_payroll_cost = tot_gross if tot_gross > 0 else sum((getattr(s, 'net_amount', None) or getattr(s, 'net_wage', 0.0) or 0.0) for s in slips)
+            rec.total_payroll_cost = tot_gross if tot_gross > 0 else tot_net
             rec.total_net_pay = tot_net
             rec.total_basic_wage = tot_basic
-            rec.avg_net_wage = (tot_net / tot_emp) if tot_emp > 0 else 0.0
-            rec.avg_basic_wage = (tot_basic / tot_emp) if tot_emp > 0 else 0.0
+            rec.avg_net_wage = (tot_net / len(slips)) if slips else 0.0
+            rec.avg_basic_wage = (tot_basic / len(slips)) if slips else 0.0
             rec.avg_hours_per_day = round(tot_hours / tot_days, 1) if tot_days > 0 else 8.0
-            rec.fte_count = float(tot_emp)
+            rec.fte_count = float(len(slips)) if slips else float(tot_emp)
             rec.tds_this_month = tot_tds
             rec.epf_total_liability = tot_epf
             rec.esic_total_liability = tot_esi
@@ -357,16 +376,20 @@ class HdsPayrollDashboard(models.Model):
                     has_pan = bool(getattr(j, 'hds_in_pan', False) or getattr(j, 'pan_no', False) or getattr(j, 'pan', False))
                     has_bank = self._has_bank_account(j)
 
-                    if has_pan and has_bank:
-                        status_chip = '<span style="background: #d1fae5; color: #065f46; padding: 3px 8px; border-radius: 12px; font-size: 10px; font-weight: 600;">🟢 Payroll Ready</span>'
-                    elif not has_pan:
-                        status_chip = '<span style="background: #fee2e2; color: #991b1b; padding: 3px 8px; border-radius: 12px; font-size: 10px; font-weight: 600;">🔴 PAN Missing</span>'
+                    if not has_pan:
+                        status_chip = f'<a href="/odoo/hr.employee/{j.id}" class="o_hds_dashboard_card_clickable" style="background: #fee2e2; color: #991b1b; padding: 3px 8px; border-radius: 12px; font-size: 10px; font-weight: 700; text-decoration: none; display: inline-flex; align-items: center; gap: 4px;">🔴 PAN Missing &rarr; Fix</a>'
+                    elif not has_bank:
+                        status_chip = f'<a href="/odoo/hr.employee/{j.id}" class="o_hds_dashboard_card_clickable" style="background: #fef3c7; color: #92400e; padding: 3px 8px; border-radius: 12px; font-size: 10px; font-weight: 700; text-decoration: none; display: inline-flex; align-items: center; gap: 4px;">🟠 Bank Missing &rarr; Fix</a>'
                     else:
-                        status_chip = '<span style="background: #fef3c7; color: #92400e; padding: 3px 8px; border-radius: 12px; font-size: 10px; font-weight: 600;">🟠 Bank Missing</span>'
+                        status_chip = f'<a href="/odoo/hr.employee/{j.id}" class="o_hds_dashboard_card_clickable" style="background: #d1fae5; color: #065f46; padding: 3px 8px; border-radius: 12px; font-size: 10px; font-weight: 700; text-decoration: none; display: inline-flex; align-items: center; gap: 4px;">🟢 Payroll Ready</a>'
 
                     joiner_rows_html += f"""
                     <tr style="border-bottom: 1px solid #f1f5f9;">
-                        <td style="padding: 10px 8px; font-weight: 600; color: #1e293b;">{j.name}</td>
+                        <td style="padding: 10px 8px; font-weight: 600; color: #1e293b;">
+                            <a href="/odoo/hr.employee/{j.id}" class="o_hds_dashboard_card_clickable" style="color: #4f46e5; text-decoration: none; font-weight: 700;">
+                                {j.name}
+                            </a>
+                        </td>
                         <td style="padding: 10px 8px; color: #64748b;">{j_date}</td>
                         <td style="padding: 10px 8px; color: #64748b;">{dept}</td>
                         <td style="padding: 10px 8px;">{status_chip}</td>
@@ -408,101 +431,65 @@ class HdsPayrollDashboard(models.Model):
             rec.dashboard_html = f"""
             <div style="font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif; color: #0f172a; background: #f8fafc; padding: 10px; border-radius: 12px; width: 100%; box-sizing: border-box;">
 
-                <!-- 0. HIGH CONTRAST PERIOD CONTROLS DISPLAY -->
-                <div style="background: #ffffff; padding: 14px 18px; border-radius: 8px; border: 1px solid #cbd5e1; margin-bottom: 18px; display: grid; grid-template-columns: repeat(4, 1fr); gap: 15px; text-align: left; box-shadow: 0 1px 2px rgba(0,0,0,0.03);">
-                    <div>
-                        <div style="font-size: 11px; font-weight: 700; text-transform: uppercase; color: #475569; letter-spacing: 0.5px;">Payroll Month</div>
-                        <div style="font-size: 15px; font-weight: 800; color: #0f172a; margin-top: 2px;">{month_name}</div>
-                    </div>
-                    <div>
-                        <div style="font-size: 11px; font-weight: 700; text-transform: uppercase; color: #475569; letter-spacing: 0.5px;">Financial Year</div>
-                        <div style="font-size: 15px; font-weight: 800; color: #0f172a; margin-top: 2px;">{fy_name}</div>
-                    </div>
-                    <div>
-                        <div style="font-size: 11px; font-weight: 700; text-transform: uppercase; color: #475569; letter-spacing: 0.5px;">Active Workforce</div>
-                        <div style="font-size: 15px; font-weight: 800; color: #0f172a; margin-top: 2px;">{rec.active_employee_count} Employees</div>
-                    </div>
-                    <div>
-                        <div style="font-size: 11px; font-weight: 700; text-transform: uppercase; color: #475569; letter-spacing: 0.5px;">Pending Actions</div>
-                        <div style="font-size: 15px; font-weight: 800; color: #d97706; margin-top: 2px;">{rec.pending_actions_count} Actions</div>
-                    </div>
-                </div>
-
-                <!-- 1. ODOO ONLINE STYLE PAYROLL KPI CARDS -->
-                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 14px; margin-bottom: 20px;">
-                    <div style="background: #ffffff; padding: 14px; border-radius: 10px; border: 1px solid #e2e8f0; box-shadow: 0 1px 3px rgba(0,0,0,0.04); border-top: 4px solid #10b981;">
-                        <div style="font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; color: #64748b; font-weight: 600;">Avg Net Wage</div>
-                        <div style="font-size: 20px; font-weight: 700; color: #0f172a; margin: 4px 0;">{currency_symbol} {rec.avg_net_wage:,.2f}</div>
-                        <div style="font-size: 10px; color: #10b981; font-weight: 600;">Per Employee / Month</div>
-                    </div>
-                    <div style="background: #ffffff; padding: 14px; border-radius: 10px; border: 1px solid #e2e8f0; box-shadow: 0 1px 3px rgba(0,0,0,0.04); border-top: 4px solid #6366f1;">
-                        <div style="font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; color: #64748b; font-weight: 600;">Avg Basic Wage</div>
-                        <div style="font-size: 20px; font-weight: 700; color: #0f172a; margin: 4px 0;">{currency_symbol} {rec.avg_basic_wage:,.2f}</div>
-                        <div style="font-size: 10px; color: #6366f1; font-weight: 600;">Basic Base Average</div>
-                    </div>
-                    <div style="background: #ffffff; padding: 14px; border-radius: 10px; border: 1px solid #e2e8f0; box-shadow: 0 1px 3px rgba(0,0,0,0.04); border-top: 4px solid #059669;">
-                        <div style="font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; color: #64748b; font-weight: 600;">Total Net Wage</div>
-                        <div style="font-size: 20px; font-weight: 700; color: #0f172a; margin: 4px 0;">{currency_symbol} {rec.total_net_pay:,.2f}</div>
-                        <div style="font-size: 10px; color: #059669; font-weight: 600;">Disbursable Net Payroll</div>
-                    </div>
-                    <div style="background: #ffffff; padding: 14px; border-radius: 10px; border: 1px solid #e2e8f0; box-shadow: 0 1px 3px rgba(0,0,0,0.04); border-top: 4px solid #4f46e5;">
-                        <div style="font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; color: #64748b; font-weight: 600;">Total Basic Wage</div>
-                        <div style="font-size: 20px; font-weight: 700; color: #0f172a; margin: 4px 0;">{currency_symbol} {rec.total_basic_wage:,.2f}</div>
-                        <div style="font-size: 10px; color: #4f46e5; font-weight: 600;">Total Statutory Basic Basis</div>
-                    </div>
-                    <div style="background: #ffffff; padding: 14px; border-radius: 10px; border: 1px solid #e2e8f0; box-shadow: 0 1px 3px rgba(0,0,0,0.04); border-top: 4px solid #0284c7;">
-                        <div style="font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; color: #64748b; font-weight: 600;">Avg Hours/Day</div>
-                        <div style="font-size: 20px; font-weight: 700; color: #0f172a; margin: 4px 0;">{rec.avg_hours_per_day:.1f} hrs</div>
-                        <div style="font-size: 10px; color: #0284c7; font-weight: 600;">Standard Work Daily Avg</div>
-                    </div>
-                    <div style="background: #ffffff; padding: 14px; border-radius: 10px; border: 1px solid #e2e8f0; box-shadow: 0 1px 3px rgba(0,0,0,0.04); border-top: 4px solid #8b5cf6;">
-                        <div style="font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; color: #64748b; font-weight: 600;">FTE</div>
-                        <div style="font-size: 20px; font-weight: 700; color: #0f172a; margin: 4px 0;">{rec.fte_count:.1f}</div>
-                        <div style="font-size: 10px; color: #8b5cf6; font-weight: 600;">Full Time Equivalent</div>
-                    </div>
-                </div>
-
-                <!-- 2. PRIMARY KPI CARDS GRID -->
+                <!-- 1. PRIMARY KPI CARDS GRID -->
                 <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 16px; margin-bottom: 22px;">
 
                     <!-- Card 1: Total Payroll Cost -->
-                    <div style="background: #ffffff; padding: 16px; border-radius: 10px; border: 1px solid #e2e8f0; box-shadow: 0 1px 3px rgba(0,0,0,0.04); border-top: 4px solid #4f46e5;">
-                        <div style="font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; color: #64748b; font-weight: 600;">Total Payroll Cost</div>
+                    <a href="/odoo/action-hudson_payroll_base.action_hr_payslip" class="o_hds_dashboard_card_clickable" style="text-decoration: none; display: block; background: #ffffff; padding: 16px; border-radius: 10px; border: 1px solid #e2e8f0; box-shadow: 0 1px 3px rgba(0,0,0,0.04); border-top: 4px solid #4f46e5;">
+                        <div style="display: flex; justify-content: space-between; align-items: center;">
+                            <div style="font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; color: #64748b; font-weight: 600;">Total Payroll Cost</div>
+                            <span style="font-size: 11px; color: #4f46e5; font-weight: 600;">View Slips &rarr;</span>
+                        </div>
                         <div style="font-size: 22px; font-weight: 700; color: #0f172a; margin: 6px 0;">{currency_symbol} {rec.total_payroll_cost:,.2f}</div>
                         <div style="font-size: 11px; color: #64748b;">Period: {month_name} ({fy_name})</div>
-                    </div>
+                    </a>
 
                     <!-- Card 2: Net Salary Payable -->
-                    <div style="background: #ffffff; padding: 16px; border-radius: 10px; border: 1px solid #e2e8f0; box-shadow: 0 1px 3px rgba(0,0,0,0.04); border-top: 4px solid #10b981;">
-                        <div style="font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; color: #64748b; font-weight: 600;">Net Salary Payable</div>
+                    <a href="/odoo/action-hudson_payroll_base.action_hr_payslip" class="o_hds_dashboard_card_clickable" style="text-decoration: none; display: block; background: #ffffff; padding: 16px; border-radius: 10px; border: 1px solid #e2e8f0; box-shadow: 0 1px 3px rgba(0,0,0,0.04); border-top: 4px solid #10b981;">
+                        <div style="display: flex; justify-content: space-between; align-items: center;">
+                            <div style="font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; color: #64748b; font-weight: 600;">Net Salary Payable</div>
+                            <span style="font-size: 11px; color: #10b981; font-weight: 600;">Disbursement &rarr;</span>
+                        </div>
                         <div style="font-size: 22px; font-weight: 700; color: #0f172a; margin: 6px 0;">{currency_symbol} {rec.total_net_pay:,.2f}</div>
                         <div style="font-size: 11px; color: #10b981; font-weight: 600;">Disbursable Amount</div>
-                    </div>
+                    </a>
 
                     <!-- Card 3: Active Employees -->
-                    <div style="background: #ffffff; padding: 16px; border-radius: 10px; border: 1px solid #e2e8f0; box-shadow: 0 1px 3px rgba(0,0,0,0.04); border-top: 4px solid #0284c7;">
-                        <div style="font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; color: #64748b; font-weight: 600;">Active Employees</div>
+                    <a href="/odoo/action-hr.open_view_employee_list_my" class="o_hds_dashboard_card_clickable" style="text-decoration: none; display: block; background: #ffffff; padding: 16px; border-radius: 10px; border: 1px solid #e2e8f0; box-shadow: 0 1px 3px rgba(0,0,0,0.04); border-top: 4px solid #0284c7;">
+                        <div style="display: flex; justify-content: space-between; align-items: center;">
+                            <div style="font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; color: #64748b; font-weight: 600;">Active Employees</div>
+                            <span style="font-size: 11px; color: #0284c7; font-weight: 600;">Employees &rarr;</span>
+                        </div>
                         <div style="font-size: 22px; font-weight: 700; color: #0f172a; margin: 6px 0;">{rec.active_employee_count}</div>
                         <div style="font-size: 11px; color: #0284c7; font-weight: 600;">Active Workforce</div>
-                    </div>
+                    </a>
 
                     <!-- Card 4: TDS This Month -->
-                    <div style="background: #ffffff; padding: 16px; border-radius: 10px; border: 1px solid #e2e8f0; box-shadow: 0 1px 3px rgba(0,0,0,0.04); border-top: 4px solid #8b5cf6;">
-                        <div style="font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; color: #64748b; font-weight: 600;">TDS This Month</div>
+                    <a href="/odoo/action-hudson_in_payroll.action_dashboard_pending_declarations" class="o_hds_dashboard_card_clickable" style="text-decoration: none; display: block; background: #ffffff; padding: 16px; border-radius: 10px; border: 1px solid #e2e8f0; box-shadow: 0 1px 3px rgba(0,0,0,0.04); border-top: 4px solid #8b5cf6;">
+                        <div style="display: flex; justify-content: space-between; align-items: center;">
+                            <div style="font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; color: #64748b; font-weight: 600;">TDS This Month</div>
+                            <span style="font-size: 11px; color: #8b5cf6; font-weight: 600;">Declarations &rarr;</span>
+                        </div>
                         <div style="font-size: 22px; font-weight: 700; color: #0f172a; margin: 6px 0;">{currency_symbol} {rec.tds_this_month:,.2f}</div>
                         <div style="font-size: 11px; color: #8b5cf6; font-weight: 600;">YTD: {currency_symbol} {rec.tds_ytd_total:,.2f}</div>
-                    </div>
+                    </a>
 
                     <!-- Card 5: Pending Actions -->
-                    <div style="background: #ffffff; padding: 16px; border-radius: 10px; border: 1px solid #e2e8f0; box-shadow: 0 1px 3px rgba(0,0,0,0.04); border-top: 4px solid #f59e0b;">
-                        <div style="font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; color: #64748b; font-weight: 600;">Pending Actions</div>
+                    <a href="/odoo/action-hudson_in_payroll.action_dashboard_missing_pan_employees" class="o_hds_dashboard_card_clickable" style="text-decoration: none; display: block; background: #ffffff; padding: 16px; border-radius: 10px; border: 1px solid #e2e8f0; box-shadow: 0 1px 3px rgba(0,0,0,0.04); border-top: 4px solid #f59e0b;">
+                        <div style="display: flex; justify-content: space-between; align-items: center;">
+                            <div style="font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; color: #64748b; font-weight: 600;">Pending Actions</div>
+                            <span style="font-size: 11px; color: #d97706; font-weight: 600;">Fix Now &rarr;</span>
+                        </div>
                         <div style="font-size: 22px; font-weight: 700; color: #d97706; margin: 6px 0;">{rec.pending_actions_count}</div>
                         <div style="font-size: 11px; color: #d97706; font-weight: 600;">Requires HR Attention</div>
-                    </div>
+                    </a>
 
                     <!-- Card 6: Final Settlements Due This Month -->
-                    <div style="background: #ffffff; padding: 16px; border-radius: 10px; border: 1px solid #e2e8f0; box-shadow: 0 1px 3px rgba(0,0,0,0.04); border-top: 4px solid #dc2626;">
-                        <div style="font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; color: #64748b; font-weight: 600;">Final Settlements Due</div>
+                    <a href="/odoo/action-hudson_in_final_settlement.action_dashboard_final_settlements_due" class="o_hds_dashboard_card_clickable" style="text-decoration: none; display: block; background: #ffffff; padding: 16px; border-radius: 10px; border: 1px solid #e2e8f0; box-shadow: 0 1px 3px rgba(0,0,0,0.04); border-top: 4px solid #dc2626;">
+                        <div style="display: flex; justify-content: space-between; align-items: center;">
+                            <div style="font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; color: #64748b; font-weight: 600;">Final Settlements Due</div>
+                            <span style="font-size: 11px; color: #dc2626; font-weight: 600;">View Due &rarr;</span>
+                        </div>
                         <div style="font-size: 22px; font-weight: 700; color: #dc2626; margin: 6px 0;">{rec.final_settlements_due_count}</div>
                         <div style="display: flex; gap: 4px; flex-wrap: wrap; margin-top: 4px; font-size: 10px;">
                             <span style="background: #f1f5f9; color: #475569; padding: 2px 6px; border-radius: 10px; font-weight: 600;">📝 Draft: {rec.final_settlement_draft_count}</span>
@@ -510,32 +497,44 @@ class HdsPayrollDashboard(models.Model):
                             <span style="background: #dbeafe; color: #1e40af; padding: 2px 6px; border-radius: 10px; font-weight: 600;">✅ Appr: {rec.final_settlement_approved_count}</span>
                             <span style="background: #d1fae5; color: #065f46; padding: 2px 6px; border-radius: 10px; font-weight: 600;">💰 Paid: {rec.final_settlement_paid_count}</span>
                         </div>
-                    </div>
+                    </a>
                 </div>
 
                 <!-- 2. ACTION REQUIRED SECTION (HIGH VISIBILITY ALERTS) -->
                 <div style="background: #ffffff; padding: 18px; border-radius: 10px; border: 1px solid #fecaca; margin-bottom: 22px; box-shadow: 0 2px 4px rgba(239, 68, 68, 0.05);">
                     <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
                         <div style="font-size: 15px; font-weight: 700; color: #991b1b;">⚠️ Action Required</div>
-                        <div style="font-size: 11px; color: #991b1b; font-weight: 600;">Immediate HR Verification Required</div>
+                        <div style="font-size: 11px; color: #991b1b; font-weight: 600;">Immediate HR Verification Required (Click card to fix)</div>
                     </div>
                     <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px;">
-                        <div style="background: #fef2f2; padding: 12px 14px; border-radius: 8px; border-left: 4px solid #ef4444;">
-                            <div style="font-size: 12px; font-weight: 700; color: #991b1b;">🔴 {rec.missing_pan_count} Employees Missing PAN</div>
-                            <div style="font-size: 11px; color: #7f1d1d; margin-top: 2px;">Impacts 20% flat TDS deduction rate u/s 206AA</div>
-                        </div>
-                        <div style="background: #fef2f2; padding: 12px 14px; border-radius: 8px; border-left: 4px solid #ef4444;">
-                            <div style="font-size: 12px; font-weight: 700; color: #991b1b;">🔴 {rec.missing_bank_count} Employees Missing Bank Details</div>
-                            <div style="font-size: 11px; color: #7f1d1d; margin-top: 2px;">Blocks automated salary disbursement file</div>
-                        </div>
-                        <div style="background: #fffbeb; padding: 12px 14px; border-radius: 8px; border-left: 4px solid #f59e0b;">
-                            <div style="font-size: 12px; font-weight: 700; color: #92400e;">🟠 {rec.pending_declarations_count} Tax Declarations Pending</div>
-                            <div style="font-size: 11px; color: #78350f; margin-top: 2px;">Pending Tax Firm / HR verification</div>
-                        </div>
-                        <div style="background: #fffbeb; padding: 12px 14px; border-radius: 8px; border-left: 4px solid #f59e0b;">
-                            <div style="font-size: 12px; font-weight: 700; color: #92400e;">🟠 {rec.attendance_pending_count} Attendance / Payslip Exceptions</div>
-                            <div style="font-size: 11px; color: #78350f; margin-top: 2px;">Draft status or discrepancy pending</div>
-                        </div>
+                        <a href="/odoo/action-hudson_in_payroll.action_dashboard_missing_pan_employees" class="o_hds_dashboard_card_clickable" style="text-decoration: none; display: block; background: #fef2f2; padding: 12px 14px; border-radius: 8px; border-left: 4px solid #ef4444;">
+                            <div style="display: flex; justify-content: space-between; align-items: center;">
+                                <div style="font-size: 12px; font-weight: 700; color: #991b1b;">🔴 {rec.missing_pan_count} Employees Missing PAN</div>
+                                <span style="font-size: 12px; color: #ef4444; font-weight: 700;">&rarr;</span>
+                            </div>
+                            <div style="font-size: 11px; color: #7f1d1d; margin-top: 3px;">Impacts 20% flat TDS deduction rate u/s 206AA &bull; <u>Click to fix</u></div>
+                        </a>
+                        <a href="/odoo/action-hudson_in_payroll.action_dashboard_missing_bank_employees" class="o_hds_dashboard_card_clickable" style="text-decoration: none; display: block; background: #fef2f2; padding: 12px 14px; border-radius: 8px; border-left: 4px solid #ef4444;">
+                            <div style="display: flex; justify-content: space-between; align-items: center;">
+                                <div style="font-size: 12px; font-weight: 700; color: #991b1b;">🔴 {rec.missing_bank_count} Employees Missing Bank Details</div>
+                                <span style="font-size: 12px; color: #ef4444; font-weight: 700;">&rarr;</span>
+                            </div>
+                            <div style="font-size: 11px; color: #7f1d1d; margin-top: 3px;">Blocks automated salary disbursement file &bull; <u>Click to fix</u></div>
+                        </a>
+                        <a href="/odoo/action-hudson_in_payroll.action_dashboard_pending_declarations" class="o_hds_dashboard_card_clickable" style="text-decoration: none; display: block; background: #fffbeb; padding: 12px 14px; border-radius: 8px; border-left: 4px solid #f59e0b;">
+                            <div style="display: flex; justify-content: space-between; align-items: center;">
+                                <div style="font-size: 12px; font-weight: 700; color: #92400e;">🟠 {rec.pending_declarations_count} Tax Declarations Pending</div>
+                                <span style="font-size: 12px; color: #f59e0b; font-weight: 700;">&rarr;</span>
+                            </div>
+                            <div style="font-size: 11px; color: #78350f; margin-top: 3px;">Pending Tax Firm / HR verification &bull; <u>Click to review</u></div>
+                        </a>
+                        <a href="/odoo/action-hudson_in_payroll.action_dashboard_attendance_exceptions" class="o_hds_dashboard_card_clickable" style="text-decoration: none; display: block; background: #fffbeb; padding: 12px 14px; border-radius: 8px; border-left: 4px solid #f59e0b;">
+                            <div style="display: flex; justify-content: space-between; align-items: center;">
+                                <div style="font-size: 12px; font-weight: 700; color: #92400e;">🟠 {rec.attendance_pending_count} Attendance / Payslip Exceptions</div>
+                                <span style="font-size: 12px; color: #f59e0b; font-weight: 700;">&rarr;</span>
+                            </div>
+                            <div style="font-size: 11px; color: #78350f; margin-top: 3px;">Draft status or discrepancy pending &bull; <u>Click to view</u></div>
+                        </a>
                     </div>
                 </div>
 
@@ -546,7 +545,9 @@ class HdsPayrollDashboard(models.Model):
                     <div style="background: #ffffff; padding: 18px; border-radius: 10px; border: 1px solid #e2e8f0;">
                         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; border-bottom: 1px solid #f1f5f9; padding-bottom: 8px;">
                             <div style="font-size: 14px; font-weight: 700; color: #0f172a;">🆕 New Joiners ({month_name})</div>
-                            <div style="font-size: 11px; font-weight: 700; color: #4f46e5; background: #eef2ff; padding: 4px 10px; border-radius: 12px;">Count: {rec.new_joiners_count}</div>
+                            <a href="/odoo/action-hudson_in_payroll.action_dashboard_new_joiners" class="o_hds_dashboard_card_clickable" style="text-decoration: none; font-size: 11px; font-weight: 700; color: #4f46e5; background: #eef2ff; padding: 4px 10px; border-radius: 12px; display: inline-flex; align-items: center; gap: 4px;">
+                                Count: {rec.new_joiners_count} &rarr;
+                            </a>
                         </div>
                         <table style="width: 100%; border-collapse: collapse; font-size: 12px;">
                             <thead>
@@ -570,27 +571,27 @@ class HdsPayrollDashboard(models.Model):
                         </div>
                         <div style="display: flex; flex-direction: column; gap: 12px;">
 
-                            <div>
+                            <a href="/odoo/action-hudson_in_payroll.action_dashboard_missing_pan_employees" class="o_hds_dashboard_card_clickable" style="text-decoration: none; color: inherit; display: block; padding: 4px 6px; border-radius: 6px;">
                                 <div style="display: flex; justify-content: space-between; font-size: 11px; font-weight: 600; color: #475569; margin-bottom: 4px;">
                                     <span>PAN Completeness</span>
-                                    <span>{rec.pan_health_pct}%</span>
+                                    <span>{rec.pan_health_pct}% &bull; <u>Fix</u></span>
                                 </div>
                                 <div style="width: 100%; background: #f1f5f9; height: 7px; border-radius: 4px; overflow: hidden;">
                                     <div style="width: {rec.pan_health_pct}%; background: #4f46e5; height: 100%;"></div>
                                 </div>
-                            </div>
+                            </a>
 
-                            <div>
+                            <a href="/odoo/action-hudson_in_payroll.action_dashboard_missing_bank_employees" class="o_hds_dashboard_card_clickable" style="text-decoration: none; color: inherit; display: block; padding: 4px 6px; border-radius: 6px;">
                                 <div style="display: flex; justify-content: space-between; font-size: 11px; font-weight: 600; color: #475569; margin-bottom: 4px;">
                                     <span>Bank Details Completeness</span>
-                                    <span>{rec.bank_health_pct}%</span>
+                                    <span>{rec.bank_health_pct}% &bull; <u>Fix</u></span>
                                 </div>
                                 <div style="width: 100%; background: #f1f5f9; height: 7px; border-radius: 4px; overflow: hidden;">
                                     <div style="width: {rec.bank_health_pct}%; background: #10b981; height: 100%;"></div>
                                 </div>
-                            </div>
+                            </a>
 
-                            <div>
+                            <a href="/odoo/action-hr.open_view_employee_list_my" class="o_hds_dashboard_card_clickable" style="text-decoration: none; color: inherit; display: block; padding: 4px 6px; border-radius: 6px;">
                                 <div style="display: flex; justify-content: space-between; font-size: 11px; font-weight: 600; color: #475569; margin-bottom: 4px;">
                                     <span>Aadhaar / ID Completeness</span>
                                     <span>{rec.aadhaar_health_pct}%</span>
@@ -598,9 +599,9 @@ class HdsPayrollDashboard(models.Model):
                                 <div style="width: 100%; background: #f1f5f9; height: 7px; border-radius: 4px; overflow: hidden;">
                                     <div style="width: {rec.aadhaar_health_pct}%; background: #0284c7; height: 100%;"></div>
                                 </div>
-                            </div>
+                            </a>
 
-                            <div>
+                            <a href="/odoo/action-hr.open_view_employee_list_my" class="o_hds_dashboard_card_clickable" style="text-decoration: none; color: inherit; display: block; padding: 4px 6px; border-radius: 6px;">
                                 <div style="display: flex; justify-content: space-between; font-size: 11px; font-weight: 600; color: #475569; margin-bottom: 4px;">
                                     <span>Emergency Contact Completeness</span>
                                     <span>{rec.contact_health_pct}%</span>
@@ -608,7 +609,7 @@ class HdsPayrollDashboard(models.Model):
                                 <div style="width: 100%; background: #f1f5f9; height: 7px; border-radius: 4px; overflow: hidden;">
                                     <div style="width: {rec.contact_health_pct}%; background: #f59e0b; height: 100%;"></div>
                                 </div>
-                            </div>
+                            </a>
 
                         </div>
                     </div>
@@ -624,8 +625,11 @@ class HdsPayrollDashboard(models.Model):
                     <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; font-size: 12px;">
 
                         <!-- EPF Tile -->
-                        <div style="background: #f8fafc; border: 1px solid #cbd5e1; border-radius: 8px; padding: 12px;">
-                            <div style="color: #1e293b; font-size: 12px; font-weight: 700; border-bottom: 1px dashed #cbd5e1; padding-bottom: 4px; margin-bottom: 6px;">EPF (UAN / PF No)</div>
+                        <a href="/odoo/action-hudson_in_payroll.action_dashboard_epf_employees" class="o_hds_dashboard_card_clickable" style="text-decoration: none; display: block; color: inherit; background: #f8fafc; border: 1px solid #cbd5e1; border-radius: 8px; padding: 12px;">
+                            <div style="color: #1e293b; font-size: 12px; font-weight: 700; border-bottom: 1px dashed #cbd5e1; padding-bottom: 4px; margin-bottom: 6px; display: flex; justify-content: space-between;">
+                                <span>EPF (UAN / PF No)</span>
+                                <span style="font-size: 10px; color: #4f46e5;">&rarr;</span>
+                            </div>
                             <div style="display: flex; justify-content: space-between; margin-bottom: 4px;">
                                 <span style="color: #16a34a; font-weight: 600;">Complete UAN:</span>
                                 <span style="font-weight: 700; color: #16a34a;">{rec.epf_complete_count}</span>
@@ -634,11 +638,14 @@ class HdsPayrollDashboard(models.Model):
                                 <span style="color: #dc2626; font-weight: 600;">Missing UAN:</span>
                                 <span style="font-weight: 700; color: #dc2626;">{rec.epf_missing_count}</span>
                             </div>
-                        </div>
+                        </a>
 
                         <!-- ESIC Tile -->
-                        <div style="background: #f8fafc; border: 1px solid #cbd5e1; border-radius: 8px; padding: 12px;">
-                            <div style="color: #1e293b; font-size: 12px; font-weight: 700; border-bottom: 1px dashed #cbd5e1; padding-bottom: 4px; margin-bottom: 6px;">ESIC (IP Number)</div>
+                        <a href="/odoo/action-hudson_in_payroll.action_dashboard_esic_employees" class="o_hds_dashboard_card_clickable" style="text-decoration: none; display: block; color: inherit; background: #f8fafc; border: 1px solid #cbd5e1; border-radius: 8px; padding: 12px;">
+                            <div style="color: #1e293b; font-size: 12px; font-weight: 700; border-bottom: 1px dashed #cbd5e1; padding-bottom: 4px; margin-bottom: 6px; display: flex; justify-content: space-between;">
+                                <span>ESIC (IP Number)</span>
+                                <span style="font-size: 10px; color: #4f46e5;">&rarr;</span>
+                            </div>
                             <div style="display: flex; justify-content: space-between; margin-bottom: 4px;">
                                 <span style="color: #16a34a; font-weight: 600;">Complete IP:</span>
                                 <span style="font-weight: 700; color: #16a34a;">{rec.esic_complete_count}</span>
@@ -647,11 +654,14 @@ class HdsPayrollDashboard(models.Model):
                                 <span style="color: #dc2626; font-weight: 600;">Missing IP:</span>
                                 <span style="font-weight: 700; color: #dc2626;">{rec.esic_missing_count}</span>
                             </div>
-                        </div>
+                        </a>
 
                         <!-- LWF Tile -->
-                        <div style="background: #f8fafc; border: 1px solid #cbd5e1; border-radius: 8px; padding: 12px;">
-                            <div style="color: #1e293b; font-size: 12px; font-weight: 700; border-bottom: 1px dashed #cbd5e1; padding-bottom: 4px; margin-bottom: 6px;">LWF Registration</div>
+                        <a href="/odoo/action-hr.open_view_employee_list_my" class="o_hds_dashboard_card_clickable" style="text-decoration: none; display: block; color: inherit; background: #f8fafc; border: 1px solid #cbd5e1; border-radius: 8px; padding: 12px;">
+                            <div style="color: #1e293b; font-size: 12px; font-weight: 700; border-bottom: 1px dashed #cbd5e1; padding-bottom: 4px; margin-bottom: 6px; display: flex; justify-content: space-between;">
+                                <span>LWF Registration</span>
+                                <span style="font-size: 10px; color: #4f46e5;">&rarr;</span>
+                            </div>
                             <div style="display: flex; justify-content: space-between; margin-bottom: 4px;">
                                 <span style="color: #16a34a; font-weight: 600;">Complete Number:</span>
                                 <span style="font-weight: 700; color: #16a34a;">{rec.lwf_complete_count}</span>
@@ -660,11 +670,14 @@ class HdsPayrollDashboard(models.Model):
                                 <span style="color: #dc2626; font-weight: 600;">Missing Number:</span>
                                 <span style="font-weight: 700; color: #dc2626;">{rec.lwf_missing_count}</span>
                             </div>
-                        </div>
+                        </a>
 
                         <!-- Overall Readiness Tile -->
-                        <div style="background: #f8fafc; border: 1px solid #cbd5e1; border-radius: 8px; padding: 12px;">
-                            <div style="color: #1e293b; font-size: 12px; font-weight: 700; border-bottom: 1px dashed #cbd5e1; padding-bottom: 4px; margin-bottom: 6px;">Data Health & Readiness</div>
+                        <a href="/odoo/action-hudson_in_payroll.action_dashboard_missing_pan_employees" class="o_hds_dashboard_card_clickable" style="text-decoration: none; display: block; color: inherit; background: #f8fafc; border: 1px solid #cbd5e1; border-radius: 8px; padding: 12px;">
+                            <div style="color: #1e293b; font-size: 12px; font-weight: 700; border-bottom: 1px dashed #cbd5e1; padding-bottom: 4px; margin-bottom: 6px; display: flex; justify-content: space-between;">
+                                <span>Data Health & Readiness</span>
+                                <span style="font-size: 10px; color: #4f46e5;">&rarr;</span>
+                            </div>
                             <div style="display: flex; justify-content: space-between; margin-bottom: 4px;">
                                 <span style="color: #16a34a; font-weight: 600;">Processing Ready:</span>
                                 <span style="font-weight: 700; color: #16a34a;">{rec.statutory_ready_count}</span>
@@ -673,7 +686,7 @@ class HdsPayrollDashboard(models.Model):
                                 <span style="color: #dc2626; font-weight: 600;">Data Errors:</span>
                                 <span style="font-weight: 700; color: #dc2626;">{rec.statutory_data_errors_count}</span>
                             </div>
-                        </div>
+                        </a>
 
                     </div>
                 </div>
@@ -687,26 +700,26 @@ class HdsPayrollDashboard(models.Model):
                             🇮🇳 Statutory Compliance Summary
                         </div>
                         <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; font-size: 12px;">
-                            <div style="background: #f8fafc; padding: 10px; border-radius: 6px;">
+                            <a href="/odoo/action-hudson_in_payroll.action_dashboard_epf_employees" class="o_hds_dashboard_card_clickable" style="text-decoration: none; color: inherit; display: block; background: #f8fafc; padding: 10px; border-radius: 6px;">
                                 <div style="color: #64748b; font-size: 11px; font-weight: 600;">EPF / PF Liability</div>
                                 <div style="font-weight: 700; color: #0f172a; margin-top: 2px;">{currency_symbol} {rec.epf_total_liability:,.2f}</div>
-                                <div style="color: #10b981; font-size: 10px; font-weight: 500;">🟢 ECR Ready</div>
-                            </div>
-                            <div style="background: #f8fafc; padding: 10px; border-radius: 6px;">
+                                <div style="color: #10b981; font-size: 10px; font-weight: 500;">🟢 ECR Ready &bull; <u>View</u></div>
+                            </a>
+                            <a href="/odoo/action-hudson_in_payroll.action_dashboard_esic_employees" class="o_hds_dashboard_card_clickable" style="text-decoration: none; color: inherit; display: block; background: #f8fafc; padding: 10px; border-radius: 6px;">
                                 <div style="color: #64748b; font-size: 11px; font-weight: 600;">ESIC Liability</div>
                                 <div style="font-weight: 700; color: #0f172a; margin-top: 2px;">{currency_symbol} {rec.esic_total_liability:,.2f}</div>
-                                <div style="color: #10b981; font-size: 10px; font-weight: 500;">🟢 Ready for Filing</div>
-                            </div>
+                                <div style="color: #10b981; font-size: 10px; font-weight: 500;">🟢 Ready for Filing &bull; <u>View</u></div>
+                            </a>
                             <div style="background: #f8fafc; padding: 10px; border-radius: 6px;">
                                 <div style="color: #64748b; font-size: 11px; font-weight: 600;">Professional Tax (PT)</div>
                                 <div style="font-weight: 700; color: #0f172a; margin-top: 2px;">{currency_symbol} {rec.pt_total_liability:,.2f}</div>
                                 <div style="color: #10b981; font-size: 10px; font-weight: 500;">🟢 State Slabs Applied</div>
                             </div>
-                            <div style="background: #f8fafc; padding: 10px; border-radius: 6px;">
+                            <a href="/odoo/action-hudson_payroll_base.action_hr_payslip" class="o_hds_dashboard_card_clickable" style="text-decoration: none; color: inherit; display: block; background: #f8fafc; padding: 10px; border-radius: 6px;">
                                 <div style="color: #64748b; font-size: 11px; font-weight: 600;">TDS Withholding</div>
                                 <div style="font-weight: 700; color: #0f172a; margin-top: 2px;">{currency_symbol} {rec.tds_this_month:,.2f}</div>
-                                <div style="color: #10b981; font-size: 10px; font-weight: 500;">🟢 Form 24Q Ready</div>
-                            </div>
+                                <div style="color: #10b981; font-size: 10px; font-weight: 500;">🟢 Form 24Q Ready &bull; <u>View</u></div>
+                            </a>
                         </div>
                     </div>
 
@@ -716,22 +729,22 @@ class HdsPayrollDashboard(models.Model):
                             📋 Tax Regime & Declarations Breakdown
                         </div>
                         <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; font-size: 12px;">
-                            <div style="background: #f8fafc; padding: 10px; border-radius: 6px;">
+                            <a href="/odoo/action-hudson_in_payroll.action_dashboard_old_regime_employees" class="o_hds_dashboard_card_clickable" style="text-decoration: none; color: inherit; display: block; background: #f8fafc; padding: 10px; border-radius: 6px;">
                                 <div style="color: #64748b; font-size: 11px; font-weight: 600;">Old Regime Opted</div>
-                                <div style="font-weight: 700; color: #4f46e5; margin-top: 2px;">{rec.old_regime_count} Employees</div>
-                            </div>
-                            <div style="background: #f8fafc; padding: 10px; border-radius: 6px;">
+                                <div style="font-weight: 700; color: #4f46e5; margin-top: 2px;">{rec.old_regime_count} Employees &rarr;</div>
+                            </a>
+                            <a href="/odoo/action-hudson_in_payroll.action_dashboard_new_regime_employees" class="o_hds_dashboard_card_clickable" style="text-decoration: none; color: inherit; display: block; background: #f8fafc; padding: 10px; border-radius: 6px;">
                                 <div style="color: #64748b; font-size: 11px; font-weight: 600;">New Regime (115BAC)</div>
-                                <div style="font-weight: 700; color: #0284c7; margin-top: 2px;">{rec.new_regime_count} Employees</div>
-                            </div>
-                            <div style="background: #f8fafc; padding: 10px; border-radius: 6px;">
+                                <div style="font-weight: 700; color: #0284c7; margin-top: 2px;">{rec.new_regime_count} Employees &rarr;</div>
+                            </a>
+                            <a href="/odoo/action-hudson_payroll_base.action_hr_payslip" class="o_hds_dashboard_card_clickable" style="text-decoration: none; color: inherit; display: block; background: #f8fafc; padding: 10px; border-radius: 6px;">
                                 <div style="color: #64748b; font-size: 11px; font-weight: 600;">TDS YTD Total</div>
-                                <div style="font-weight: 700; color: #0f172a; margin-top: 2px;">{currency_symbol} {rec.tds_ytd_total:,.2f}</div>
-                            </div>
-                            <div style="background: #f8fafc; padding: 10px; border-radius: 6px;">
+                                <div style="font-weight: 700; color: #0f172a; margin-top: 2px;">{currency_symbol} {rec.tds_ytd_total:,.2f} &rarr;</div>
+                            </a>
+                            <a href="/odoo/action-hudson_in_payroll.action_dashboard_pending_declarations" class="o_hds_dashboard_card_clickable" style="text-decoration: none; color: inherit; display: block; background: #f8fafc; padding: 10px; border-radius: 6px;">
                                 <div style="color: #64748b; font-size: 11px; font-weight: 600;">Pending Declarations</div>
-                                <div style="font-weight: 700; color: #d97706; margin-top: 2px;">{rec.pending_declarations_count} Pending</div>
-                            </div>
+                                <div style="font-weight: 700; color: #d97706; margin-top: 2px;">{rec.pending_declarations_count} Pending &rarr;</div>
+                            </a>
                         </div>
                     </div>
                 </div>

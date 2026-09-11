@@ -38,18 +38,19 @@ class StatutoryComplianceValidationService:
         :param employee: hr.employee record
         :return: tuple (is_valid: bool, error_reason: str or False)
         """
+        ip_no = getattr(employee, 'hds_in_esic_ip_number', False)
+        if ip_no:
+            ip_clean = ip_no.strip()
+            if not ip_clean.isdigit():
+                return False, _("ESIC IP Number must contain digits only. Current value: '%s'") % ip_no
+            if len(ip_clean) != 10:
+                return False, _("ESIC IP Number must be exactly 10 digits. Provided length: %d digits") % len(ip_clean)
+
         if not getattr(employee, 'hds_in_esic_applicable', False):
             return True, False
 
-        ip_no = getattr(employee, 'hds_in_esic_ip_number', False)
         if not ip_no:
             return False, _("Missing ESIC IP Number")
-
-        ip_clean = ip_no.strip()
-        if not ip_clean.isdigit():
-            return False, _("ESIC IP Number must contain digits only. Current value: '%s'") % ip_no
-        if len(ip_clean) != 17:
-            return False, _("ESIC IP Number must be exactly 17 digits. Provided length: %d digits") % len(ip_clean)
 
         return True, False
 

@@ -400,3 +400,21 @@
         display: none !important;
     }
 }
+
+/* =========================================================
+   Payroll Dashboard - Interactive & Clickable Cards
+   ========================================================= */
+.o_hds_dashboard_card_clickable {
+    cursor: pointer !important;
+    transition: transform 0.18s cubic-bezier(0.4, 0, 0.2, 1), box-shadow 0.18s cubic-bezier(0.4, 0, 0.2, 1), border-color 0.18s ease !important;
+
+    &:hover {
+        transform: translateY(-2px) !important;
+        box-shadow: 0 6px 16px rgba(0, 0, 0, 0.08) !important;
+        filter: brightness(0.98);
+    }
+
+    &:active {
+        transform: translateY(0) !important;
+    }
+}
