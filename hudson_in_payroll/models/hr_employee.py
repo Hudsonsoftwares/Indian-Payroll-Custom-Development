@@ -371,27 +371,6 @@ class HrEmployee(models.Model):
                     super(HrEmployee, emp).write(update_vals)
         return res
 
-    @api.constrains('hds_in_esic_applicable', 'hds_in_esic_ip_number')
-    def _check_esic_ip_number(self):
-        for emp in self:
-            # 1. Whenever an ESIC IP Number is entered, strictly validate 10 digits and numbers only
-            if emp.hds_in_esic_ip_number:
-                ip_clean = emp.hds_in_esic_ip_number.strip()
-                if ip_clean:
-                    if not ip_clean.isdigit():
-                        raise ValidationError(_("ESIC IP Number must contain digits only. Invalid value: '%s'") % emp.hds_in_esic_ip_number)
-                    if len(ip_clean) != 10:
-                        raise ValidationError(_("ESIC IP Number must be exactly 10 digits. Provided length: %d digits (Value: '%s').") % (len(ip_clean), emp.hds_in_esic_ip_number))
-                    duplicate = self.search([
-                        ('id', '!=', emp.id),
-                        ('hds_in_esic_ip_number', '=', ip_clean)
-                    ], limit=1)
-                    if duplicate:
-                        raise ValidationError(_("ESIC IP Number '%s' is already registered for employee '%s'. Duplicate IP numbers are not allowed.") % (ip_clean, duplicate.name))
-
-            # 2. If ESIC is applicable, IP Number is mandatory
-            if emp.hds_in_esic_applicable and not emp.hds_in_esic_ip_number:
-                raise ValidationError(_("ESIC IP Number is mandatory when ESIC Applicable is enabled for employee '%s'.") % emp.name)
 
     def _compute_hds_in_employer_cost(self):
         for emp in self:

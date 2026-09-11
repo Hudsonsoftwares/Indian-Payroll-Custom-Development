@@ -56,7 +56,6 @@
                 <separator string="Employer Contribution" class="mt-3 mb-2" invisible="not hds_in_epf_applicable"/>
                 <field name="hds_in_pf_employer_basis" string="Contribution Basis" invisible="not hds_in_epf_applicable"/>
                 <field name="hds_in_eps_applicable" string="EPS Applicable" invisible="not hds_in_epf_applicable"/>
-                <field name="hds_in_existing_eps_member" string="Existing EPS Member" invisible="not hds_in_epf_applicable or not hds_in_eps_applicable"/>
 
                 <separator string="Professional Tax (PT)" class="mt-4 mb-2"/>
                 <field name="hds_in_pt_applicable" string="PT Applicable"/>
@@ -188,7 +187,7 @@
                     <field name="hds_in_uan" string="UAN" placeholder="12 digit Universal Account Number"/>
                     <field name="hds_in_pf_member_id" string="PF Account Number" placeholder="22 character PF A/c Number"/>
                     <field name="hds_in_lwf_number" string="LWF Account Number" placeholder="Labour Welfare Fund Account Number"/>
-                    <field name="hds_in_esic_ip_number" string="ESIC Number" placeholder="10 digit ESIC Number"/>
+                    <field name="hds_in_esic_ip_number" string="ESIC Number" placeholder="e.g. 1234567890"/>
                 </group>
                 <group string="Disability &amp; Special Status" name="group_disability_status">
                     <field name="hds_in_is_pwd"/>
