@@ -69,6 +69,13 @@ class HrPayslipInput(models.Model):
         string='Contract',
         help="The contract related to this input"
     )
+    adjustment_id = fields.Many2one(
+        'hr.salary.adjustment',
+        string='Salary Adjustment',
+        ondelete='set null',
+        index=True,
+        help="Source salary adjustment that generated this payslip input."
+    )
 
     @api.onchange('input_type_id')
     def _onchange_input_type_id(self):

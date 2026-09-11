@@ -115,6 +115,7 @@
                                         <field name="input_type_id" string="Description" required="1"/>
                                         <field name="code" readonly="1" force_save="1"/>
                                         <field name="amount" string="Amount" widget="monetary"/>
+                                        <field name="adjustment_id" string="Salary Adjustment" optional="show" readonly="1"/>
                                         <field name="name" string="Note" optional="hide"/>
                                     </list>
                                 </field>

@@ -7,6 +7,63 @@ from odoo.exceptions import ValidationError
 class ResCompany(models.Model):
     _inherit = 'res.company'
 
+    @api.model
+    def _auto_init(self):
+        self._ensure_hds_in_columns()
+        return super()._auto_init()
+
+    @api.model
+    def _ensure_hds_in_columns(self):
+        """Ensures all hds_in fields on res_company exist in PostgreSQL to prevent UndefinedColumn errors."""
+        if getattr(self.env.registry, '_hds_in_company_cols_synced', False):
+            return
+        columns_to_ensure = [
+            ('hds_in_is_india_company', 'BOOLEAN'),
+            ('hds_in_epf_applicable', 'BOOLEAN DEFAULT TRUE'),
+            ('hds_in_epf_employer_id', 'VARCHAR'),
+            ('hds_in_eps_applicable', 'BOOLEAN DEFAULT TRUE'),
+            ('hds_in_edli_applicable', 'BOOLEAN DEFAULT TRUE'),
+            ('hds_in_edli_registration_number', 'VARCHAR'),
+            ('hds_in_enable_statutory_audit', 'BOOLEAN DEFAULT TRUE'),
+            ('hds_in_esic_applicable', 'BOOLEAN DEFAULT TRUE'),
+            ('hds_in_esic_employer_code', 'VARCHAR'),
+            ('hds_in_esic_registration_no', 'VARCHAR'),
+            ('hds_in_esic_branch_office', 'VARCHAR'),
+            ('hds_in_enable_lwf', 'BOOLEAN DEFAULT TRUE'),
+            ('hds_in_lwf_registration_no', 'VARCHAR'),
+            ('hds_in_enable_gratuity', 'BOOLEAN DEFAULT FALSE'),
+            ('hds_in_gratuity_registration_no', 'VARCHAR'),
+            ('hds_in_enable_professional_tax', 'BOOLEAN DEFAULT FALSE'),
+            ('hds_in_professional_tax_registration_no', 'VARCHAR'),
+            ('hds_in_tds_applicable', 'BOOLEAN DEFAULT FALSE'),
+            ('hds_in_tan', 'VARCHAR(10)'),
+            ('hds_in_default_tax_regime', 'VARCHAR'),
+            ('hds_in_default_tax_year', 'INTEGER'),
+            ('hds_in_enable_leave_encashment', 'BOOLEAN DEFAULT TRUE'),
+            ('hds_in_leave_encashment_registration_no', 'VARCHAR'),
+            ('hds_in_enable_notice_pay_settlement', 'BOOLEAN DEFAULT TRUE'),
+            ('hds_in_notice_period_unit', "VARCHAR DEFAULT 'days'"),
+            ('hds_in_regular_struct_id', 'INTEGER'),
+            ('hds_in_bonus_struct_id', 'INTEGER'),
+            ('hds_in_retention_min_service_months', 'INTEGER DEFAULT 12'),
+            ('hds_in_retention_exclude_notice_period', 'BOOLEAN DEFAULT TRUE'),
+            ('hds_in_bonus_apply_tds', 'BOOLEAN DEFAULT TRUE'),
+            ('hds_in_bonus_apply_pf', 'BOOLEAN DEFAULT FALSE'),
+            ('hds_in_bonus_apply_esi', 'BOOLEAN DEFAULT FALSE'),
+            ('hds_in_bonus_apply_pt', 'BOOLEAN DEFAULT FALSE'),
+        ]
+        try:
+            for col, col_def in columns_to_ensure:
+                self.env.cr.execute(f"ALTER TABLE res_company ADD COLUMN IF NOT EXISTS {col} {col_def};")
+            self.env.registry._hds_in_company_cols_synced = True
+        except Exception:
+            pass
+
+    def fetch(self, field_names=None):
+        if not getattr(self.env.registry, '_hds_in_company_cols_synced', False):
+            self._ensure_hds_in_columns()
+        return super().fetch(field_names=field_names)
+
     hds_in_is_india_company = fields.Boolean(
         string="Is India Company",
         compute='_compute_hds_in_is_india_company',

@@ -1,0 +1,135 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <!-- List View -->
+    <record id="view_hr_salary_adjustment_list" model="ir.ui.view">
+        <field name="name">hr.salary.adjustment.list</field>
+        <field name="model">hr.salary.adjustment</field>
+        <field name="arch" type="xml">
+            <list string="Salary Adjustments">
+                <header>
+                    <button string="New Group Sal. Adjustment" name="%(hudson_payroll_base.action_hr_salary_adjustment_wizard)d" type="action" class="btn-secondary"/>
+                </header>
+                <field name="priority" widget="priority" optional="show"/>
+                <field name="employee_id" widget="many2one_avatar_employee"/>
+                <field name="date_start"/>
+                <field name="note"/>
+                <field name="input_type_id" string="Type"/>
+                <field name="amount"/>
+                <field name="until_amount" string="Until" optional="show"/>
+                <field name="beneficiary_bank_id" string="Beneficiary Bank Account" optional="show"/>
+                <field name="company_id" groups="base.group_multi_company" optional="hide"/>
+                <field name="state" widget="badge" decoration-success="state == 'running'" decoration-muted="state == 'done'" decoration-danger="state == 'cancel'"/>
+            </list>
+        </field>
+    </record>
+
+    <!-- Form View -->
+    <record id="view_hr_salary_adjustment_form" model="ir.ui.view">
+        <field name="name">hr.salary.adjustment.form</field>
+        <field name="model">hr.salary.adjustment</field>
+        <field name="arch" type="xml">
+            <form string="Salary Adjustment">
+                <header>
+                    <button name="action_done" string="Done" type="object" class="btn-primary" invisible="state != 'running'"/>
+                    <button name="action_reset_running" string="Reset to Running" type="object" invisible="state == 'running'"/>
+                    <button name="action_cancel" string="Cancel" type="object" invisible="state == 'cancel'"/>
+                    <field name="state" widget="statusbar" statusbar_visible="running,done"/>
+                </header>
+                <sheet>
+                    <div class="oe_button_box" name="button_box">
+                        <button name="action_view_payslips" type="object" class="oe_stat_button" icon="fa-file-text-o" invisible="applied_count == 0">
+                            <field name="applied_count" widget="statinfo" string="Payslips"/>
+                        </button>
+                    </div>
+                    <div class="oe_title">
+                        <field name="priority" widget="priority" class="mr-3"/>
+                        <h1><field name="name" placeholder="Salary Adjustment"/></h1>
+                    </div>
+                    <group>
+                        <group>
+                            <field name="employee_id" widget="many2one_avatar_employee" readonly="state != 'running'"/>
+                            <field name="input_type_id" string="Type" readonly="state != 'running'"/>
+                            <label for="amount"/>
+                            <div class="o_row">
+                                <field name="amount" readonly="state != 'running'"/>
+                                <field name="currency_id" invisible="1"/>
+                            </div>
+                            <field name="negative" readonly="state != 'running'"/>
+                        </group>
+                        <group>
+                            <field name="duration" readonly="state != 'running'"/>
+                            <field name="date_start" readonly="state != 'running'"/>
+                            <field name="date_end" invisible="duration != 'limited'" required="duration == 'limited'" readonly="state != 'running'"/>
+                            <field name="until_amount" invisible="duration != 'limited'" readonly="state != 'running'"/>
+                            <field name="beneficiary_bank_id" readonly="state != 'running'"/>
+                            <field name="contract_id" readonly="1" groups="base.group_no_one"/>
+                            <field name="company_id" groups="base.group_multi_company" readonly="state != 'running'"/>
+                        </group>
+                    </group>
+                    <group>
+                        <field name="note" placeholder="e.g. Child Support, Attachment of Salary..." readonly="state != 'running'"/>
+                    </group>
+                    <notebook>
+                        <page string="Applied Payslips" invisible="applied_count == 0">
+                            <field name="payslip_input_ids" readonly="1">
+                                <list>
+                                    <field name="payslip_id"/>
+                                    <field name="code"/>
+                                    <field name="amount"/>
+                                </list>
+                            </field>
+                        </page>
+                    </notebook>
+                </sheet>
+                <div class="oe_chatter">
+                    <field name="message_follower_ids"/>
+                    <field name="activity_ids"/>
+                    <field name="message_ids"/>
+                </div>
+            </form>
+        </field>
+    </record>
+
+    <!-- Search View -->
+    <record id="view_hr_salary_adjustment_search" model="ir.ui.view">
+        <field name="name">hr.salary.adjustment.search</field>
+        <field name="model">hr.salary.adjustment</field>
+        <field name="arch" type="xml">
+            <search string="Search Salary Adjustments">
+                <field name="employee_id"/>
+                <field name="input_type_id"/>
+                <field name="note"/>
+                <separator/>
+                <filter string="Running" name="running" domain="[('state', '=', 'running')]"/>
+                <filter string="Done" name="done" domain="[('state', '=', 'done')]"/>
+                <separator/>
+                <filter string="One Time" name="one_time" domain="[('duration', '=', 'one_time')]"/>
+                <filter string="Limited" name="limited" domain="[('duration', '=', 'limited')]"/>
+                <filter string="Unlimited" name="unlimited" domain="[('duration', '=', 'unlimited')]"/>
+                <group>
+                    <filter string="Employee" name="group_employee" context="{'group_by': 'employee_id'}"/>
+                    <filter string="Type" name="group_type" context="{'group_by': 'input_type_id'}"/>
+                    <filter string="Status" name="group_state" context="{'group_by': 'state'}"/>
+                    <filter string="Duration" name="group_duration" context="{'group_by': 'duration'}"/>
+                </group>
+            </search>
+        </field>
+    </record>
+
+    <!-- Action -->
+    <record id="action_hr_salary_adjustment" model="ir.actions.act_window">
+        <field name="name">Salary Adjustments</field>
+        <field name="res_model">hr.salary.adjustment</field>
+        <field name="view_mode">list,form</field>
+        <field name="search_view_id" ref="view_hr_salary_adjustment_search"/>
+        <field name="context">{'search_default_running': 1}</field>
+        <field name="help" type="html">
+            <p class="o_view_nocontent_smiling_face">
+                Create a new Salary Adjustment
+            </p>
+            <p>
+                Salary adjustments provide employee-specific recurring or one-time payroll inputs.
+            </p>
+        </field>
+    </record>
+</odoo>

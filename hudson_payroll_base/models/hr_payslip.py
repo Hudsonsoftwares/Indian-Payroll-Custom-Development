@@ -620,6 +620,105 @@ class HrPayslip(models.Model):
                 }))
         if new_lines:
             self.input_line_ids = new_lines
+        self._sync_salary_adjustments()
+
+    def _sync_salary_adjustments(self):
+        """
+        Synchronizes active Salary Adjustments (hr.salary.adjustment) to this payslip's Other Inputs.
+        - Identifies applicable running adjustments overlapping this payslip period.
+        - Idempotently updates or creates hr.payslip.input lines tagged with adjustment_id.
+        - Preserves existing manually entered inputs.
+        - Cleans up adjustment-linked input lines if the adjustment was cancelled or no longer active.
+        """
+        self.ensure_one()
+        if not self.employee_id or not self.date_from or not self.date_to:
+            return
+
+        adj_model = self.env['hr.salary.adjustment']
+        active_adjustments = adj_model.search([
+            ('employee_id', '=', self.employee_id.id),
+            ('state', '=', 'running'),
+            ('date_start', '<=', self.date_to),
+            '|', ('date_end', '=', False), ('date_end', '>=', self.date_from),
+        ])
+
+        applicable_adjustments = self.env['hr.salary.adjustment']
+        for adj in active_adjustments:
+            # For one-time adjustments, ensure not already applied on another finalized payslip
+            if adj.duration == 'one_time':
+                finalized_slips = adj.payslip_input_ids.mapped('payslip_id').filtered(
+                    lambda p: p.id != self.id and p.state in ('done', 'paid')
+                )
+                if finalized_slips:
+                    adj.state = 'done'
+                    continue
+
+            # For limited adjustments with until_amount cap, check if limit already met
+            if adj.duration == 'limited' and adj.until_amount:
+                prior_applied = sum(
+                    inp.amount for inp in adj.payslip_input_ids.filtered(
+                        lambda i: i.payslip_id.id != self.id and i.payslip_id.state in ('done', 'paid')
+                    )
+                )
+                if abs(prior_applied) >= abs(adj.until_amount):
+                    adj.state = 'done'
+                    continue
+
+            applicable_adjustments |= adj
+
+        # 1. Update or create inputs for applicable adjustments
+        for adj in applicable_adjustments:
+            eff_amount = -adj.amount if adj.negative else adj.amount
+
+            # If limited with until_amount cap, cap this period's amount so it doesn't exceed cap
+            if adj.duration == 'limited' and adj.until_amount:
+                prior_applied = sum(
+                    inp.amount for inp in adj.payslip_input_ids.filtered(
+                        lambda i: i.payslip_id.id != self.id and i.payslip_id.state in ('done', 'paid')
+                    )
+                )
+                rem_cap = abs(adj.until_amount) - abs(prior_applied)
+                if rem_cap > 0 and abs(eff_amount) > rem_cap:
+                    eff_amount = -rem_cap if adj.negative else rem_cap
+
+            existing_linked = self.input_line_ids.filtered(lambda l: l.adjustment_id == adj)
+            if existing_linked:
+                existing_linked.write({
+                    'amount': eff_amount,
+                    'name': adj.note or adj.input_type_id.name,
+                    'code': adj.input_code,
+                    'sequence': adj.input_type_id.sequence or 10,
+                })
+            else:
+                # Check for an unlinked input with same code and 0.0 amount that was auto-created by structure defaults
+                unlinked_default = self.input_line_ids.filtered(
+                    lambda l: not l.adjustment_id and l.code == adj.input_code and l.amount == 0.0
+                )
+                if unlinked_default:
+                    unlinked_default[0].write({
+                        'adjustment_id': adj.id,
+                        'amount': eff_amount,
+                        'name': adj.note or adj.input_type_id.name,
+                        'sequence': adj.input_type_id.sequence or 10,
+                    })
+                else:
+                    self.env['hr.payslip.input'].create({
+                        'payslip_id': self.id,
+                        'adjustment_id': adj.id,
+                        'input_type_id': adj.input_type_id.id,
+                        'name': adj.note or adj.input_type_id.name,
+                        'code': adj.input_code,
+                        'amount': eff_amount,
+                        'contract_id': self.contract_id.id if self.contract_id else False,
+                        'sequence': adj.input_type_id.sequence or 10,
+                    })
+
+        # 2. Clean up inputs previously linked to adjustments that are no longer applicable
+        stale_linked = self.input_line_ids.filtered(
+            lambda l: l.adjustment_id and l.adjustment_id not in applicable_adjustments
+        )
+        if stale_linked:
+            stale_linked.unlink()
 
     def _get_eval_context(self):
         """Prepares the clean Python safe_eval dictionary context."""
@@ -654,6 +753,7 @@ class HrPayslip(models.Model):
     def action_compute_sheet(self):
         """Main computation engine for calculating salary rules in topological order."""
         for slip in self:
+            slip._sync_salary_adjustments()
             if not slip.struct_id:
                 raise UserError(_("Please assign a Salary Structure to payslip %(name)s") % {'name': slip.name})
 
@@ -703,6 +803,24 @@ class HrPayslip(models.Model):
         for slip in self:
             if not slip.number:
                 slip.number = self.env['ir.sequence'].next_by_code('hr.payslip') or _('New')
+            # Check applied salary adjustments
+            for inp in slip.input_line_ids.filtered(lambda l: l.adjustment_id):
+                adj = inp.adjustment_id
+                if adj.duration == 'one_time':
+                    adj.state = 'done'
+                elif adj.duration == 'limited':
+                    # Check if total cap met
+                    if adj.until_amount:
+                        total_applied = sum(
+                            l.amount for l in adj.payslip_input_ids.filtered(
+                                lambda i: i.payslip_id.state in ('done', 'paid') or i.payslip_id.id == slip.id
+                            )
+                        )
+                        if abs(total_applied) >= abs(adj.until_amount):
+                            adj.state = 'done'
+                    # Check if date_end passed
+                    if adj.date_end and slip.date_to and slip.date_to >= adj.date_end:
+                        adj.state = 'done'
         return self.write({'state': 'done'})
 
     def action_payslip_paid(self):
@@ -779,6 +897,15 @@ class HrPayslip(models.Model):
         return True
 
     def action_payslip_cancel(self):
+        for slip in self:
+            for inp in slip.input_line_ids.filtered(lambda l: l.adjustment_id):
+                adj = inp.adjustment_id
+                if adj.state == 'done':
+                    other_done = adj.payslip_input_ids.filtered(
+                        lambda i: i.payslip_id.id != slip.id and i.payslip_id.state in ('done', 'paid')
+                    )
+                    if not other_done:
+                        adj.state = 'running'
         return self.write({'state': 'cancel'})
 
     def refund_sheet(self):

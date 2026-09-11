@@ -58,6 +58,8 @@ Key Features:
         'views/hr_payroll_configuration_views.xml',
         'views/res_config_settings_views.xml',
         'views/hr_payroll_benefit_views.xml',
+        'wizard/hr_salary_adjustment_wizard_views.xml',
+        'views/hr_salary_adjustment_views.xml',
         'views/hr_payroll_menu_views.xml',
     ],
     'assets': {
