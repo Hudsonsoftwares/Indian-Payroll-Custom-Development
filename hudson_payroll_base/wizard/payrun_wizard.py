@@ -1,4 +1,5 @@
 # -*- coding: utf-8 -*-
+import calendar
 from datetime import date, datetime
 from dateutil.relativedelta import relativedelta
 from odoo import api, fields, models, _
@@ -23,6 +24,12 @@ class HudsonPayrollPayrunWizard(models.TransientModel):
         required=True,
         default=lambda self: (datetime.now() + relativedelta(months=+1, day=1, days=-1)).date()
     )
+
+    @api.onchange('date_start')
+    def _onchange_date_start(self):
+        if self.date_start:
+            last_day = calendar.monthrange(self.date_start.year, self.date_start.month)[1]
+            self.date_end = self.date_start.replace(day=last_day)
     employee_type_ids = fields.Many2many(
         'hr.employee.type',
         string='Employee Types',

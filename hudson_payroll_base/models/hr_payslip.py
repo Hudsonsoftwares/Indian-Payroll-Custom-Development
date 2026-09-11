@@ -1,4 +1,5 @@
 # -*- coding: utf-8 -*-
+import calendar
 from datetime import date, datetime
 from dateutil.relativedelta import relativedelta
 from odoo import api, fields, models, _
@@ -487,6 +488,12 @@ class HrPayslip(models.Model):
                 slip._populate_inputs()
         return slips
 
+    @api.onchange('date_from')
+    def _onchange_date_from(self):
+        if self.date_from:
+            last_day = calendar.monthrange(self.date_from.year, self.date_from.month)[1]
+            self.date_to = self.date_from.replace(day=last_day)
+
     @api.onchange('employee_id', 'date_from', 'date_to')
     def onchange_employee(self):
         if not self.employee_id:
@@ -495,8 +502,9 @@ class HrPayslip(models.Model):
         self.company_id = self.employee_id.company_id
         if not self.date_from:
             self.date_from = fields.Date.today().replace(day=1)
-        if not self.date_to:
-            self.date_to = (datetime.now() + relativedelta(months=+1, day=1, days=-1)).date()
+        if not self.date_to and self.date_from:
+            last_day = calendar.monthrange(self.date_from.year, self.date_from.month)[1]
+            self.date_to = self.date_from.replace(day=last_day)
 
         # 1. Automatic Contract Fetch
         contract = False

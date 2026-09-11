@@ -1,4 +1,5 @@
 # -*- coding: utf-8 -*-
+import calendar
 from datetime import date, datetime
 from dateutil.relativedelta import relativedelta
 from odoo import api, fields, models, _
@@ -24,6 +25,12 @@ class HrPayslipRun(models.Model):
         required=True,
         default=lambda self: (datetime.now() + relativedelta(months=+1, day=1, days=-1)).date()
     )
+
+    @api.onchange('date_start')
+    def _onchange_date_start(self):
+        if self.date_start:
+            last_day = calendar.monthrange(self.date_start.year, self.date_start.month)[1]
+            self.date_end = self.date_start.replace(day=last_day)
     state = fields.Selection([
         ('draft', 'Draft'),
         ('confirmed', 'Confirmed'),
