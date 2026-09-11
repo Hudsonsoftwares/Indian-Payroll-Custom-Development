@@ -61,6 +61,7 @@
         'views/tds_house_property_loss_carryforward_views.xml',
         'reports/report_statutory_tax_calculation_templates.xml',
         'reports/report_payslip_custom_template.xml',
+        'reports/report_salary_reports_templates.xml',
         'data/payroll_spreadsheet_dashboard_data.xml',
 
 

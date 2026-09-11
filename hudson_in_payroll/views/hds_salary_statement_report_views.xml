@@ -28,10 +28,16 @@
                             type="object"
                             class="btn-primary"
                             invisible="state == 'done'"/>
+                    <button name="action_print_pdf"
+                            string="Print PDF"
+                            type="object"
+                            class="btn-primary"
+                            icon="fa-print"/>
                     <button name="action_export_xlsx"
                             string="Export XLSX"
                             type="object"
-                            class="btn-success"/>
+                            class="btn-success"
+                            icon="fa-file-excel-o"/>
                     <button name="action_reset_to_draft"
                             string="Reset to Draft"
                             type="object"
@@ -59,6 +65,7 @@
                         <group string="Period Selection">
                             <field name="year" readonly="state == 'done'"/>
                             <field name="month" readonly="state == 'done'"/>
+                            <field name="payslip_state" readonly="state == 'done'"/>
                         </group>
                         <group string="Company &amp; Audit">
                             <field name="company_id" groups="base.group_multi_company" readonly="state == 'done'"/>
@@ -87,10 +94,14 @@
                                     <field name="other_deductions" optional="show"/>
                                     <field name="total_deductions" sum="Total Deductions"/>
                                     <field name="net_pay" sum="Total Net Pay"/>
-                                    <field name="pf_er" optional="hide"/>
-                                    <field name="esi_er" optional="hide"/>
-                                    <field name="lwf_er" optional="hide"/>
-                                    <field name="total_employer_cost" sum="Total Employer Cost" optional="hide"/>
+                                    <field name="pf_er_eps" optional="show"/>
+                                    <field name="pf_er_share" optional="show"/>
+                                    <field name="pf_er_admin" optional="show"/>
+                                    <field name="pf_er" optional="show"/>
+                                    <field name="esi_er" optional="show"/>
+                                    <field name="lwf_er" optional="show"/>
+                                    <field name="other_er_contrib" optional="hide"/>
+                                    <field name="total_employer_cost" sum="Total Employer Cost" optional="show"/>
                                 </list>
                             </field>
                         </page>

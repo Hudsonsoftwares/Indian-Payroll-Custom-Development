@@ -404,8 +404,17 @@ class HrEmployee(models.Model):
         if self.env.context.get('in_employer_cost_sync'):
             return
         for emp in self.with_context(in_employer_cost_sync=True):
-            contracts = self.env['hr.version'].search([('employee_id', '=', emp.id)])
-            active_contract = contracts.sorted(lambda c: c.date_start or fields.Date.today(), reverse=True)[0] if contracts else False
+            active_contract = False
+            if hasattr(emp, 'version_id') and emp.version_id:
+                active_contract = emp.version_id
+            elif hasattr(emp, 'version_ids') and emp.version_ids:
+                active_contract = emp.version_ids[0]
+            else:
+                emp_id = emp._origin.id if (hasattr(emp, '_origin') and emp._origin.id and isinstance(emp._origin.id, int)) else (emp.id if isinstance(emp.id, int) else False)
+                if emp_id:
+                    contracts = self.env['hr.version'].search([('employee_id', '=', emp_id)])
+                    active_contract = contracts.sorted(lambda c: c.date_start or fields.Date.today(), reverse=True)[0] if contracts else False
+
             if active_contract:
                 if emp.wage and active_contract.wage != emp.wage:
                     active_contract.wage = emp.wage
@@ -413,9 +422,23 @@ class HrEmployee(models.Model):
                     active_contract.basic_salary = emp.basic_salary
                 if emp.da and active_contract.da != emp.da:
                     active_contract.da = emp.da
-                active_contract._compute_employer_cost()
+                if hasattr(emp, 'hra') and emp.hra and hasattr(active_contract, 'hra') and active_contract.hra != emp.hra:
+                    active_contract.hra = emp.hra
+                if hasattr(emp, 'fixed_allowance') and hasattr(active_contract, 'fixed_allowance') and active_contract.fixed_allowance != emp.fixed_allowance:
+                    active_contract.fixed_allowance = emp.fixed_allowance
+                if hasattr(active_contract, '_compute_breakdown_totals'):
+                    active_contract._compute_breakdown_totals()
+                if hasattr(active_contract, '_compute_breakdown_percentages'):
+                    active_contract._compute_breakdown_percentages()
+                active_contract._compute_employer_cost(employee=emp)
                 emp.hds_in_employer_cost_monthly = active_contract.hds_in_employer_cost_monthly
                 emp.hds_in_employer_cost_annual = active_contract.hds_in_employer_cost_annual
+                if hasattr(emp, 'breakdown_total'):
+                    emp.breakdown_total = active_contract.breakdown_total
+                if hasattr(emp, 'breakdown_diff'):
+                    emp.breakdown_diff = active_contract.breakdown_diff
+                if hasattr(emp, 'breakdown_is_equal'):
+                    emp.breakdown_is_equal = active_contract.breakdown_is_equal
             else:
                 gross_wage = float(emp.wage or 0.0)
                 breakdown = float(

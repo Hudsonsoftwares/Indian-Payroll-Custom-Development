@@ -1,4 +1,5 @@
 # -*- coding: utf-8 -*-
+import calendar
 from odoo import api, fields, models, _
 from odoo.exceptions import UserError, ValidationError
 import logging
@@ -56,6 +57,12 @@ class HdsInBonus(models.Model):
         default=lambda self: fields.Date.today(),
         help="End date of the bonus period."
     )
+
+    @api.onchange('date_from')
+    def _onchange_date_from(self):
+        if self.date_from:
+            last_day = calendar.monthrange(self.date_from.year, self.date_from.month)[1]
+            self.date_to = self.date_from.replace(day=last_day)
     payment_date = fields.Date(
         string="Payment Date",
         required=True,

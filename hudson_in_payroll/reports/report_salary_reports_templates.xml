@@ -1,0 +1,623 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <!-- Paperformat: Landscape A4 with compact margins -->
+    <record id="paperformat_salary_reports_landscape" model="report.paperformat">
+        <field name="name">Salary Reports Landscape</field>
+        <field name="default" eval="False"/>
+        <field name="format">A4</field>
+        <field name="orientation">Landscape</field>
+        <field name="margin_top">8</field>
+        <field name="margin_bottom">8</field>
+        <field name="margin_left">6</field>
+        <field name="margin_right">6</field>
+        <field name="header_line" eval="False"/>
+        <field name="header_spacing">4</field>
+        <field name="dpi">96</field>
+    </record>
+
+    <!-- 1. Salary Statement Report Action -->
+    <record id="action_report_salary_statement" model="ir.actions.report">
+        <field name="name">Salary Statement</field>
+        <field name="model">hds.salary.statement.report</field>
+        <field name="report_type">qweb-pdf</field>
+        <field name="report_name">hudson_in_payroll.report_salary_statement_template</field>
+        <field name="report_file">Salary_Statement</field>
+        <field name="print_report_name">'Salary_Statement_%s_%s' % (object.month, object.year)</field>
+        <field name="paperformat_id" ref="paperformat_salary_reports_landscape"/>
+        <field name="binding_model_id" ref="model_hds_salary_statement_report"/>
+        <field name="binding_type">report</field>
+    </record>
+
+    <!-- 2. Salary Register Wizard Report Action -->
+    <record id="action_report_salary_register" model="ir.actions.report">
+        <field name="name">Salary Register</field>
+        <field name="model">hds.salary.register.wizard</field>
+        <field name="report_type">qweb-pdf</field>
+        <field name="report_name">hudson_in_payroll.report_salary_register_template</field>
+        <field name="report_file">Salary_Register</field>
+        <field name="print_report_name">'Salary_Register_%s_to_%s' % (object.date_from, object.date_to)</field>
+        <field name="paperformat_id" ref="paperformat_salary_reports_landscape"/>
+    </record>
+
+    <!-- 3. Yearly Salary by Employee Report Action -->
+    <record id="action_report_yearly_salary_employee" model="ir.actions.report">
+        <field name="name">Yearly Salary by Employee</field>
+        <field name="model">hds.yearly.salary.employee.wizard</field>
+        <field name="report_type">qweb-pdf</field>
+        <field name="report_name">hudson_in_payroll.report_yearly_salary_employee_template</field>
+        <field name="report_file">Yearly_Salary_by_Employee</field>
+        <field name="print_report_name">'Yearly_Salary_Report_%s' % object.year</field>
+        <field name="paperformat_id" ref="paperformat_salary_reports_landscape"/>
+    </record>
+
+    <!-- Common CSS Styles Template -->
+    <template id="salary_reports_style">
+        <style>
+            .rpt-container {
+                font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
+                font-size: 8px;
+                color: #2c3e50;
+                width: 100%;
+            }
+            .rpt-header {
+                border-bottom: 2px solid #1F4E78;
+                padding-bottom: 6px;
+                margin-bottom: 8px;
+            }
+            .rpt-title {
+                font-size: 14px;
+                font-weight: bold;
+                color: #1F4E78;
+                text-transform: uppercase;
+                letter-spacing: 0.5px;
+            }
+            .rpt-subtitle {
+                font-size: 9px;
+                color: #555555;
+            }
+            .rpt-table {
+                width: 100%;
+                border-collapse: collapse;
+                margin-top: 6px;
+                table-layout: fixed;
+            }
+            .rpt-table th {
+                background-color: #1F4E78;
+                color: #ffffff;
+                font-size: 7.5px;
+                font-weight: bold;
+                padding: 4px 2px;
+                text-align: center;
+                border: 0.5px solid #dcdcdc;
+                word-wrap: break-word;
+            }
+            .rpt-table th.th-earn {
+                background-color: #2E75B6;
+            }
+            .rpt-table th.th-ded {
+                background-color: #C55A11;
+            }
+            .rpt-table th.th-net {
+                background-color: #70AD47;
+            }
+            .rpt-table th.th-er {
+                background-color: #4B6F96;
+            }
+            .rpt-table th.th-ctc {
+                background-color: #1E4620;
+            }
+            .rpt-table td {
+                font-size: 7px;
+                padding: 3px 2px;
+                border: 0.5px solid #e0e0e0;
+                vertical-align: middle;
+                word-wrap: break-word;
+            }
+            .rpt-table tr:nth-child(even) td {
+                background-color: #f9fbfd;
+            }
+            .rpt-table .text-right {
+                text-align: right;
+            }
+            .rpt-table .text-center {
+                text-align: center;
+            }
+            .rpt-table .text-left {
+                text-align: left;
+            }
+            .rpt-table tr.total-row td {
+                font-weight: bold;
+                background-color: #D9E1F2 !important;
+                border-top: 1.5px solid #1F4E78;
+                border-bottom: 1.5px solid #1F4E78;
+                color: #000000;
+                font-size: 7.5px;
+            }
+            .badge-status {
+                display: inline-block;
+                padding: 2px 6px;
+                font-size: 8px;
+                font-weight: bold;
+                border-radius: 3px;
+                background-color: #e9ecef;
+                color: #495057;
+            }
+        </style>
+    </template>
+
+    <!-- ═══════════════════════════════════════════════════════════════════ -->
+    <!-- TEMPLATE 1: SALARY STATEMENT REPORT                                 -->
+    <!-- ═══════════════════════════════════════════════════════════════════ -->
+    <template id="report_salary_statement_template">
+        <t t-call="web.html_container">
+            <t t-foreach="docs" t-as="o">
+                <div class="article rpt-container" t-att-data-oe-model="o._name" t-att-data-oe-id="o.id">
+                    <t t-call="hudson_in_payroll.salary_reports_style"/>
+
+                    <div class="rpt-header">
+                        <table style="width: 100%;">
+                            <tr>
+                                <td style="width: 60%; vertical-align: middle;">
+                                    <div class="rpt-title" t-esc="o.name"/>
+                                    <div class="rpt-subtitle">
+                                        <strong>Company:</strong> <span t-esc="o.company_id.name"/> |
+                                        <strong>Period:</strong> Month <span t-esc="o.month"/>, <span t-esc="o.year"/> |
+                                        <strong>Payslip Filter:</strong> <span t-esc="dict(o._fields['payslip_state'].selection).get(o.payslip_state)"/>
+                                    </div>
+                                </td>
+                                <td style="width: 40%; text-align: right; vertical-align: middle;">
+                                    <div class="rpt-subtitle">
+                                        <strong>Generated:</strong> <span t-esc="context_timestamp(datetime.datetime.now()).strftime('%d-%b-%Y %H:%M')"/><br/>
+                                        <strong>Total Employees:</strong> <span t-esc="len(o.line_ids)"/>
+                                    </div>
+                                </td>
+                            </tr>
+                        </table>
+                    </div>
+
+                    <table class="rpt-table">
+                        <thead>
+                            <tr>
+                                <th style="width: 3.5%;">Emp ID</th>
+                                <th style="width: 8.5%;">Employee Name</th>
+                                <th style="width: 6%;">Department</th>
+                                <th style="width: 2.5%;">Days</th>
+                                <th class="th-earn" style="width: 4.5%;">Basic</th>
+                                <th class="th-earn" style="width: 4%;">HRA</th>
+                                <th class="th-earn" style="width: 4%;">Allowances</th>
+                                <th class="th-earn" style="width: 4%;">Other Earn</th>
+                                <th class="th-earn" style="width: 5%;">Gross</th>
+                                <th class="th-ded" style="width: 4%;">EE PF</th>
+                                <th class="th-ded" style="width: 3.5%;">EE ESI</th>
+                                <th class="th-ded" style="width: 3%;">PT</th>
+                                <th class="th-ded" style="width: 2.5%;">LWF</th>
+                                <th class="th-ded" style="width: 3.5%;">TDS</th>
+                                <th class="th-ded" style="width: 4%;">Other Ded</th>
+                                <th class="th-ded" style="width: 5%;">Total Ded</th>
+                                <th class="th-net" style="width: 5.5%;">Net Pay</th>
+                                <th class="th-er" style="width: 4%;">EPS (8.33%)</th>
+                                <th class="th-er" style="width: 4%;">EPF (3.67%)</th>
+                                <th class="th-er" style="width: 3.5%;">Admin (1%)</th>
+                                <th class="th-er" style="width: 4.5%;">Total ER PF</th>
+                                <th class="th-er" style="width: 3.5%;">ER ESI</th>
+                                <th class="th-er" style="width: 2.5%;">ER LWF</th>
+                                <th class="th-er" style="width: 3%;">Other ER</th>
+                                <th class="th-ctc" style="width: 6%;">Total CTC</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <t t-set="t_basic" t-value="0.0"/>
+                            <t t-set="t_hra" t-value="0.0"/>
+                            <t t-set="t_alw" t-value="0.0"/>
+                            <t t-set="t_oth_earn" t-value="0.0"/>
+                            <t t-set="t_gross" t-value="0.0"/>
+                            <t t-set="t_pf_ee" t-value="0.0"/>
+                            <t t-set="t_esi_ee" t-value="0.0"/>
+                            <t t-set="t_pt" t-value="0.0"/>
+                            <t t-set="t_lwf_ee" t-value="0.0"/>
+                            <t t-set="t_tds" t-value="0.0"/>
+                            <t t-set="t_oth_ded" t-value="0.0"/>
+                            <t t-set="t_ded" t-value="0.0"/>
+                            <t t-set="t_net" t-value="0.0"/>
+                            <t t-set="t_pf_eps" t-value="0.0"/>
+                            <t t-set="t_pf_share" t-value="0.0"/>
+                            <t t-set="t_pf_admin" t-value="0.0"/>
+                            <t t-set="t_pf_er" t-value="0.0"/>
+                            <t t-set="t_esi_er" t-value="0.0"/>
+                            <t t-set="t_lwf_er" t-value="0.0"/>
+                            <t t-set="t_oth_er" t-value="0.0"/>
+                            <t t-set="t_ctc" t-value="0.0"/>
+
+                            <tr t-foreach="o.line_ids" t-as="l">
+                                <td class="text-left"><span t-esc="l.emp_ref or ''"/></td>
+                                <td class="text-left"><strong><span t-esc="l.employee_id.name or ''"/></strong></td>
+                                <td class="text-left"><span t-esc="l.department_id.name or ''"/></td>
+                                <td class="text-center"><span t-esc="'%.1f' % (l.working_days or 0.0)"/></td>
+                                <td class="text-right"><span t-esc="'{:,.2f}'.format(l.basic or 0.0)"/></td>
+                                <td class="text-right"><span t-esc="'{:,.2f}'.format(l.hra or 0.0)"/></td>
+                                <td class="text-right"><span t-esc="'{:,.2f}'.format(l.allowances or 0.0)"/></td>
+                                <td class="text-right"><span t-esc="'{:,.2f}'.format(l.other_earnings or 0.0)"/></td>
+                                <td class="text-right" style="font-weight: bold; background-color: #EBF1F5;"><span t-esc="'{:,.2f}'.format(l.gross or 0.0)"/></td>
+                                <td class="text-right"><span t-esc="'{:,.2f}'.format(l.pf_ee or 0.0)"/></td>
+                                <td class="text-right"><span t-esc="'{:,.2f}'.format(l.esi_ee or 0.0)"/></td>
+                                <td class="text-right"><span t-esc="'{:,.2f}'.format(l.pt or 0.0)"/></td>
+                                <td class="text-right"><span t-esc="'{:,.2f}'.format(l.lwf_ee or 0.0)"/></td>
+                                <td class="text-right"><span t-esc="'{:,.2f}'.format(l.tds or 0.0)"/></td>
+                                <td class="text-right"><span t-esc="'{:,.2f}'.format(l.other_deductions or 0.0)"/></td>
+                                <td class="text-right" style="font-weight: bold; background-color: #FDF2E9;"><span t-esc="'{:,.2f}'.format(l.total_deductions or 0.0)"/></td>
+                                <td class="text-right" style="font-weight: bold; background-color: #EAF2E8; color: #1e4620;"><span t-esc="'{:,.2f}'.format(l.net_pay or 0.0)"/></td>
+                                <td class="text-right"><span t-esc="'{:,.2f}'.format(l.pf_er_eps or 0.0)"/></td>
+                                <td class="text-right"><span t-esc="'{:,.2f}'.format(l.pf_er_share or 0.0)"/></td>
+                                <td class="text-right"><span t-esc="'{:,.2f}'.format(l.pf_er_admin or 0.0)"/></td>
+                                <td class="text-right"><span t-esc="'{:,.2f}'.format(l.pf_er or 0.0)"/></td>
+                                <td class="text-right"><span t-esc="'{:,.2f}'.format(l.esi_er or 0.0)"/></td>
+                                <td class="text-right"><span t-esc="'{:,.2f}'.format(l.lwf_er or 0.0)"/></td>
+                                <td class="text-right"><span t-esc="'{:,.2f}'.format(l.other_er_contrib or 0.0)"/></td>
+                                <td class="text-right" style="font-weight: bold; background-color: #EBF1F5;"><span t-esc="'{:,.2f}'.format(l.total_employer_cost or 0.0)"/></td>
+
+                                <t t-set="t_basic" t-value="t_basic + (l.basic or 0.0)"/>
+                                <t t-set="t_hra" t-value="t_hra + (l.hra or 0.0)"/>
+                                <t t-set="t_alw" t-value="t_alw + (l.allowances or 0.0)"/>
+                                <t t-set="t_oth_earn" t-value="t_oth_earn + (l.other_earnings or 0.0)"/>
+                                <t t-set="t_gross" t-value="t_gross + (l.gross or 0.0)"/>
+                                <t t-set="t_pf_ee" t-value="t_pf_ee + (l.pf_ee or 0.0)"/>
+                                <t t-set="t_esi_ee" t-value="t_esi_ee + (l.esi_ee or 0.0)"/>
+                                <t t-set="t_pt" t-value="t_pt + (l.pt or 0.0)"/>
+                                <t t-set="t_lwf_ee" t-value="t_lwf_ee + (l.lwf_ee or 0.0)"/>
+                                <t t-set="t_tds" t-value="t_tds + (l.tds or 0.0)"/>
+                                <t t-set="t_oth_ded" t-value="t_oth_ded + (l.other_deductions or 0.0)"/>
+                                <t t-set="t_ded" t-value="t_ded + (l.total_deductions or 0.0)"/>
+                                <t t-set="t_net" t-value="t_net + (l.net_pay or 0.0)"/>
+                                <t t-set="t_pf_eps" t-value="t_pf_eps + (l.pf_er_eps or 0.0)"/>
+                                <t t-set="t_pf_share" t-value="t_pf_share + (l.pf_er_share or 0.0)"/>
+                                <t t-set="t_pf_admin" t-value="t_pf_admin + (l.pf_er_admin or 0.0)"/>
+                                <t t-set="t_pf_er" t-value="t_pf_er + (l.pf_er or 0.0)"/>
+                                <t t-set="t_esi_er" t-value="t_esi_er + (l.esi_er or 0.0)"/>
+                                <t t-set="t_lwf_er" t-value="t_lwf_er + (l.lwf_er or 0.0)"/>
+                                <t t-set="t_oth_er" t-value="t_oth_er + (l.other_er_contrib or 0.0)"/>
+                                <t t-set="t_ctc" t-value="t_ctc + (l.total_employer_cost or 0.0)"/>
+                            </tr>
+
+                            <!-- Totals row -->
+                            <tr class="total-row">
+                                <td colspan="4" class="text-center">TOTAL (<span t-esc="len(o.line_ids)"/> Employees)</td>
+                                <td class="text-right"><span t-esc="'{:,.2f}'.format(t_basic)"/></td>
+                                <td class="text-right"><span t-esc="'{:,.2f}'.format(t_hra)"/></td>
+                                <td class="text-right"><span t-esc="'{:,.2f}'.format(t_alw)"/></td>
+                                <td class="text-right"><span t-esc="'{:,.2f}'.format(t_oth_earn)"/></td>
+                                <td class="text-right"><span t-esc="'{:,.2f}'.format(t_gross)"/></td>
+                                <td class="text-right"><span t-esc="'{:,.2f}'.format(t_pf_ee)"/></td>
+                                <td class="text-right"><span t-esc="'{:,.2f}'.format(t_esi_ee)"/></td>
+                                <td class="text-right"><span t-esc="'{:,.2f}'.format(t_pt)"/></td>
+                                <td class="text-right"><span t-esc="'{:,.2f}'.format(t_lwf_ee)"/></td>
+                                <td class="text-right"><span t-esc="'{:,.2f}'.format(t_tds)"/></td>
+                                <td class="text-right"><span t-esc="'{:,.2f}'.format(t_oth_ded)"/></td>
+                                <td class="text-right"><span t-esc="'{:,.2f}'.format(t_ded)"/></td>
+                                <td class="text-right"><span t-esc="'{:,.2f}'.format(t_net)"/></td>
+                                <td class="text-right"><span t-esc="'{:,.2f}'.format(t_pf_eps)"/></td>
+                                <td class="text-right"><span t-esc="'{:,.2f}'.format(t_pf_share)"/></td>
+                                <td class="text-right"><span t-esc="'{:,.2f}'.format(t_pf_admin)"/></td>
+                                <td class="text-right"><span t-esc="'{:,.2f}'.format(t_pf_er)"/></td>
+                                <td class="text-right"><span t-esc="'{:,.2f}'.format(t_esi_er)"/></td>
+                                <td class="text-right"><span t-esc="'{:,.2f}'.format(t_lwf_er)"/></td>
+                                <td class="text-right"><span t-esc="'{:,.2f}'.format(t_oth_er)"/></td>
+                                <td class="text-right"><span t-esc="'{:,.2f}'.format(t_ctc)"/></td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </t>
+        </t>
+    </template>
+
+    <!-- ═══════════════════════════════════════════════════════════════════ -->
+    <!-- TEMPLATE 2: SALARY REGISTER WIZARD REPORT                           -->
+    <!-- ═══════════════════════════════════════════════════════════════════ -->
+    <template id="report_salary_register_template">
+        <t t-call="web.html_container">
+            <t t-foreach="docs" t-as="o">
+                <t t-set="reg_data" t-value="o._get_salary_register_data()"/>
+                <t t-set="rows" t-value="reg_data['rows']"/>
+                <t t-set="totals" t-value="reg_data['totals']"/>
+
+                <div class="article rpt-container" t-att-data-oe-model="o._name" t-att-data-oe-id="o.id">
+                    <t t-call="hudson_in_payroll.salary_reports_style"/>
+
+                    <div class="rpt-header">
+                        <table style="width: 100%;">
+                            <tr>
+                                <td style="width: 60%; vertical-align: middle;">
+                                    <div class="rpt-title">SALARY REGISTER REPORT</div>
+                                    <div class="rpt-subtitle">
+                                        <strong>Company:</strong> <span t-esc="o.company_id.name"/> |
+                                        <strong>Period:</strong> <span t-esc="o.date_from"/> to <span t-esc="o.date_to"/> |
+                                        <strong>Status:</strong> <span t-esc="dict(o._fields['payslip_state'].selection).get(o.payslip_state)"/>
+                                        <t t-if="o.struct_id">
+                                            | <strong>Structure:</strong> <span t-esc="o.struct_id.name"/>
+                                        </t>
+                                    </div>
+                                </td>
+                                <td style="width: 40%; text-align: right; vertical-align: middle;">
+                                    <div class="rpt-subtitle">
+                                        <strong>Generated:</strong> <span t-esc="context_timestamp(datetime.datetime.now()).strftime('%d-%b-%Y %H:%M')"/><br/>
+                                        <strong>Total Records:</strong> <span t-esc="len(rows)"/>
+                                    </div>
+                                </td>
+                            </tr>
+                        </table>
+                    </div>
+
+                    <table class="rpt-table">
+                        <thead>
+                            <tr>
+                                <th style="width: 3.5%;">Emp ID</th>
+                                <th style="width: 8.5%;">Employee Name</th>
+                                <th style="width: 6%;">Department</th>
+                                <th style="width: 5%;">Payslip #</th>
+                                <th style="width: 3.5%;">Month</th>
+                                <th class="th-earn" style="width: 4.5%;">Basic</th>
+                                <th class="th-earn" style="width: 4%;">HRA</th>
+                                <th class="th-earn" style="width: 4%;">Allowances</th>
+                                <th class="th-earn" style="width: 4%;">Other Earn</th>
+                                <th class="th-earn" style="width: 5%;">Gross</th>
+                                <th class="th-ded" style="width: 4%;">EE PF</th>
+                                <th class="th-ded" style="width: 3.5%;">EE ESI</th>
+                                <th class="th-ded" style="width: 3%;">PT</th>
+                                <th class="th-ded" style="width: 2.5%;">LWF</th>
+                                <th class="th-ded" style="width: 3.5%;">Other Ded</th>
+                                <th class="th-ded" style="width: 3.5%;">TDS</th>
+                                <th class="th-ded" style="width: 5%;">Total Ded</th>
+                                <th class="th-net" style="width: 5.5%;">Net Pay</th>
+                                <th class="th-er" style="width: 4%;">EPS (8.33%)</th>
+                                <th class="th-er" style="width: 4%;">EPF (3.67%)</th>
+                                <th class="th-er" style="width: 3.5%;">Admin (1%)</th>
+                                <th class="th-er" style="width: 4.5%;">Total ER PF</th>
+                                <th class="th-er" style="width: 3.5%;">ER ESI</th>
+                                <th class="th-er" style="width: 2.5%;">ER LWF</th>
+                                <th class="th-er" style="width: 3%;">Other ER</th>
+                                <th class="th-ctc" style="width: 6%;">Total CTC</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr t-foreach="rows" t-as="r">
+                                <td class="text-left"><span t-esc="r['emp_ref'] or ''"/></td>
+                                <td class="text-left"><strong><span t-esc="r['emp_name'] or ''"/></strong></td>
+                                <td class="text-left"><span t-esc="r['department'] or ''"/></td>
+                                <td class="text-left"><span t-esc="r['payslip_num'] or ''"/></td>
+                                <td class="text-center"><span t-esc="r['month'] or ''"/></td>
+                                <td class="text-right"><span t-esc="'{:,.2f}'.format(r['basic'])"/></td>
+                                <td class="text-right"><span t-esc="'{:,.2f}'.format(r['hra'])"/></td>
+                                <td class="text-right"><span t-esc="'{:,.2f}'.format(r['alw'])"/></td>
+                                <td class="text-right"><span t-esc="'{:,.2f}'.format(r['other_earn'])"/></td>
+                                <td class="text-right" style="font-weight: bold; background-color: #EBF1F5;"><span t-esc="'{:,.2f}'.format(r['gross'])"/></td>
+                                <td class="text-right"><span t-esc="'{:,.2f}'.format(r['pf_ee'])"/></td>
+                                <td class="text-right"><span t-esc="'{:,.2f}'.format(r['esi_ee'])"/></td>
+                                <td class="text-right"><span t-esc="'{:,.2f}'.format(r['pt'])"/></td>
+                                <td class="text-right"><span t-esc="'{:,.2f}'.format(r['lwf_ee'])"/></td>
+                                <td class="text-right"><span t-esc="'{:,.2f}'.format(r['other_ded'])"/></td>
+                                <td class="text-right"><span t-esc="'{:,.2f}'.format(r['tds'])"/></td>
+                                <td class="text-right" style="font-weight: bold; background-color: #FDF2E9;"><span t-esc="'{:,.2f}'.format(r['total_ded'])"/></td>
+                                <td class="text-right" style="font-weight: bold; background-color: #EAF2E8; color: #1e4620;"><span t-esc="'{:,.2f}'.format(r['net'])"/></td>
+                                <td class="text-right"><span t-esc="'{:,.2f}'.format(r['pf_er_eps'])"/></td>
+                                <td class="text-right"><span t-esc="'{:,.2f}'.format(r['pf_er_share'])"/></td>
+                                <td class="text-right"><span t-esc="'{:,.2f}'.format(r['pf_er_admin'])"/></td>
+                                <td class="text-right"><span t-esc="'{:,.2f}'.format(r['pf_er'])"/></td>
+                                <td class="text-right"><span t-esc="'{:,.2f}'.format(r['esi_er'])"/></td>
+                                <td class="text-right"><span t-esc="'{:,.2f}'.format(r['lwf_er'])"/></td>
+                                <td class="text-right"><span t-esc="'{:,.2f}'.format(r['other_er'])"/></td>
+                                <td class="text-right" style="font-weight: bold; background-color: #EBF1F5;"><span t-esc="'{:,.2f}'.format(r['cost'])"/></td>
+                            </tr>
+
+                            <!-- Totals Row -->
+                            <tr class="total-row">
+                                <td colspan="5" class="text-center">TOTAL (<span t-esc="len(rows)"/> Records)</td>
+                                <td class="text-right"><span t-esc="'{:,.2f}'.format(totals['tot_basic'])"/></td>
+                                <td class="text-right"><span t-esc="'{:,.2f}'.format(totals['tot_hra'])"/></td>
+                                <td class="text-right"><span t-esc="'{:,.2f}'.format(totals['tot_alw'])"/></td>
+                                <td class="text-right"><span t-esc="'{:,.2f}'.format(totals['tot_other_earn'])"/></td>
+                                <td class="text-right"><span t-esc="'{:,.2f}'.format(totals['tot_gross'])"/></td>
+                                <td class="text-right"><span t-esc="'{:,.2f}'.format(totals['tot_pf_ee'])"/></td>
+                                <td class="text-right"><span t-esc="'{:,.2f}'.format(totals['tot_esi_ee'])"/></td>
+                                <td class="text-right"><span t-esc="'{:,.2f}'.format(totals['tot_pt'])"/></td>
+                                <td class="text-right"><span t-esc="'{:,.2f}'.format(totals['tot_lwf_ee'])"/></td>
+                                <td class="text-right"><span t-esc="'{:,.2f}'.format(totals['tot_other_ded'])"/></td>
+                                <td class="text-right"><span t-esc="'{:,.2f}'.format(totals['tot_tds'])"/></td>
+                                <td class="text-right"><span t-esc="'{:,.2f}'.format(totals['tot_total_ded'])"/></td>
+                                <td class="text-right"><span t-esc="'{:,.2f}'.format(totals['tot_net'])"/></td>
+                                <td class="text-right"><span t-esc="'{:,.2f}'.format(sum(r['pf_er_eps'] for r in rows))"/></td>
+                                <td class="text-right"><span t-esc="'{:,.2f}'.format(sum(r['pf_er_share'] for r in rows))"/></td>
+                                <td class="text-right"><span t-esc="'{:,.2f}'.format(sum(r['pf_er_admin'] for r in rows))"/></td>
+                                <td class="text-right"><span t-esc="'{:,.2f}'.format(totals['tot_pf_er'])"/></td>
+                                <td class="text-right"><span t-esc="'{:,.2f}'.format(totals['tot_esi_er'])"/></td>
+                                <td class="text-right"><span t-esc="'{:,.2f}'.format(totals['tot_lwf_er'])"/></td>
+                                <td class="text-right"><span t-esc="'{:,.2f}'.format(totals['tot_other_er'])"/></td>
+                                <td class="text-right"><span t-esc="'{:,.2f}'.format(totals['tot_cost'])"/></td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </t>
+        </t>
+    </template>
+
+    <!-- ═══════════════════════════════════════════════════════════════════ -->
+    <!-- TEMPLATE 3: YEARLY SALARY BY EMPLOYEE WIZARD REPORT                 -->
+    <!-- ═══════════════════════════════════════════════════════════════════ -->
+    <template id="report_yearly_salary_employee_template">
+        <t t-call="web.html_container">
+            <t t-foreach="docs" t-as="o">
+                <t t-set="yearly_data" t-value="o._get_yearly_data()"/>
+                <t t-set="s_rows" t-value="yearly_data['summary_rows']"/>
+                <t t-set="a_tots" t-value="yearly_data['annual_totals']"/>
+                <t t-set="d_rows" t-value="yearly_data['detail_rows']"/>
+
+                <!-- PAGE 1: YEARLY SUMMARY MATRIX -->
+                <div class="article rpt-container" t-att-data-oe-model="o._name" t-att-data-oe-id="o.id">
+                    <t t-call="hudson_in_payroll.salary_reports_style"/>
+
+                    <div class="rpt-header">
+                        <table style="width: 100%;">
+                            <tr>
+                                <td style="width: 60%; vertical-align: middle;">
+                                    <div class="rpt-title">YEARLY SALARY SUMMARY BY EMPLOYEE — <span t-esc="o.year"/></div>
+                                    <div class="rpt-subtitle">
+                                        <strong>Company:</strong> <span t-esc="o.company_id.name"/> |
+                                        <strong>Year:</strong> <span t-esc="o.year"/> |
+                                        <strong>Status Filter:</strong> <span t-esc="dict(o._fields['payslip_state'].selection).get(o.payslip_state)"/>
+                                    </div>
+                                </td>
+                                <td style="width: 40%; text-align: right; vertical-align: middle;">
+                                    <div class="rpt-subtitle">
+                                        <strong>Generated:</strong> <span t-esc="context_timestamp(datetime.datetime.now()).strftime('%d-%b-%Y %H:%M')"/><br/>
+                                        <strong>Total Employees:</strong> <span t-esc="len(s_rows)"/>
+                                    </div>
+                                </td>
+                            </tr>
+                        </table>
+                    </div>
+
+                    <h4 style="font-size: 10px; font-weight: bold; color: #1F4E78; margin-top: 5px; margin-bottom: 3px;">
+                        Sheet 1: Monthly Net Salary Matrix
+                    </h4>
+                    <table class="rpt-table">
+                        <thead>
+                            <tr>
+                                <th style="width: 4.5%;">Emp ID</th>
+                                <th style="width: 9.5%;">Employee Name</th>
+                                <th style="width: 7.5%;">Department</th>
+                                <th style="width: 7.5%;">Job Position</th>
+                                <th style="width: 4.5%;">Jan</th>
+                                <th style="width: 4.5%;">Feb</th>
+                                <th style="width: 4.5%;">Mar</th>
+                                <th style="width: 4.5%;">Apr</th>
+                                <th style="width: 4.5%;">May</th>
+                                <th style="width: 4.5%;">Jun</th>
+                                <th style="width: 4.5%;">Jul</th>
+                                <th style="width: 4.5%;">Aug</th>
+                                <th style="width: 4.5%;">Sep</th>
+                                <th style="width: 4.5%;">Oct</th>
+                                <th style="width: 4.5%;">Nov</th>
+                                <th style="width: 4.5%;">Dec</th>
+                                <th class="th-earn" style="width: 5.5%;">Ann. Gross</th>
+                                <th class="th-ded" style="width: 5.5%;">Ann. Ded.</th>
+                                <th class="th-net" style="width: 5.5%;">Ann. Net</th>
+                                <th class="th-ctc" style="width: 5.5%;">Ann. CTC</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr t-foreach="s_rows" t-as="sr">
+                                <td class="text-left"><span t-esc="sr['emp_ref']"/></td>
+                                <td class="text-left"><strong><span t-esc="sr['emp_name']"/></strong></td>
+                                <td class="text-left"><span t-esc="sr['department']"/></td>
+                                <td class="text-left"><span t-esc="sr['job_position']"/></td>
+                                <t t-foreach="sr['months']" t-as="m_amt">
+                                    <td class="text-right"><span t-esc="'{:,.2f}'.format(m_amt)"/></td>
+                                </t>
+                                <td class="text-right" style="font-weight: bold; background-color: #EBF1F5;"><span t-esc="'{:,.2f}'.format(sr['ann_gross'])"/></td>
+                                <td class="text-right" style="font-weight: bold; background-color: #FDF2E9;"><span t-esc="'{:,.2f}'.format(sr['ann_ded'])"/></td>
+                                <td class="text-right" style="font-weight: bold; background-color: #EAF2E8; color: #1e4620;"><span t-esc="'{:,.2f}'.format(sr['ann_net'])"/></td>
+                                <td class="text-right" style="font-weight: bold; background-color: #EBF1F5;"><span t-esc="'{:,.2f}'.format(sr['ann_ctc'])"/></td>
+                            </tr>
+                            <tr class="total-row">
+                                <td colspan="4" class="text-center">TOTAL (<span t-esc="len(s_rows)"/> Employees)</td>
+                                <t t-foreach="a_tots[:12]" t-as="m_tot">
+                                    <td class="text-right"><span t-esc="'{:,.2f}'.format(m_tot)"/></td>
+                                </t>
+                                <td class="text-right"><span t-esc="'{:,.2f}'.format(a_tots[12])"/></td>
+                                <td class="text-right"><span t-esc="'{:,.2f}'.format(a_tots[13])"/></td>
+                                <td class="text-right"><span t-esc="'{:,.2f}'.format(a_tots[14])"/></td>
+                                <td class="text-right"><span t-esc="'{:,.2f}'.format(a_tots[15])"/></td>
+                            </tr>
+                        </tbody>
+                    </table>
+
+                    <!-- PAGE BREAK FOR DETAILED BREAKDOWN -->
+                    <div style="page-break-before: always;"/>
+
+                    <div class="rpt-header" style="margin-top: 10px;">
+                        <table style="width: 100%;">
+                            <tr>
+                                <td style="width: 60%; vertical-align: middle;">
+                                    <div class="rpt-title">YEARLY SALARY DETAILED BREAKDOWN — <span t-esc="o.year"/></div>
+                                    <div class="rpt-subtitle">
+                                        <strong>Company:</strong> <span t-esc="o.company_id.name"/> |
+                                        <strong>Year:</strong> <span t-esc="o.year"/>
+                                    </div>
+                                </td>
+                                <td style="width: 40%; text-align: right; vertical-align: middle;">
+                                    <div class="rpt-subtitle">
+                                        <strong>Total Month Entries:</strong> <span t-esc="len(d_rows)"/>
+                                    </div>
+                                </td>
+                            </tr>
+                        </table>
+                    </div>
+
+                    <h4 style="font-size: 10px; font-weight: bold; color: #1F4E78; margin-top: 5px; margin-bottom: 3px;">
+                        Sheet 2: Month-by-Month Component Breakdown
+                    </h4>
+                    <table class="rpt-table">
+                        <thead>
+                            <tr>
+                                <th style="width: 3.5%;">Emp ID</th>
+                                <th style="width: 8.5%;">Employee Name</th>
+                                <th style="width: 6%;">Department</th>
+                                <th style="width: 3.5%;">Month</th>
+                                <th class="th-earn" style="width: 4.5%;">Basic</th>
+                                <th class="th-earn" style="width: 4%;">HRA</th>
+                                <th class="th-earn" style="width: 4%;">Allowances</th>
+                                <th class="th-earn" style="width: 4%;">Other Earn</th>
+                                <th class="th-earn" style="width: 5%;">Gross</th>
+                                <th class="th-ded" style="width: 4%;">EE PF</th>
+                                <th class="th-ded" style="width: 3.5%;">EE ESI</th>
+                                <th class="th-ded" style="width: 3%;">PT</th>
+                                <th class="th-ded" style="width: 2.5%;">LWF</th>
+                                <th class="th-ded" style="width: 3.5%;">TDS</th>
+                                <th class="th-ded" style="width: 4%;">Other Ded</th>
+                                <th class="th-ded" style="width: 5%;">Total Ded</th>
+                                <th class="th-net" style="width: 5.5%;">Net Pay</th>
+                                <th class="th-er" style="width: 4%;">EPS (8.33%)</th>
+                                <th class="th-er" style="width: 4%;">EPF (3.67%)</th>
+                                <th class="th-er" style="width: 3.5%;">Admin (1%)</th>
+                                <th class="th-er" style="width: 4.5%;">Total ER PF</th>
+                                <th class="th-er" style="width: 3.5%;">ER ESI</th>
+                                <th class="th-er" style="width: 2.5%;">ER LWF</th>
+                                <th class="th-er" style="width: 3%;">Other ER</th>
+                                <th class="th-ctc" style="width: 6%;">Total CTC</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr t-foreach="d_rows" t-as="d">
+                                <td class="text-left"><span t-esc="d['emp_ref']"/></td>
+                                <td class="text-left"><strong><span t-esc="d['emp_name']"/></strong></td>
+                                <td class="text-left"><span t-esc="d['department']"/></td>
+                                <td class="text-center"><span t-esc="d['month']"/></td>
+                                <td class="text-right"><span t-esc="'{:,.2f}'.format(d['basic'])"/></td>
+                                <td class="text-right"><span t-esc="'{:,.2f}'.format(d['hra'])"/></td>
+                                <td class="text-right"><span t-esc="'{:,.2f}'.format(d['allowances'])"/></td>
+                                <td class="text-right"><span t-esc="'{:,.2f}'.format(d['other_earnings'])"/></td>
+                                <td class="text-right" style="font-weight: bold; background-color: #EBF1F5;"><span t-esc="'{:,.2f}'.format(d['gross'])"/></td>
+                                <td class="text-right"><span t-esc="'{:,.2f}'.format(d['pf_ee'])"/></td>
+                                <td class="text-right"><span t-esc="'{:,.2f}'.format(d['esi_ee'])"/></td>
+                                <td class="text-right"><span t-esc="'{:,.2f}'.format(d['pt'])"/></td>
+                                <td class="text-right"><span t-esc="'{:,.2f}'.format(d['lwf_ee'])"/></td>
+                                <td class="text-right"><span t-esc="'{:,.2f}'.format(d['tds'])"/></td>
+                                <td class="text-right"><span t-esc="'{:,.2f}'.format(d['other_deductions'])"/></td>
+                                <td class="text-right" style="font-weight: bold; background-color: #FDF2E9;"><span t-esc="'{:,.2f}'.format(d['total_deductions'])"/></td>
+                                <td class="text-right" style="font-weight: bold; background-color: #EAF2E8; color: #1e4620;"><span t-esc="'{:,.2f}'.format(d['net_pay'])"/></td>
+                                <td class="text-right"><span t-esc="'{:,.2f}'.format(d['pf_er_eps'])"/></td>
+                                <td class="text-right"><span t-esc="'{:,.2f}'.format(d['pf_er_share'])"/></td>
+                                <td class="text-right"><span t-esc="'{:,.2f}'.format(d['pf_er_admin'])"/></td>
+                                <td class="text-right"><span t-esc="'{:,.2f}'.format(d['pf_er'])"/></td>
+                                <td class="text-right"><span t-esc="'{:,.2f}'.format(d['esi_er'])"/></td>
+                                <td class="text-right"><span t-esc="'{:,.2f}'.format(d['lwf_er'])"/></td>
+                                <td class="text-right"><span t-esc="'{:,.2f}'.format(d['other_er_contrib'])"/></td>
+                                <td class="text-right" style="font-weight: bold; background-color: #EBF1F5;"><span t-esc="'{:,.2f}'.format(d['total_employer_cost'])"/></td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </t>
+        </t>
+    </template>
+</odoo>

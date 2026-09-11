@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 base64_import = True
 import base64
+import calendar
 import io
 from datetime import date
 from odoo import api, fields, models, _
@@ -28,6 +29,12 @@ class HdsLwfReportWizard(models.TransientModel):
         default=lambda self: date(fields.Date.today().year, 12, 31),
         required=True
     )
+
+    @api.onchange('date_from')
+    def _onchange_date_from(self):
+        if self.date_from:
+            last_day = calendar.monthrange(self.date_from.year, self.date_from.month)[1]
+            self.date_to = self.date_from.replace(day=last_day)
 
     department_id = fields.Many2one(
         'hr.department',

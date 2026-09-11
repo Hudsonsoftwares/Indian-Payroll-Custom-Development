@@ -68,14 +68,15 @@ class HrVersion(models.Model):
         'employee_id.hds_in_epf_applicable', 'employee_id.hds_in_eps_applicable',
         'employee_id.hds_in_esic_applicable', 'employee_id.hds_in_lwf_applicable'
     )
-    def _compute_employer_cost(self):
+    def _compute_employer_cost(self, employee=None):
         for contract in self:
             if not contract._is_india_localization():
                 contract.hds_in_employer_cost_monthly = 0.0
                 contract.hds_in_employer_cost_annual = 0.0
-                if contract.employee_id:
-                    contract.employee_id.hds_in_employer_cost_monthly = 0.0
-                    contract.employee_id.hds_in_employer_cost_annual = 0.0
+                emp = employee or contract.employee_id
+                if emp:
+                    emp.hds_in_employer_cost_monthly = 0.0
+                    emp.hds_in_employer_cost_annual = 0.0
                 continue
 
             wage = float(contract.wage or 0.0)
@@ -112,14 +113,15 @@ class HrVersion(models.Model):
                 elif rule.amount_select == 'percentage':
                     employer_contrib_monthly += (wage * rule.amount_percentage / 100.0)
                 elif rule.amount_select == 'code':
-                    employer_contrib_monthly += self._estimate_statutory_rule_amount(contract, rule)
+                    employer_contrib_monthly += self._estimate_statutory_rule_amount(contract, rule, employee=employee)
 
             monthly_ctc = round(wage + employer_contrib_monthly, 2)
             contract.hds_in_employer_cost_monthly = monthly_ctc
             contract.hds_in_employer_cost_annual = round(monthly_ctc * 12.0, 2)
-            if contract.employee_id:
-                contract.employee_id.hds_in_employer_cost_monthly = monthly_ctc
-                contract.employee_id.hds_in_employer_cost_annual = round(monthly_ctc * 12.0, 2)
+            emp = employee or contract.employee_id
+            if emp:
+                emp.hds_in_employer_cost_monthly = monthly_ctc
+                emp.hds_in_employer_cost_annual = round(monthly_ctc * 12.0, 2)
 
     @api.onchange('wage', 'basic_salary', 'da', 'struct_id', 'employee_id')
     def _onchange_contract_ctc_inputs(self):
@@ -203,7 +205,7 @@ class HrVersion(models.Model):
                 vals['hds_in_esic_ip_status'] = 'active'
         employee.write(vals)
 
-    def _estimate_statutory_rule_amount(self, contract, rule):
+    def _estimate_statutory_rule_amount(self, contract, rule, employee=None):
         """
         Estimates contract-level statutory employer cost by delegating directly
         to EPFService and ESICService and reusing the exact same statutory calculation engine,
@@ -215,10 +217,10 @@ class HrVersion(models.Model):
 
         code_text = rule.amount_python_compute or ''
         rule_code = rule.code or ''
-        employee = contract.employee_id
+        employee = employee or contract.employee_id
 
         from ..services.epf.epf_service import EPFService, ContractPayslipAdapter
-        adapter = ContractPayslipAdapter(contract)
+        adapter = ContractPayslipAdapter(contract, employee=employee)
 
         # EPF Contribution Rules
         if any(k in code_text for k in ('compute_employer_total_pf', 'compute_employer_epf', 'compute_employer_eps', 'compute_employer_edli', 'compute_epf_admin', 'compute_edli_admin')) or rule_code in ('EMPLOYER_EPF', 'EPS', 'EPF_SHARE', 'EDLI', 'EPF_ADMIN', 'EDLI_ADMIN'):

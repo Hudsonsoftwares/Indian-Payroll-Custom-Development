@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 import base64
+import calendar
 import io
 from datetime import date
 from odoo import api, fields, models, _
@@ -22,9 +23,15 @@ class HdsSalaryRegisterWizard(models.TransientModel):
     )
     date_to = fields.Date(
         string='End Date',
-        default=fields.Date.today,
+        default=lambda self: date(fields.Date.today().year, fields.Date.today().month, calendar.monthrange(fields.Date.today().year, fields.Date.today().month)[1]),
         required=True
     )
+
+    @api.onchange('date_from')
+    def _onchange_date_from(self):
+        if self.date_from:
+            last_day = calendar.monthrange(self.date_from.year, self.date_from.month)[1]
+            self.date_to = self.date_from.replace(day=last_day)
 
     struct_id = fields.Many2one(
         'hr.payroll.structure',
@@ -33,10 +40,11 @@ class HdsSalaryRegisterWizard(models.TransientModel):
     )
 
     payslip_state = fields.Selection([
-        ('done', 'Done'),
-        ('paid', 'Paid'),
-        ('all', 'Done & Paid'),
-    ], string='Payslip Status', default='all', required=True)
+        ('paid', 'Paid Only'),
+        ('confirmed', 'Confirmed & Paid (Done, Paid)'),
+        ('done', 'Done Only'),
+        ('all', 'All States (Draft, Verify, Done, Paid)'),
+    ], string='Payslip Status', default='paid', required=True)
 
     employee_ids = fields.Many2many(
         'hr.employee',
@@ -69,8 +77,10 @@ class HdsSalaryRegisterWizard(models.TransientModel):
             domain.append(('state', '=', 'done'))
         elif self.payslip_state == 'paid':
             domain.append(('state', '=', 'paid'))
-        else:
+        elif self.payslip_state == 'confirmed':
             domain.append(('state', 'in', ('done', 'paid')))
+        else:
+            domain.append(('state', '!=', 'cancel'))
 
         if self.struct_id:
             domain.append(('struct_id', '=', self.struct_id.id))
@@ -78,14 +88,32 @@ class HdsSalaryRegisterWizard(models.TransientModel):
         if self.employee_ids:
             domain.append(('employee_id', 'in', self.employee_ids.ids))
 
-        return self.env['hr.payslip'].search(domain, order='date_to desc, employee_id asc')
+        payslips = self.env['hr.payslip'].search(domain, order='employee_id asc, date_to desc, id desc')
 
-    def action_export_xlsx(self):
+        # Deduplicate per employee: pick the best slip per employee
+        state_prio = {'paid': 4, 'done': 3, 'verify': 2, 'draft': 1}
+        emp_slips = {}
+        for slip in payslips:
+            if not slip.line_ids:
+                continue
+            emp_id = slip.employee_id.id
+            if emp_id not in emp_slips:
+                emp_slips[emp_id] = slip
+            else:
+                existing = emp_slips[emp_id]
+                prio_new = (state_prio.get(slip.state, 0), slip.id)
+                prio_old = (state_prio.get(existing.state, 0), existing.id)
+                if prio_new > prio_old:
+                    emp_slips[emp_id] = slip
+
+        return list(emp_slips.values())
+
+    def _get_salary_register_data(self):
         self.ensure_one()
         payslips = self._get_target_payslips()
 
         if not payslips:
-            raise UserError(_("No confirmed or paid payslips found for the selected period and criteria."))
+            raise UserError(_("No computed payslips found for the selected period and criteria."))
 
         rows = []
         tot_basic = 0.0
@@ -134,22 +162,26 @@ class HdsSalaryRegisterWizard(models.TransientModel):
                 cat_code = (line.category_id.code or '').upper() if line.category_id else ''
                 amt = float(line.total or 0.0)
 
+                # Skip non-earning categories and intermediate calculation rules explicitly
+                if cat_code in ('GROSS', 'NET', 'DED', 'COMP', 'PF_CALC', 'ESIC_CALC', 'CALC') or code in ('PF_WAGE', 'ESIC_WAGE', 'BASIC_PF', 'PF_BASE', 'ESI_WAGE', 'ESIC_BASE'):
+                    continue
+
                 if code == 'BASIC' or cat_code == 'BASIC':
                     basic_val += amt
                 elif code == 'HRA':
                     hra_val += amt
                 elif cat_code == 'ALW':
                     alw_val += amt
-                elif cat_code in ('GROSS', 'NET', 'DED', 'COMP'):
-                    continue
-                else:
-                    # Other earnings (e.g. Bonus, Incentives)
-                    if amt > 0:
-                        other_earn_val += amt
+                elif amt > 0:
+                    other_earn_val += amt
 
-            gross_val = float(getattr(slip, 'gross_amount', None) or getattr(slip, 'gross_wage', 0.0) or 0.0)
-            if gross_val <= 0:
-                gross_val = basic_val + hra_val + alw_val + other_earn_val
+            gross_line = lines.filtered(lambda l: (l.code or '').upper() == 'GROSS' or (l.category_id and l.category_id.code == 'GROSS'))
+            if gross_line:
+                gross_val = float(gross_line[0].total or 0.0)
+            else:
+                gross_val = float(getattr(slip, 'gross_amount', None) or getattr(slip, 'gross_wage', 0.0) or 0.0)
+                if gross_val <= 0:
+                    gross_val = basic_val + hra_val + alw_val + other_earn_val
 
             # 2. Employee Deductions Breakdown
             pf_ee_val = 0.0
@@ -164,18 +196,18 @@ class HdsSalaryRegisterWizard(models.TransientModel):
                 cat_code = (line.category_id.code or '').upper() if line.category_id else ''
                 amt = abs(float(line.total or 0.0))
 
-                if cat_code == 'COMP':
+                if cat_code in ('COMP', 'BASIC', 'ALW', 'GROSS', 'NET', 'PF_CALC', 'ESIC_CALC', 'CALC') or code in ('PF_WAGE', 'ESIC_WAGE', 'BASIC_PF', 'PF_BASE', 'ESI_WAGE', 'ESIC_BASE'):
                     continue
 
-                if code in ('PF', 'EPF', 'EE_PF') or (cat_code == 'DED' and 'PF' in code):
+                if code in ('PF', 'EPF', 'EE_PF') or (cat_code == 'DED' and code in ('PF', 'EPF', 'EE_PF')):
                     pf_ee_val += amt
-                elif code in ('ESI', 'ESIC', 'EE_ESI') or (cat_code == 'DED' and 'ESI' in code):
+                elif code in ('ESI', 'ESIC', 'EE_ESI', 'ESIC_EE') or (cat_code == 'DED' and code in ('ESI', 'ESIC', 'EE_ESI', 'ESIC_EE')):
                     esi_ee_val += amt
                 elif code in ('PT', 'PROF_TAX', 'PT_DED') or (cat_code == 'DED' and 'PT' in code):
                     pt_val += amt
                 elif code in ('LWF', 'LWF_EE', 'EE_LWF') or (cat_code == 'DED' and 'LWF' in code):
                     lwf_ee_val += amt
-                elif code in ('TDS', 'INCOME_TAX', 'IT') or cat_code == 'TDS':
+                elif code in ('TDS', 'HDS_IN_TDS', 'INCOME_TAX', 'IT') or 'TDS' in code or cat_code == 'TDS':
                     tds_val += amt
                 elif cat_code == 'DED':
                     other_ded_val += amt
@@ -183,25 +215,40 @@ class HdsSalaryRegisterWizard(models.TransientModel):
             total_ded_val = pf_ee_val + esi_ee_val + pt_val + lwf_ee_val + tds_val + other_ded_val
 
             # 3. Employer Contributions Breakdown
-            pf_er_val = 0.0
-            esi_er_val = 0.0
-            lwf_er_val = 0.0
-            other_er_val = 0.0
+            comp_lines = lines.filtered(lambda l: l.category_id and l.category_id.code == 'COMP')
+            comp_map = { (l.code or '').upper(): abs(float(l.total or 0.0)) for l in comp_lines }
 
-            for line in lines:
-                code = (line.code or '').upper()
-                cat_code = (line.category_id.code or '').upper() if line.category_id else ''
-                amt = abs(float(line.total or 0.0))
+            if 'EMPLOYER_EPF' in comp_map:
+                pf_er_base = comp_map['EMPLOYER_EPF']
+            elif 'EPS' in comp_map or 'EPF_SHARE' in comp_map:
+                pf_er_base = comp_map.get('EPS', 0.0) + comp_map.get('EPF_SHARE', 0.0)
+            else:
+                pf_er_base = comp_map.get('ER_PF', 0.0) or comp_map.get('PF_ER', 0.0) or comp_map.get('EMPR_PF', 0.0)
 
-                if cat_code == 'COMP':
-                    if any(k in code for k in ('PF', 'EPS', 'EDLI', 'ER_PF', 'EMPR_PF')):
-                        pf_er_val += amt
-                    elif any(k in code for k in ('ESI', 'ER_ESI', 'EMPR_ESI')):
-                        esi_er_val += amt
-                    elif any(k in code for k in ('LWF', 'ER_LWF', 'EMPR_LWF')):
-                        lwf_er_val += amt
-                    else:
-                        other_er_val += amt
+            pf_er_eps = comp_map.get('EPS', 0.0)
+            pf_er_share = comp_map.get('EPF_SHARE', 0.0)
+            if pf_er_base > 0 and pf_er_eps == 0.0 and pf_er_share == 0.0:
+                pf_er_eps = round(min(pf_er_base / 0.12, 15000.0) * 0.0833, 2)
+                pf_er_share = round(pf_er_base - pf_er_eps, 2)
+
+            pf_er_admin = (
+                comp_map.get('EDLI', 0.0) +
+                comp_map.get('EPF_ADMIN', 0.0) +
+                comp_map.get('EDLI_ADMIN', 0.0) +
+                comp_map.get('EDLI_ADMIN_CHARGE', 0.0) +
+                comp_map.get('EPF_ADMIN_CHARGE', 0.0)
+            )
+            pf_er_val = pf_er_base + pf_er_admin
+
+            esi_er_val = comp_map.get('ESIC_ER', 0.0) or comp_map.get('ESI_ER', 0.0) or comp_map.get('ER_ESI', 0.0)
+            lwf_er_val = comp_map.get('LWF_ER', 0.0) or comp_map.get('ER_LWF', 0.0)
+
+            accounted_codes = {
+                'EMPLOYER_EPF', 'EPS', 'EPF_SHARE', 'EDLI', 'EPF_ADMIN', 'EDLI_ADMIN',
+                'EDLI_ADMIN_CHARGE', 'EPF_ADMIN_CHARGE',
+                'ER_PF', 'PF_ER', 'EMPR_PF', 'ESIC_ER', 'ESI_ER', 'ER_ESI', 'LWF_ER', 'ER_LWF'
+            }
+            other_er_val = sum(amt for code, amt in comp_map.items() if code not in accounted_codes)
 
             total_er_val = pf_er_val + esi_er_val + lwf_er_val + other_er_val
 
@@ -231,6 +278,9 @@ class HdsSalaryRegisterWizard(models.TransientModel):
                 'other_ded': round(other_ded_val, 2),
                 'tds': round(tds_val, 2),
                 'total_ded': round(total_ded_val, 2),
+                'pf_er_eps': round(pf_er_eps, 2),
+                'pf_er_share': round(pf_er_share, 2),
+                'pf_er_admin': round(pf_er_admin, 2),
                 'pf_er': round(pf_er_val, 2),
                 'esi_er': round(esi_er_val, 2),
                 'lwf_er': round(lwf_er_val, 2),
@@ -262,6 +312,72 @@ class HdsSalaryRegisterWizard(models.TransientModel):
             tot_net += net_val
             tot_cost += emp_cost_val
 
+        totals = {
+            'tot_basic': tot_basic,
+            'tot_hra': tot_hra,
+            'tot_alw': tot_alw,
+            'tot_other_earn': tot_other_earn,
+            'tot_gross': tot_gross,
+            'tot_pf_ee': tot_pf_ee,
+            'tot_esi_ee': tot_esi_ee,
+            'tot_pt': tot_pt,
+            'tot_lwf_ee': tot_lwf_ee,
+            'tot_other_ded': tot_other_ded,
+            'tot_tds': tot_tds,
+            'tot_total_ded': tot_total_ded,
+            'tot_pf_er': tot_pf_er,
+            'tot_esi_er': tot_esi_er,
+            'tot_lwf_er': tot_lwf_er,
+            'tot_other_er': tot_other_er,
+            'tot_total_er': tot_total_er,
+            'tot_net': tot_net,
+            'tot_cost': tot_cost,
+        }
+
+        return {
+            'rows': rows,
+            'totals': totals,
+            'payslips': payslips,
+        }
+
+    def action_print_pdf(self):
+        self.ensure_one()
+        data = self._get_salary_register_data()
+        if not data['rows']:
+            raise UserError(_("No payslips found for the selected criteria to print."))
+        return self.env.ref('hudson_in_payroll.action_report_salary_register').report_action(self)
+
+    def action_export_xlsx(self):
+        self.ensure_one()
+        reg_data = self._get_salary_register_data()
+        rows = reg_data['rows']
+        totals = reg_data['totals']
+
+        tot_basic = totals['tot_basic']
+        tot_hra = totals['tot_hra']
+        tot_alw = totals['tot_alw']
+        tot_other_earn = totals['tot_other_earn']
+        tot_gross = totals['tot_gross']
+
+        tot_pf_ee = totals['tot_pf_ee']
+        tot_esi_ee = totals['tot_esi_ee']
+        tot_pt = totals['tot_pt']
+        tot_lwf_ee = totals['tot_lwf_ee']
+        tot_other_ded = totals['tot_other_ded']
+        tot_tds = totals['tot_tds']
+        tot_total_ded = totals['tot_total_ded']
+
+        tot_pf_eps = sum(r['pf_er_eps'] for r in rows)
+        tot_pf_share = sum(r['pf_er_share'] for r in rows)
+        tot_pf_admin = sum(r['pf_er_admin'] for r in rows)
+        tot_pf_er = totals['tot_pf_er']
+        tot_esi_er = totals['tot_esi_er']
+        tot_lwf_er = totals['tot_lwf_er']
+        tot_other_er = totals['tot_other_er']
+
+        tot_net = totals['tot_net']
+        tot_cost = totals['tot_cost']
+
         filename = f"Salary_Register_{self.date_from}_{self.date_to}.xlsx"
         output = io.BytesIO()
 
@@ -284,8 +400,8 @@ class HdsSalaryRegisterWizard(models.TransientModel):
             total_fmt = workbook.add_format({'bold': True, 'num_format': '#,##0.00', 'bg_color': '#D9E1F2', 'border': 1})
             total_text_fmt = workbook.add_format({'bold': True, 'bg_color': '#D9E1F2', 'border': 1})
 
-            sheet.write(0, 0, f"SALARY REGISTER REPORT — {self.company_id.name}", title_fmt)
-            status_label = dict(self._fields['payslip_state'].selection).get(self.payslip_state, '')
+            sheet.write(0, 0, f"SALARY REGISTER — {self.company_id.name}", title_fmt)
+            status_label = dict(self._fields['payslip_state'].selection).get(self.payslip_state, self.payslip_state)
             sheet.write(1, 0, f"Period: {self.date_from} to {self.date_to} | Status: {status_label} | Generated: {fields.Date.today()}", sub_title_fmt)
 
             headers = [
@@ -307,12 +423,15 @@ class HdsSalaryRegisterWizard(models.TransientModel):
                 ('Other Deductions', hdr_ded_fmt),
                 ('TDS (Income Tax)', hdr_ded_fmt),
                 ('Total Deductions', hdr_ded_fmt),
-                ('Employer PF', hdr_er_fmt),
-                ('Employer ESI', hdr_er_fmt),
+                ('Net Pay', hdr_final_fmt),
+                ('Employer EPS (8.33%)', hdr_er_fmt),
+                ('Employer EPF Share (3.67%)', hdr_er_fmt),
+                ('EPF Admin & EDLI (1.0%)', hdr_er_fmt),
+                ('Total Employer PF', hdr_er_fmt),
+                ('Employer ESI (3.25%)', hdr_er_fmt),
                 ('Employer LWF', hdr_er_fmt),
                 ('Other Employer Contrib.', hdr_er_fmt),
-                ('Net Pay', hdr_final_fmt),
-                ('Total Employer Cost', hdr_final_fmt),
+                ('Total Employer Cost (CTC)', hdr_final_fmt),
             ]
 
             for col_idx, (text, fmt) in enumerate(headers):
@@ -337,16 +456,20 @@ class HdsSalaryRegisterWizard(models.TransientModel):
                 sheet.write(row_idx, 15, r['other_ded'], num_fmt)
                 sheet.write(row_idx, 16, r['tds'], num_fmt)
                 sheet.write(row_idx, 17, r['total_ded'], num_fmt)
-                sheet.write(row_idx, 18, r['pf_er'], num_fmt)
-                sheet.write(row_idx, 19, r['esi_er'], num_fmt)
-                sheet.write(row_idx, 20, r['lwf_er'], num_fmt)
-                sheet.write(row_idx, 21, r['other_er'], num_fmt)
-                sheet.write(row_idx, 22, r['net'], num_fmt)
-                sheet.write(row_idx, 23, r['cost'], num_fmt)
+                sheet.write(row_idx, 18, r['net'], num_fmt)
+                sheet.write(row_idx, 19, r['pf_er_eps'], num_fmt)
+                sheet.write(row_idx, 20, r['pf_er_share'], num_fmt)
+                sheet.write(row_idx, 21, r['pf_er_admin'], num_fmt)
+                sheet.write(row_idx, 22, r['pf_er'], num_fmt)
+                sheet.write(row_idx, 23, r['esi_er'], num_fmt)
+                sheet.write(row_idx, 24, r['lwf_er'], num_fmt)
+                sheet.write(row_idx, 25, r['other_er'], num_fmt)
+                sheet.write(row_idx, 26, r['cost'], num_fmt)
 
             tot_row = len(rows) + 4
             sheet.write(tot_row, 0, "TOTAL", total_text_fmt)
-            for c in range(1, 6):
+            sheet.write(tot_row, 1, f"{len(rows)} Employees", total_text_fmt)
+            for c in range(2, 6):
                 sheet.write(tot_row, c, "", total_text_fmt)
 
             totals_data = [
@@ -362,12 +485,15 @@ class HdsSalaryRegisterWizard(models.TransientModel):
                 (15, round(tot_other_ded, 2)),
                 (16, round(tot_tds, 2)),
                 (17, round(tot_total_ded, 2)),
-                (18, round(tot_pf_er, 2)),
-                (19, round(tot_esi_er, 2)),
-                (20, round(tot_lwf_er, 2)),
-                (21, round(tot_other_er, 2)),
-                (22, round(tot_net, 2)),
-                (23, round(tot_cost, 2)),
+                (18, round(tot_net, 2)),
+                (19, round(tot_pf_eps, 2)),
+                (20, round(tot_pf_share, 2)),
+                (21, round(tot_pf_admin, 2)),
+                (22, round(tot_pf_er, 2)),
+                (23, round(tot_esi_er, 2)),
+                (24, round(tot_lwf_er, 2)),
+                (25, round(tot_other_er, 2)),
+                (26, round(tot_cost, 2)),
             ]
             for col_idx, val in totals_data:
                 sheet.write(tot_row, col_idx, val, total_fmt)

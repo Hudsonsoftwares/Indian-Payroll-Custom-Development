@@ -50,8 +50,9 @@ class ESICService:
             if not contract and payslip and getattr(payslip, 'employee_id', False):
                 contracts = self.env['hr.version'].search([('employee_id', '=', payslip.employee_id.id)])
                 contract = contracts[0] if contracts else False
-            if contract and hasattr(contract, 'wage'):
-                gross_wage = float(contract.wage or 0.0)
+            if contract:
+                bd = float(getattr(contract, 'breakdown_total', 0.0) or 0.0)
+                gross_wage = bd if bd > 0.0 else float(getattr(contract, 'wage', 0.0) or 0.0)
 
         return max(gross_wage, 0.0)
 

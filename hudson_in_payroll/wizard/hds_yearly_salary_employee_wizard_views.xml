@@ -12,6 +12,7 @@
                     <group>
                         <group string="Selection Criteria">
                             <field name="year" required="1"/>
+                            <field name="payslip_state" required="1"/>
                             <field name="company_id" groups="base.group_multi_company" required="1"/>
                         </group>
                         <group string="Optional Filters">
@@ -22,7 +23,7 @@
 
                     <separator string="Employees"/>
                     <p class="text-muted">
-                        Select specific employees to include in the yearly salary report. Leave empty to automatically include all matching employees with paid payslips in the selected year.
+                        Select specific employees to include in the yearly salary report. Leave empty to automatically include all matching employees with payslips in the selected year.
                     </p>
                     <field name="employee_ids" widget="many2many">
                         <list string="Employees">
@@ -33,10 +34,16 @@
                     </field>
                 </sheet>
                 <footer>
-                    <button name="action_print_xlsx"
-                            string="Print"
+                    <button name="action_print_pdf"
+                            string="Print PDF"
                             type="object"
-                            class="btn-primary"/>
+                            class="btn-primary"
+                            icon="fa-print"/>
+                    <button name="action_print_xlsx"
+                            string="Export XLSX"
+                            type="object"
+                            class="btn-success"
+                            icon="fa-file-excel-o"/>
                     <button string="Discard"
                             class="btn-secondary"
                             special="cancel"/>

@@ -145,6 +145,25 @@
                         <span class="ms-auto text-muted text-nowrap text-end pe-2" style="min-width: 4.5rem;"><field name="fixed_allowance_percent" readonly="1"/> %</span>
                     </div>
 
+                    <label for="breakdown_total" string="Total Breakdown"/>
+                    <div class="o_row w-100 d-flex align-items-center justify-content-between">
+                        <div class="d-flex align-items-center">
+                            <field name="breakdown_total" class="oe_inline o_hr_narrow_field fw-bold" widget="monetary" nolabel="1" style="max-width: 120px;" readonly="1"/>
+                            <span class="text-muted ms-2 text-nowrap">/ month</span>
+                        </div>
+                    </div>
+
+                    <label for="breakdown_diff" string="Difference"/>
+                    <div class="o_row w-100 d-flex align-items-center justify-content-between">
+                        <div class="d-flex align-items-center">
+                            <field name="breakdown_diff" class="oe_inline o_hr_narrow_field fw-bold" widget="monetary" decoration-danger="breakdown_diff != 0" decoration-success="breakdown_diff == 0" nolabel="1" style="max-width: 120px;" readonly="1"/>
+                            <span class="text-muted ms-2 text-nowrap">/ month</span>
+                        </div>
+                        <span class="badge rounded-pill text-bg-danger ms-auto" invisible="breakdown_is_equal">Mismatch</span>
+                        <span class="badge rounded-pill text-bg-success ms-auto" invisible="not breakdown_is_equal">Balanced</span>
+                    </div>
+                    <field name="breakdown_is_equal" invisible="1"/>
+
                     <div colspan="2" class="col-lg-6 w-100 mt-4 mb-3 o_horizontal_separator text-uppercase fw-bolder small d-flex">
                         <span>Benefits</span>
                     </div>

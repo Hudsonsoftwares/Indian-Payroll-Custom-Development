@@ -19,13 +19,13 @@ class ContractPayslipAdapter:
     employee applicability flags, contribution basis, IW/Higher Pension rules,
     and effective-dated parameters.
     """
-    def __init__(self, contract):
+    def __init__(self, contract, employee=None):
         self.contract = contract
         self.contract_id = contract
-        self.employee_id = contract.employee_id
+        self.employee_id = employee or contract.employee_id
         self.date_to = getattr(contract, 'date_start', False) or fields.Date.today()
         self.date_from = getattr(contract, 'date_start', False) or fields.Date.today()
-        self.company_id = getattr(contract, 'company_id', False) or (contract.employee_id.company_id if contract.employee_id else False)
+        self.company_id = getattr(contract, 'company_id', False) or (self.employee_id.company_id if self.employee_id else False)
         self.line_ids = []
 
     def hds_in_get_actual_pf_wage(self, localdict=None):
