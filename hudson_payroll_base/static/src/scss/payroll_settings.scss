@@ -411,10 +411,41 @@
     &:hover {
         transform: translateY(-2px) !important;
         box-shadow: 0 6px 16px rgba(0, 0, 0, 0.08) !important;
-        filter: brightness(0.98);
     }
 
     &:active {
         transform: translateY(0) !important;
     }
 }
+
+/* =========================================================
+   Payroll Dashboard - Payrun Theme & Dark/Light Harmony
+   ========================================================= */
+.o_hds_dash_banner {
+    background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%) !important;
+    border: 1px solid rgba(255, 255, 255, 0.16) !important;
+    color: #ffffff !important;
+
+    select, input, .o_input, .o_field_widget select, .o_field_widget input {
+        background-color: #334155 !important;
+        color: #ffffff !important;
+        -webkit-text-fill-color: #ffffff !important;
+        border: 1px solid rgba(255, 255, 255, 0.35) !important;
+        border-radius: 6px !important;
+        padding: 4px 10px !important;
+        font-weight: 600 !important;
+        font-size: 13px !important;
+    }
+
+    .o_field_widget .o_external_button,
+    .o_field_widget .o_dropdown_button {
+        color: #cbd5e1 !important;
+        background: transparent !important;
+        border: none !important;
+    }
+
+    .o_field_widget span {
+        color: #ffffff !important;
+    }
+}
+

@@ -7,21 +7,207 @@
         <field name="arch" type="xml">
             <form string="Payroll Dashboard" class="o_hds_payroll_dashboard_form" create="false" delete="false">
                 <header>
-                    <button name="action_refresh_dashboard" string="Refresh Data" type="object" class="btn-primary"/>
-                    <button name="action_view_missing_pan_employees" string="Missing PAN" type="object" class="btn-secondary"/>
-                    <button name="action_view_missing_bank_employees" string="Missing Bank Details" type="object" class="btn-secondary"/>
-                    <button name="action_view_pending_declarations" string="Pending Declarations" type="object" class="btn-secondary"/>
-                    <button name="action_view_new_joiners" string="View All Joiners →" type="object" class="btn-secondary"/>
+                    <button name="action_refresh_dashboard" string="Refresh Data" type="object" class="btn-primary" icon="fa-refresh"/>
+                    <button name="action_view_missing_pan_employees" string="Missing PAN" type="object" class="btn-secondary" icon="fa-id-card"/>
+                    <button name="action_view_missing_bank_employees" string="Missing Bank Details" type="object" class="btn-secondary" icon="fa-university"/>
+                    <button name="action_view_pending_declarations" string="Pending Declarations" type="object" class="btn-secondary" icon="fa-file-text-o"/>
+                    <button name="action_view_new_joiners" string="View All Joiners →" type="object" class="btn-secondary" icon="fa-user-plus"/>
                 </header>
                 <sheet class="o_full_width" style="max-width: 100% !important; width: calc(100% - 12px) !important; margin: 4px 6px !important; padding: 0 !important; background: transparent !important; background-color: transparent !important; border: none !important; box-shadow: none !important; border-radius: 0 !important;">
-                    <!-- High-Contrast Compact Period Controls Selector Bar -->
-                    <div style="background: #ffffff !important; border: 1px solid #cbd5e1 !important; border-radius: 8px !important; padding: 16px 20px !important; margin-bottom: 22px !important; box-shadow: 0 1px 3px rgba(0,0,0,0.05) !important;">
-                        <group col="4" style="margin: 0 !important;">
-                            <field name="payroll_month_num" string="Payroll Month" options="{'no_create': True}" style="color: #0f172a !important; font-weight: 700 !important; font-size: 14px !important;"/>
-                            <field name="financial_year_id" string="Financial Year" options="{'no_create': True}" style="color: #0f172a !important; font-weight: 700 !important; font-size: 14px !important;"/>
-                            <field name="active_employee_count" string="Active Workforce" readonly="1" style="color: #0f172a !important; font-weight: 700 !important; font-size: 14px !important;"/>
-                            <field name="pending_actions_count" string="Pending Actions" readonly="1" style="color: #d97706 !important; font-weight: 700 !important; font-size: 14px !important;"/>
-                        </group>
+                    <style>
+                        :root, body:not(.o_dark_mode) {
+                            --hds-dash-bg: transparent;
+                            --hds-card-bg: #ffffff;
+                            --hds-card-border: #e2e8f0;
+                            --hds-card-shadow: 0 1px 3px rgba(0, 0, 0, 0.06), 0 1px 2px rgba(0, 0, 0, 0.04);
+                            --hds-card-hover-shadow: 0 8px 20px rgba(0, 0, 0, 0.08);
+                            --hds-subcard-bg: #f8fafc;
+                            --hds-subcard-border: #cbd5e1;
+                            --hds-subcard-hover-bg: #f1f5f9;
+                            --hds-text-primary: #0f172a;
+                            --hds-text-secondary: #475569;
+                            --hds-text-muted: #64748b;
+                            --hds-table-head: #f8fafc;
+                            --hds-row-border: #f1f5f9;
+                            --hds-row-hover: #f8fafc;
+                            --hds-track-bg: #e2e8f0;
+                            --hds-alert-bg: #fff1f2;
+                            --hds-alert-border: #fecdd3;
+                            --hds-alert-header: #9f1239;
+                        }
+
+                        .o_dark_mode,
+                        [data-color-mode="dark"],
+                        .o_web_client.o_dark_mode,
+                        body.o_dark_mode {
+                            --hds-dash-bg: transparent;
+                            --hds-card-bg: #1e293b;
+                            --hds-card-border: rgba(255, 255, 255, 0.12);
+                            --hds-card-shadow: 0 4px 14px rgba(0, 0, 0, 0.35);
+                            --hds-card-hover-shadow: 0 8px 24px rgba(0, 0, 0, 0.55);
+                            --hds-subcard-bg: rgba(15, 23, 42, 0.65);
+                            --hds-subcard-border: rgba(255, 255, 255, 0.14);
+                            --hds-subcard-hover-bg: rgba(255, 255, 255, 0.06);
+                            --hds-text-primary: #f8fafc;
+                            --hds-text-secondary: #cbd5e1;
+                            --hds-text-muted: #94a3b8;
+                            --hds-table-head: rgba(15, 23, 42, 0.85);
+                            --hds-row-border: rgba(255, 255, 255, 0.08);
+                            --hds-row-hover: rgba(255, 255, 255, 0.04);
+                            --hds-track-bg: rgba(255, 255, 255, 0.12);
+                            --hds-alert-bg: rgba(225, 29, 72, 0.12);
+                            --hds-alert-border: rgba(225, 29, 72, 0.32);
+                            --hds-alert-header: #fda4af;
+                        }
+
+                        @media (prefers-color-scheme: dark) {
+                            :root:not(.o_light_mode) {
+                                --hds-dash-bg: transparent;
+                                --hds-card-bg: #1e293b;
+                                --hds-card-border: rgba(255, 255, 255, 0.12);
+                                --hds-card-shadow: 0 4px 14px rgba(0, 0, 0, 0.35);
+                                --hds-card-hover-shadow: 0 8px 24px rgba(0, 0, 0, 0.55);
+                                --hds-subcard-bg: rgba(15, 23, 42, 0.65);
+                                --hds-subcard-border: rgba(255, 255, 255, 0.14);
+                                --hds-subcard-hover-bg: rgba(255, 255, 255, 0.06);
+                                --hds-text-primary: #f8fafc;
+                                --hds-text-secondary: #cbd5e1;
+                                --hds-text-muted: #94a3b8;
+                                --hds-table-head: rgba(15, 23, 42, 0.85);
+                                --hds-row-border: rgba(255, 255, 255, 0.08);
+                                --hds-row-hover: rgba(255, 255, 255, 0.04);
+                                --hds-track-bg: rgba(255, 255, 255, 0.12);
+                                --hds-alert-bg: rgba(225, 29, 72, 0.12);
+                                --hds-alert-border: rgba(225, 29, 72, 0.32);
+                                --hds-alert-header: #fda4af;
+                            }
+                        }
+
+                        .hds-dash-card {
+                            background-color: var(--hds-card-bg) !important;
+                            border: 1px solid var(--hds-card-border) !important;
+                            border-radius: 12px !important;
+                            box-shadow: var(--hds-card-shadow) !important;
+                            transition: transform 0.18s cubic-bezier(0.4, 0, 0.2, 1), box-shadow 0.18s cubic-bezier(0.4, 0, 0.2, 1), border-color 0.18s ease !important;
+                        }
+                        .hds-dash-card:hover {
+                            transform: translateY(-2px) !important;
+                            box-shadow: var(--hds-card-hover-shadow) !important;
+                        }
+
+                        .hds-subcard {
+                            background-color: var(--hds-subcard-bg) !important;
+                            border: 1px solid var(--hds-subcard-border) !important;
+                            border-radius: 8px !important;
+                            transition: all 0.15s ease-in-out !important;
+                        }
+                        .hds-subcard:hover {
+                            background-color: var(--hds-subcard-hover-bg) !important;
+                            transform: translateY(-1px) !important;
+                        }
+
+                        .hds-text-primary {
+                            color: var(--hds-text-primary) !important;
+                        }
+                        .hds-text-secondary {
+                            color: var(--hds-text-secondary) !important;
+                        }
+                        .hds-text-muted {
+                            color: var(--hds-text-muted) !important;
+                        }
+
+                        .o_hds_dash_banner {
+                            background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%) !important;
+                            border: 1px solid rgba(255, 255, 255, 0.16) !important;
+                            color: #ffffff !important;
+                        }
+                        .o_hds_dash_banner select,
+                        .o_hds_dash_banner input,
+                        .o_hds_dash_banner .o_input,
+                        .o_hds_dash_banner .o_field_widget select,
+                        .o_hds_dash_banner .o_field_widget input {
+                            background-color: #334155 !important;
+                            color: #ffffff !important;
+                            -webkit-text-fill-color: #ffffff !important;
+                            border: 1px solid rgba(255, 255, 255, 0.35) !important;
+                            border-radius: 6px !important;
+                            padding: 4px 10px !important;
+                            font-weight: 600 !important;
+                            font-size: 13px !important;
+                        }
+                        .o_hds_dash_banner .o_field_widget .o_external_button,
+                        .o_hds_dash_banner .o_field_widget .o_dropdown_button {
+                            color: #cbd5e1 !important;
+                            background: transparent !important;
+                            border: none !important;
+                        }
+                        .o_hds_dash_banner .o_field_widget span {
+                            color: #ffffff !important;
+                        }
+                    </style>
+
+                    <!-- Payrun-Style Executive Control Banner (Flawless in Dark & Light Mode) -->
+                    <div class="o_hds_dash_banner p-3 mb-3 rounded-3 shadow-sm"
+                         style="background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%) !important; border: 1px solid rgba(255,255,255,0.16) !important; color: #ffffff !important;">
+                        <div class="d-flex flex-wrap justify-content-between align-items-center gap-3">
+                            <!-- Left: Title & Subtitle -->
+                            <div class="d-flex flex-column justify-content-center" style="min-width: 250px; flex: 1 1 260px;">
+                                <div class="d-flex align-items-center gap-2">
+                                    <span style="font-size: 22px;">🇮🇳</span>
+                                    <h2 class="mb-0 fw-bold fs-5" style="color: #ffffff !important; letter-spacing: -0.2px;">
+                                        Indian Payroll Dashboard
+                                    </h2>
+                                </div>
+                                <span class="small mt-1" style="color: #94a3b8 !important; font-size: 11px; font-weight: 500;">
+                                    Executive statutory compliance, salary disbursement &amp; data health
+                                </span>
+                            </div>
+
+                            <!-- Right: Controls & Counters -->
+                            <div class="d-flex flex-wrap align-items-center gap-3">
+                                <!-- Month Selector -->
+                                <div class="d-flex flex-column" style="min-width: 135px;">
+                                    <span class="small text-uppercase fw-semibold mb-1" style="color: #cbd5e1 !important; font-size: 10px; letter-spacing: 0.5px;">
+                                        <i class="fa fa-calendar me-1"/> Payroll Month
+                                    </span>
+                                    <field name="payroll_month_num" options="{'no_create': True}" class="oe_inline"/>
+                                </div>
+
+                                <!-- FY Selector -->
+                                <div class="d-flex flex-column" style="min-width: 160px;">
+                                    <span class="small text-uppercase fw-semibold mb-1" style="color: #cbd5e1 !important; font-size: 10px; letter-spacing: 0.5px;">
+                                        <i class="fa fa-university me-1"/> Financial Year
+                                    </span>
+                                    <field name="financial_year_id" options="{'no_create': True}" class="oe_inline"/>
+                                </div>
+
+                                <!-- Quick Live Counter Badges -->
+                                <div class="d-flex align-items-center gap-3 px-3 py-1 rounded-3"
+                                     style="background: rgba(255,255,255,0.08); border: 1px solid rgba(255,255,255,0.16); flex-shrink: 0;">
+                                    <!-- Workforce Pill (Sky Blue) -->
+                                    <div class="d-flex flex-column align-items-center" style="min-width: 65px;">
+                                        <span class="small text-uppercase fw-semibold" style="color: #38bdf8 !important; font-size: 10px; letter-spacing: 0.5px;">
+                                            <i class="fa fa-users me-1"/> Workforce
+                                        </span>
+                                        <span class="fw-bold fs-5 mt-0" style="color: #ffffff !important;">
+                                            <field name="active_employee_count" readonly="1"/>
+                                        </span>
+                                    </div>
+
+                                    <div style="width: 1px; height: 30px; background: rgba(255,255,255,0.18);"/>
+
+                                    <!-- Pending Actions Pill (Amber) -->
+                                    <div class="d-flex flex-column align-items-center" style="min-width: 65px;">
+                                        <span class="small text-uppercase fw-semibold" style="color: #fbbf24 !important; font-size: 10px; letter-spacing: 0.5px;">
+                                            <i class="fa fa-bell me-1"/> Pending
+                                        </span>
+                                        <span class="fw-bold fs-5 mt-0" style="color: #fbbf24 !important;">
+                                            <field name="pending_actions_count" readonly="1"/>
+                                        </span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
                     </div>
 
                     <field name="currency_id" invisible="1"/>
