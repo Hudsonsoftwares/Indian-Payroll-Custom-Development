@@ -1,0 +1,155 @@
+/* Styling for Preparation Display Kanban View matching Odoo Online Enterprise */
+
+/* Kanban Container and Record Width */
+.o_kanban_renderer.o_kanban_dashboard,
+.o_kanban_renderer:has(.o_prep_display_card) {
+    --KanbanRecord-width: 500px !important;
+}
+
+.o_prep_display_card,
+.o_kanban_record.o_prep_display_card,
+.o_kanban_record:has(.o_prep_display_card) {
+    min-width: 500px !important;
+    max-width: 520px !important;
+    width: 500px !important;
+    min-height: 155px !important;
+    background-color: #232532 !important;
+    border: 1px solid #2d3040 !important;
+    border-radius: 6px !important;
+    color: #ffffff !important;
+    padding: 16px 20px !important;
+    position: relative !important;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2) !important;
+}
+
+/* 3-dots Menu Button matching Odoo Online */
+.o_prep_display_card .o_dropdown_kanban,
+.o_kanban_record.o_prep_display_card .o_dropdown_kanban,
+.o_kanban_record:has(.o_prep_display_card) .o_dropdown_kanban {
+    position: absolute !important;
+    top: 14px !important;
+    right: 14px !important;
+    z-index: 10 !important;
+    display: block !important;
+    opacity: 1 !important;
+    visibility: visible !important;
+}
+
+.o_prep_display_card .o_dropdown_kanban button,
+.o_kanban_record.o_prep_display_card .o_dropdown_kanban button,
+.o_kanban_record:has(.o_prep_display_card) .o_dropdown_kanban button {
+    border: 1px solid rgba(255, 255, 255, 0.3) !important;
+    border-radius: 4px !important;
+    background-color: transparent !important;
+    color: #ffffff !important;
+    padding: 3px 7px !important;
+    line-height: 1 !important;
+    display: inline-block !important;
+    font-size: 14px !important;
+    cursor: pointer !important;
+}
+
+.o_prep_display_card .o_dropdown_kanban button:hover,
+.o_prep_display_card .o_dropdown_kanban button:focus,
+.o_kanban_record.o_prep_display_card .o_dropdown_kanban.show button,
+.o_kanban_record:has(.o_prep_display_card) .o_dropdown_kanban button:hover {
+    border-color: rgba(255, 255, 255, 0.7) !important;
+    background-color: rgba(255, 255, 255, 0.1) !important;
+    color: #ffffff !important;
+}
+
+/* Dropdown Menu Popup */
+.o-dropdown--kanban-record-menu {
+    background-color: #2b2d3d !important;
+    border: 1px solid #3d4156 !important;
+    border-radius: 6px !important;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.5) !important;
+    padding: 4px 0 !important;
+    min-width: 170px !important;
+}
+
+.o-dropdown--kanban-record-menu .dropdown-item {
+    color: #e2e4ec !important;
+    font-size: 13.5px !important;
+    padding: 7px 16px !important;
+    display: block !important;
+    text-decoration: none !important;
+    cursor: pointer !important;
+}
+
+.o-dropdown--kanban-record-menu .dropdown-item:hover,
+.o-dropdown--kanban-record-menu .dropdown-item:focus {
+    background-color: #3b3f57 !important;
+    color: #ffffff !important;
+}
+
+/* Stage Badges / Pills */
+.o_prep_stage_pill {
+    background: #362835 !important;
+    color: #d8b8d4 !important;
+    border: 1px solid #4a3449 !important;
+    padding: 3px 12px !important;
+    font-size: 12px !important;
+    font-weight: 500 !important;
+    border-radius: 20px !important;
+    display: inline-block !important;
+    line-height: 1.4 !important;
+}
+
+/* Preparation Screen Button (Plum Purple) */
+.o_prep_btn_primary {
+    background-color: #714B67 !important;
+    border: 1px solid #714B67 !important;
+    border-radius: 4px !important;
+    padding: 7px 16px !important;
+    font-size: 13px !important;
+    font-weight: 600 !important;
+    color: #ffffff !important;
+    text-decoration: none !important;
+    display: inline-block !important;
+}
+
+.o_prep_btn_primary:hover,
+.o_prep_btn_primary:focus {
+    background-color: #835777 !important;
+    border-color: #835777 !important;
+    color: #ffffff !important;
+}
+
+/* Order Status Screen Button (Slate Dark) */
+.o_prep_btn_secondary {
+    background-color: #2b2d3c !important;
+    border: 1px solid #3d4052 !important;
+    border-radius: 4px !important;
+    padding: 7px 16px !important;
+    font-size: 13px !important;
+    font-weight: 600 !important;
+    color: #ffffff !important;
+    text-decoration: none !important;
+    display: inline-block !important;
+}
+
+.o_prep_btn_secondary:hover,
+.o_prep_btn_secondary:focus {
+    background-color: #373a4d !important;
+    border-color: #4b4f66 !important;
+    color: #ffffff !important;
+}
+
+/* Right Stats (In progress & Average time) */
+.o_prep_stats {
+    min-width: 140px !important;
+    font-size: 13px !important;
+    line-height: 1.5 !important;
+}
+
+.o_prep_stat_label {
+    color: #8e90a2 !important;
+    font-size: 13px !important;
+}
+
+.o_prep_stat_val {
+    color: #ffffff !important;
+    font-weight: 700 !important;
+    font-size: 14px !important;
+}
