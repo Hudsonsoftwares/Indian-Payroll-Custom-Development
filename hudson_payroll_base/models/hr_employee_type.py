@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-from odoo import fields, models
+from odoo import api, fields, models
 
 
 class HrEmployeeType(models.Model):
@@ -29,8 +29,44 @@ class HrEmployee(models.Model):
     bank_account_id = fields.Many2one(
         'res.partner.bank',
         string='Bank Account Number',
-        help="Employee bank account for payroll payment transfers and payment advice"
+        compute='_compute_bank_account_id',
+        inverse='_inverse_bank_account_id',
+        search='_search_bank_account_id',
+        store=True,
+        help="Employee primary bank account from Personal tab for payroll payment transfers and payment advice"
     )
+
+    @api.depends('bank_account_ids', 'primary_bank_account_id')
+    def _compute_bank_account_id(self):
+        for emp in self:
+            primary = getattr(emp, 'primary_bank_account_id', False)
+            if not primary and getattr(emp, 'bank_account_ids', False):
+                primary = emp.bank_account_ids[0]
+            emp.bank_account_id = primary
+
+    def _inverse_bank_account_id(self):
+        for emp in self:
+            if emp.bank_account_id and emp.bank_account_id not in emp.bank_account_ids:
+                emp.bank_account_ids = [(4, emp.bank_account_id.id)]
+
+    def _search_bank_account_id(self, operator, value):
+        return ['|', ('primary_bank_account_id', operator, value), ('bank_account_ids', operator, value)]
+
+    @api.depends('bank_account_ids', 'salary_distribution')
+    def _compute_primary_bank_account_id(self):
+        for employee in self:
+            dist = employee.salary_distribution or {}
+            if employee.bank_account_ids:
+                try:
+                    primary_account = min(
+                        employee.bank_account_ids,
+                        key=lambda acc: dist.get(str(acc.id), {}).get("sequence", float("inf")) if isinstance(dist, dict) else float("inf"),
+                    )
+                except Exception:
+                    primary_account = employee.bank_account_ids[0]
+                employee.primary_bank_account_id = primary_account
+            else:
+                employee.primary_bank_account_id = False
     pay_by_attendance = fields.Boolean(
         string='Pay by Attendance',
         related='version_id.pay_by_attendance',

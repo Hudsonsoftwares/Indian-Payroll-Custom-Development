@@ -4,18 +4,18 @@
         <field name="name">hds.pf.ecr.wizard.view.form</field>
         <field name="model">hds.pf.ecr.wizard</field>
         <field name="arch" type="xml">
-            <form string="EPF-ECR Report Wizard">
+            <form string="EPF-ECR Report Wizard" class="o_hds_pf_ecr_form">
                 <header>
-                    <button name="action_print_pdf"
-                            string="Print PDF"
-                            type="object"
-                            class="btn-primary"
-                            icon="fa-print"/>
                     <button name="action_generate_ecr"
                             string="Export XLSX File"
                             type="object"
                             class="btn-success"
                             icon="fa-file-excel-o"/>
+                    <button name="action_print_pdf"
+                            string="Print PDF"
+                            type="object"
+                            class="btn-primary"
+                            icon="fa-print"/>
                     <field name="state" widget="statusbar" statusbar_visible="draft,generated"/>
                 </header>
                 <sheet>
@@ -43,8 +43,6 @@
                     <group string="Generated Report File for Download" invisible="state == 'draft'">
                         <field name="xlsx_filename" invisible="1"/>
                         <field name="xlsx_file" filename="xlsx_filename" readonly="1"/>
-                        <field name="txt_filename" invisible="1"/>
-                        <field name="txt_file" filename="txt_filename" readonly="1" invisible="report_type != 'epf_report'"/>
                     </group>
                 </sheet>
             </form>
@@ -71,8 +69,8 @@
     <record id="action_hds_pf_ecr_wizard" model="ir.actions.act_window">
         <field name="name">EPF-ECR Report</field>
         <field name="res_model">hds.pf.ecr.wizard</field>
-        <field name="view_mode">form</field>
-        <field name="target">new</field>
+        <field name="view_mode">form,list</field>
+        <field name="target">current</field>
         <field name="context">{'default_name': 'EPF-ECR Report'}</field>
     </record>
 </odoo>

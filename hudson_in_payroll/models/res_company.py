@@ -266,31 +266,6 @@ class ResCompany(models.Model):
         help="If checked, Professional Tax (PT) rule applies to Bonus Payroll."
     )
 
-    @api.constrains('hds_in_tds_applicable', 'hds_in_tan', 'hds_in_default_tax_regime')
-    def _check_hds_in_tds_configuration(self):
-        """
-        Validates company TDS configuration when TDS is enabled.
-        Enforces mandatory TAN presence and standard Indian TAN regex format.
-        """
-        tan_pattern = re.compile(r'^[A-Z]{4}[0-9]{5}[A-Z]{1}$')
-        for company in self:
-            if company.hds_in_tds_applicable:
-                tan = (company.hds_in_tan or '').strip().upper()
-                if not tan:
-                    raise ValidationError(_(
-                        "TAN (Tax Deduction and Collection Account Number) is mandatory when TDS is enabled for company '%s'."
-                    ) % company.name)
-
-                if not tan_pattern.match(tan):
-                    raise ValidationError(_(
-                        "Invalid TAN format '%s' for company '%s'. TAN must be 10 characters long with 4 uppercase letters, 5 digits, and 1 letter (e.g. ABCD12345E)."
-                    ) % (company.hds_in_tan, company.name))
-
-                if not company.hds_in_default_tax_regime:
-                    raise ValidationError(_(
-                        "Default Tax Regime is mandatory when TDS is enabled for company '%s'."
-                    ) % company.name)
-
     @api.model_create_multi
     def create(self, vals_list):
         for vals in vals_list:

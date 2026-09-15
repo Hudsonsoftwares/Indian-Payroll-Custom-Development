@@ -144,6 +144,57 @@
                         .o_hds_dash_banner .o_field_widget span {
                             color: #ffffff !important;
                         }
+
+                        .hds-card-active {
+                            box-shadow: 0 0 0 2px #38bdf8, 0 8px 24px rgba(56, 189, 248, 0.35) !important;
+                            transform: translateY(-3px) !important;
+                        }
+
+                        .hds-inline-panel {
+                            background-color: var(--hds-card-bg) !important;
+                            border: 1px solid var(--hds-card-border) !important;
+                            border-radius: 12px !important;
+                            box-shadow: 0 6px 24px rgba(0, 0, 0, 0.12) !important;
+                            padding: 22px !important;
+                            margin-top: 24px !important;
+                            animation: hdsPanelSlide 0.22s cubic-bezier(0.4, 0, 0.2, 1) !important;
+                        }
+
+                        @keyframes hdsPanelSlide {
+                            from { opacity: 0; transform: translateY(-8px); }
+                            to { opacity: 1; transform: translateY(0); }
+                        }
+
+                        .hds-inline-table {
+                            width: 100% !important;
+                            border-collapse: collapse !important;
+                            font-size: 12px !important;
+                        }
+
+                        .hds-inline-table thead th {
+                            background-color: var(--hds-table-head) !important;
+                            color: var(--hds-text-secondary) !important;
+                            font-weight: 700 !important;
+                            padding: 10px 14px !important;
+                            border-bottom: 2px solid var(--hds-row-border) !important;
+                            font-size: 11px !important;
+                            text-transform: uppercase !important;
+                            letter-spacing: 0.5px !important;
+                        }
+
+                        .hds-inline-table tbody tr {
+                            border-bottom: 1px solid var(--hds-row-border) !important;
+                            transition: background-color 0.15s ease !important;
+                        }
+
+                        .hds-inline-table tbody tr:hover {
+                            background-color: var(--hds-row-hover) !important;
+                        }
+
+                        .hds-inline-table tbody td {
+                            padding: 10px 14px !important;
+                            vertical-align: middle !important;
+                        }
                     </style>
 
                     <!-- Payrun-Style Executive Control Banner (Flawless in Dark & Light Mode) -->
@@ -211,7 +262,7 @@
                     </div>
 
                     <field name="currency_id" invisible="1"/>
-                    <field name="dashboard_html" widget="html" readonly="1" nolabel="1"/>
+                    <field name="dashboard_html" widget="html" readonly="1" nolabel="1" options="{'sandboxedPreview': False}"/>
                 </sheet>
             </form>
         </field>

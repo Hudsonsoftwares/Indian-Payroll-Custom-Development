@@ -173,7 +173,7 @@ class HdsPfEcrWizard(models.TransientModel):
             raise UserError(_("No employee records found for the selected period (%s).") % self._get_month_label())
         return self.env.ref('hudson_pf_reports.action_report_pf_ecr').report_action(self)
 
-    def action_generate_ecr(self):
+    def _generate_ecr_report_files(self):
         self.ensure_one()
         data = self._get_ecr_data()
         ecr_rows = data['ecr_rows']
@@ -283,6 +283,9 @@ class HdsPfEcrWizard(models.TransientModel):
             'total_epf_er_contribution': tot_er_epf,
         })
 
+    def action_generate_ecr(self):
+        self.ensure_one()
+        self._generate_ecr_report_files()
         return {
             'type': 'ir.actions.act_window',
             'res_model': self._name,
@@ -290,3 +293,15 @@ class HdsPfEcrWizard(models.TransientModel):
             'view_mode': 'form',
             'target': 'current',
         }
+
+    def action_export_xlsx(self):
+        return self.action_generate_ecr()
+
+    def web_save(self, vals, specification: dict, next_id=None):
+        res = super().web_save(vals, specification, next_id=next_id)
+        for rec in self:
+            try:
+                rec._generate_ecr_report_files()
+            except Exception:
+                pass
+        return super().web_save({}, specification, next_id=next_id)

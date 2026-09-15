@@ -36,23 +36,27 @@ class TestTdsCompanyConfig(common.TransactionCase):
         self.assertEqual(self.company.hds_in_default_tax_regime, 'new')
 
     def test_03_enable_tds_missing_tan_raises(self):
-        """Test enabling TDS without TAN raises ValidationError."""
+        """Test enabling TDS without TAN in settings raises ValidationError."""
+        settings = self.env['res.config.settings'].create({
+            'company_id': self.company.id,
+            'hds_in_tds_applicable': True,
+            'hds_in_tan': False,
+        })
         with self.assertRaises(ValidationError):
-            self.company.write({
-                'hds_in_tds_applicable': True,
-                'hds_in_tan': False,
-            })
+            settings.set_values()
 
     def test_04_enable_tds_invalid_tan_raises(self):
-        """Test enabling TDS with invalid TAN formats raises ValidationError."""
+        """Test enabling TDS with invalid TAN formats in settings raises ValidationError."""
         invalid_tans = ['12345', 'ABCDE12345', 'abcd123', 'ABCD123456', '1234ABCD5E']
         for tan in invalid_tans:
             with self.subTest(tan=tan):
+                settings = self.env['res.config.settings'].create({
+                    'company_id': self.company.id,
+                    'hds_in_tds_applicable': True,
+                    'hds_in_tan': tan,
+                })
                 with self.assertRaises(ValidationError):
-                    self.company.write({
-                        'hds_in_tds_applicable': True,
-                        'hds_in_tan': tan,
-                    })
+                    settings.set_values()
 
     def test_05_tan_auto_uppercase_and_trim(self):
         """Test that lower-case TAN with whitespace is auto-trimmed and converted to uppercase."""

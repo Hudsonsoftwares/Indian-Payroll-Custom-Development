@@ -759,6 +759,17 @@ class HrEmployee(models.Model):
         store=False,
         help="Boolean indicator true if employee has selected New Tax Regime for current FY."
     )
+    hds_in_tax_regime = fields.Selection(
+        selection=[
+            ('new', 'New Tax Regime (115BAC)'),
+            ('old', 'Old Tax Regime'),
+        ],
+        string="Tax Regime",
+        compute='_compute_current_fy_regime',
+        inverse='_inverse_hds_in_tax_regime',
+        search='_search_hds_in_tax_regime',
+        help="Employee selected Tax Regime ('new' or 'old') for the current Financial Year."
+    )
 
     @api.depends_context('company')
     def _compute_current_fy_regime(self):
@@ -791,14 +802,93 @@ class HrEmployee(models.Model):
         for emp in self:
             fy = fy_map.get(emp.id) if emp.id else False
             emp.hds_in_current_fy_id = fy
+            company = emp.company_id or self.env.company
+            default_regime = company.hds_in_default_tax_regime or 'new'
             if fy and emp.id:
                 rec = reg_map.get((emp.id, fy.id))
                 reg_id = rec.regime_id if rec else False
                 emp.hds_in_current_tax_regime_id = reg_id
-                emp.hds_in_is_new_tax_regime = (reg_id.code == 'new') if reg_id else False
+                code = reg_id.code if reg_id else default_regime
+                emp.hds_in_is_new_tax_regime = (code == 'new')
+                emp.hds_in_tax_regime = code
             else:
                 emp.hds_in_current_tax_regime_id = False
-                emp.hds_in_is_new_tax_regime = False
+                emp.hds_in_is_new_tax_regime = (default_regime == 'new')
+                emp.hds_in_tax_regime = default_regime
+
+    def _inverse_hds_in_tax_regime(self):
+        for emp in self:
+            if emp.hds_in_tax_regime:
+                regime = self.env['tds.tax.regime'].sudo().search([('code', '=', emp.hds_in_tax_regime)], limit=1)
+                if regime:
+                    emp.hds_in_current_tax_regime_id = regime
+                    emp._inverse_current_tax_regime()
+
+    def _search_hds_in_tax_regime(self, operator, value):
+        if operator not in ('=', '!=', 'in', 'not in'):
+            return []
+
+        today = fields.Date.today()
+        company = self.env.company
+        fy = company.hds_in_default_tax_year or self.env['tds.financial.year'].sudo().search([
+            ('start_date', '<=', today),
+            ('end_date', '>=', today),
+            ('active', '=', True),
+            ('is_closed', '=', False)
+        ], limit=1)
+
+        default_regime = company.hds_in_default_tax_regime or 'new'
+
+        old_emp_ids = set()
+        new_emp_ids = set()
+
+        if fy:
+            # Check tds.employee.tax.regime records (primary authority)
+            reg_records = self.env['tds.employee.tax.regime'].sudo().search([
+                ('financial_year_id', '=', fy.id)
+            ])
+            for r in reg_records:
+                if r.employee_id:
+                    if r.regime_code == 'old':
+                        old_emp_ids.add(r.employee_id.id)
+                    elif r.regime_code == 'new':
+                        new_emp_ids.add(r.employee_id.id)
+
+            # Check tds.employee.declaration records for any declarations
+            decl_records = self.env['tds.employee.declaration'].sudo().search([
+                ('financial_year_id', '=', fy.id)
+            ])
+            for d in decl_records:
+                if d.employee_id and d.employee_id.id not in old_emp_ids and d.employee_id.id not in new_emp_ids:
+                    code = d.regime_code or (d.tax_regime_id.code if d.tax_regime_id else False)
+                    if code == 'old':
+                        old_emp_ids.add(d.employee_id.id)
+                    elif code == 'new':
+                        new_emp_ids.add(d.employee_id.id)
+
+        target_values = [value] if isinstance(value, str) else list(value or [])
+        is_positive = operator in ('=', 'in')
+        wants_old = 'old' in target_values
+        wants_new = 'new' in target_values
+
+        if wants_old and wants_new:
+            return [(1, '=', 1)] if is_positive else [('id', '=', False)]
+
+        # Matching OLD regime
+        if (wants_old and is_positive) or (wants_new and not is_positive):
+            if default_regime == 'old':
+                return [('id', 'not in', list(new_emp_ids))] if new_emp_ids else [(1, '=', 1)]
+            else:
+                return [('id', 'in', list(old_emp_ids))] if old_emp_ids else [('id', '=', False)]
+
+        # Matching NEW regime
+        if (wants_new and is_positive) or (wants_old and not is_positive):
+            if default_regime == 'new':
+                return [('id', 'not in', list(old_emp_ids))] if old_emp_ids else [(1, '=', 1)]
+            else:
+                return [('id', 'in', list(new_emp_ids))] if new_emp_ids else [('id', '=', False)]
+
+        return []
 
     def _inverse_current_tax_regime(self):
         today = fields.Date.today()

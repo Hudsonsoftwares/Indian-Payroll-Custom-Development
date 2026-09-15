@@ -1,5 +1,7 @@
 # -*- coding: utf-8 -*-
-from odoo import api, fields, models
+import re
+from odoo import api, fields, models, _
+from odoo.exceptions import ValidationError
 
 
 class ResConfigSettings(models.TransientModel):
@@ -207,3 +209,23 @@ class ResConfigSettings(models.TransientModel):
             record.hds_in_is_india_company = bool(
                 country and country.code == 'IN'
             )
+
+    def set_values(self):
+        tan_pattern = re.compile(r'^[A-Z]{4}[0-9]{5}[A-Z]{1}$')
+        for record in self:
+            if record.hds_in_tds_applicable:
+                tan = (record.hds_in_tan or '').strip().upper()
+                if not tan:
+                    raise ValidationError(_(
+                        "TAN (Tax Deduction and Collection Account Number) is mandatory when TDS is enabled."
+                    ))
+                if not tan_pattern.match(tan):
+                    raise ValidationError(_(
+                        "Invalid TAN format '%s'. TAN must be 10 characters long with 4 uppercase letters, 5 digits, and 1 letter (e.g. ABCD12345E)."
+                    ) % record.hds_in_tan)
+                if not record.hds_in_default_tax_regime:
+                    raise ValidationError(_(
+                        "Default Tax Regime is mandatory when TDS is enabled."
+                    ))
+                record.hds_in_tan = tan
+        super().set_values()

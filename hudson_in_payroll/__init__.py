@@ -1,4 +1,9 @@
 # -*- coding: utf-8 -*-
+import sys
+for _mod_name in list(sys.modules.keys()):
+    if _mod_name.startswith('odoo.addons.hudson_in_payroll.'):
+        del sys.modules[_mod_name]
+
 from . import services
 from . import models
 from . import wizard

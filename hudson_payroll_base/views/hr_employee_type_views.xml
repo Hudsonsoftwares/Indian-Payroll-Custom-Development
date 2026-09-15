@@ -54,9 +54,6 @@
         <field name="inherit_id" ref="hr.view_employee_form"/>
         <field name="priority">30</field>
         <field name="arch" type="xml">
-            <xpath expr="//field[@name='department_id']" position="after">
-                <field name="bank_account_id"/>
-            </xpath>
             <xpath expr="//field[@name='employee_type']" position="replace">
                 <field name="employee_type" invisible="1"/>
                 <field name="employee_type_id" string="Employee Type" placeholder="Employee Type" options="{'no_create': True, 'no_create_edit': True}"/>

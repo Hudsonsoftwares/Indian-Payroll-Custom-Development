@@ -65,6 +65,7 @@ Key Features:
     'assets': {
         'web.assets_backend': [
             'hudson_payroll_base/static/src/scss/payroll_settings.scss',
+            'hudson_payroll_base/static/src/scss/payroll_dashboard.scss',
             'hudson_payroll_base/static/src/js/payroll_dashboard_navigation.js',
         ],
     },
