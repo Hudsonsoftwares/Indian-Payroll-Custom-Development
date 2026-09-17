@@ -35,6 +35,14 @@ class HudsonPayrollPayRunPayWizard(models.TransientModel):
         ('enet', 'ENet'),
     ], string='Mode', default='advice', required=True)
 
+    payment_method = fields.Selection([
+        ('enet_rtgs', 'ENet RTGS'),
+        ('enet_neft', 'ENet NEFT'),
+        ('enet_fund_transfer', 'ENet Fund Transfer'),
+        ('enet_demand_draft', 'ENet Demand Draft'),
+        ('enet_intra', 'ENet Intra'),
+    ], string='Payment Method', default='enet_rtgs')
+
     payment_date = fields.Date(
         string='Payment Date',
         required=True,
@@ -197,6 +205,7 @@ class HudsonPayrollPayRunPayWizard(models.TransientModel):
                 'date': self.payment_date,
                 'company_id': company.id,
                 'company_bank_id': self.company_bank_id.id if self.company_bank_id else False,
+                'payment_method': self.payment_method or 'enet_rtgs',
                 'note': note_str,
             }
             if self.payslip_run_id:
@@ -211,6 +220,7 @@ class HudsonPayrollPayRunPayWizard(models.TransientModel):
         else:
             advice_vals = {
                 'date': self.payment_date,
+                'payment_method': self.payment_method or 'enet_rtgs',
             }
             if self.company_bank_id:
                 advice_vals['company_bank_id'] = self.company_bank_id.id
@@ -236,15 +246,14 @@ class HudsonPayrollPayRunPayWizard(models.TransientModel):
         self.ensure_one()
         advice = self._ensure_payment_advice()
         if self.payslip_id:
-            self.payslip_id.write({'paid': True, 'state': 'paid'})
+            self.payslip_id.action_payslip_paid()
             run = self.payslip_id.payslip_run_id
             if run and all(s.state == 'paid' for s in run.slip_ids):
                 run.write({'state': 'paid'})
         elif self.payslip_run_id:
             run = self.payslip_run_id
             slips = run.slip_ids
-            slips.write({'paid': True})
-            slips.filtered(lambda s: s.state != 'paid').write({'state': 'paid'})
+            slips.action_payslip_paid()
             run.write({'state': 'paid'})
 
         advice.action_confirm()
@@ -260,91 +269,19 @@ class HudsonPayrollPayRunPayWizard(models.TransientModel):
         """Generates and downloads a formatted Excel (.xlsx) file."""
         self.ensure_one()
         advice = self._ensure_payment_advice()
+        return advice.action_export_xlsx()
 
-        if not xlsxwriter:
-            # Fallback to CSV if xlsxwriter not available
-            return advice.action_export_csv()
+    def action_create_csv(self):
+        """Generates and downloads a generic bank-ready CSV file."""
+        self.ensure_one()
+        advice = self._ensure_payment_advice()
+        return advice.action_export_csv()
 
-        output = io.BytesIO()
-        workbook = xlsxwriter.Workbook(output, {'in_memory': True})
-        worksheet = workbook.add_worksheet('Payment Advice')
-
-        # Styles
-        fmt_title = workbook.add_format({'bold': True, 'font_size': 14, 'align': 'center', 'valign': 'vcenter', 'font_color': '#1e293b'})
-        fmt_header = workbook.add_format({'bold': True, 'bg_color': '#7c3aed', 'font_color': '#ffffff', 'align': 'center', 'valign': 'vcenter', 'border': 1})
-        fmt_bold = workbook.add_format({'bold': True})
-        fmt_cell = workbook.add_format({'border': 1, 'valign': 'vcenter'})
-        fmt_num = workbook.add_format({'border': 1, 'num_format': '#,##0.00', 'align': 'right', 'valign': 'vcenter'})
-        fmt_total = workbook.add_format({'bold': True, 'border': 1, 'bg_color': '#f1f5f9', 'num_format': '#,##0.00', 'align': 'right'})
-
-        worksheet.set_column('A:A', 8)
-        worksheet.set_column('B:B', 15)
-        worksheet.set_column('C:C', 26)
-        worksheet.set_column('D:D', 20)
-        worksheet.set_column('E:E', 22)
-        worksheet.set_column('F:F', 24)
-        worksheet.set_column('G:G', 16)
-        worksheet.set_column('H:H', 18)
-
-        # Title Block
-        target_name = self.payslip_id.name if self.payslip_id else (self.payslip_run_id.name if self.payslip_run_id else 'Salary')
-        worksheet.merge_range('A1:H1', f"BANK PAYMENT ADVICE - {target_name}", fmt_title)
-        worksheet.write('A3', "Date:", fmt_bold)
-        worksheet.write('B3', str(self.payment_date or advice.date or date.today()))
-        worksheet.write('E3', "Disbursing Bank:", fmt_bold)
-        worksheet.write('F3', advice.company_bank_id.bank_id.name if advice.company_bank_id and advice.company_bank_id.bank_id else 'N/A')
-
-        worksheet.write('A4', "Company:", fmt_bold)
-        worksheet.write('B4', self.company_id.name or '')
-        worksheet.write('E4', "Account Number:", fmt_bold)
-        worksheet.write('F4', advice.company_bank_id.acc_number if advice.company_bank_id else 'N/A')
-
-        if self.by_cheque:
-            worksheet.write('A5', "Cheque No:", fmt_bold)
-            worksheet.write('B5', self.cheque_number or 'N/A')
-            worksheet.write('C5', f"Date: {self.cheque_date or ''}")
-
-        # Table Header
-        headers = ['#', 'Emp Code', 'Employee Name', 'Department', 'Bank Name', 'Account Number', 'IFSC / Routing', 'Net Amount']
-        row = 6
-        for col, h in enumerate(headers):
-            worksheet.write(row, col, h, fmt_header)
-
-        # Table Data
-        row += 1
-        total_net = 0.0
-        for idx, line in enumerate(advice.line_ids, start=1):
-            worksheet.write(row, 0, idx, fmt_cell)
-            worksheet.write(row, 1, line.employee_id.registration_number or '', fmt_cell)
-            worksheet.write(row, 2, line.employee_id.name or '', fmt_cell)
-            worksheet.write(row, 3, line.department_id.name if line.department_id else '', fmt_cell)
-            worksheet.write(row, 4, line.bank_name or '', fmt_cell)
-            worksheet.write(row, 5, line.acc_number or '', fmt_cell)
-            worksheet.write(row, 6, line.bank_bic or '', fmt_cell)
-            worksheet.write(row, 7, line.net_amount or 0.0, fmt_num)
-            total_net += (line.net_amount or 0.0)
-            row += 1
-
-        # Total Row
-        worksheet.merge_range(row, 0, row, 6, "Total Disbursed", fmt_header)
-        worksheet.write(row, 7, total_net, fmt_total)
-
-        workbook.close()
-        xlsx_data = output.getvalue()
-        output.close()
-
-        filename = f"Payment_Advice_{target_name.replace('/', '_').replace(' ', '_')}.xlsx"
-        attachment = self.env['ir.attachment'].create({
-            'name': filename,
-            'datas': base64.b64encode(xlsx_data),
-            'res_model': self._name,
-            'res_id': self.id,
-            'type': 'binary',
-            'mimetype': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    def action_create_enet(self):
+        """Generates and downloads HDFC ENet CMS formatted bulk upload file."""
+        self.ensure_one()
+        advice = self._ensure_payment_advice()
+        advice.write({
+            'payment_method': self.payment_method or 'enet_rtgs',
         })
-
-        return {
-            'type': 'ir.actions.act_url',
-            'url': f'/web/content/{attachment.id}?download=true',
-            'target': 'self',
-        }
+        return advice.action_export_enet(payment_method=self.payment_method)

@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 import calendar
-from datetime import date, datetime
+import pytz
+from datetime import date, datetime, time
 from dateutil.relativedelta import relativedelta
 from odoo import api, fields, models, _
 from odoo.exceptions import UserError, ValidationError
@@ -125,7 +126,7 @@ class HrPayslip(models.Model):
     state = fields.Selection([
         ('draft', 'Draft'),
         ('verify', 'Waiting'),
-        ('done', 'Done'),
+        ('done', 'Validated'),
         ('paid', 'Paid'),
         ('cancel', 'Rejected'),
     ], string='Status', default='draft', readonly=True, copy=False, tracking=True, index=True)
@@ -316,6 +317,12 @@ class HrPayslip(models.Model):
         compute='_compute_stage_metrics',
         store=True,
     )
+    total_scheduled_days = fields.Float(
+        string='Scheduled Days',
+        compute='_compute_stage_metrics',
+        store=True,
+        help="Total scheduled working days for the payslip period based on the working schedule."
+    )
     attendance_expected_hours = fields.Float(
         string='Expected Hours',
         compute='_compute_stage_metrics',
@@ -344,9 +351,11 @@ class HrPayslip(models.Model):
             # 3. Attendances & Anomalies (Stage 3)
             work_lines = slip.worked_days_line_ids.filtered(lambda l: l.code == 'WORK100')
             shortage_lines = slip.worked_days_line_ids.filtered(lambda l: l.code == 'SHORTAGE' and l.number_of_hours > 0)
-            worked_h = sum(work_lines.mapped('number_of_hours')) if work_lines else slip.total_worked_hours
+            worked_h = sum(work_lines.mapped('number_of_hours')) if work_lines else 0.0
+            worked_d = sum(work_lines.mapped('number_of_days')) if work_lines else 0.0
             short_h = sum(shortage_lines.mapped('number_of_hours')) if shortage_lines else 0.0
-            slip.attendance_expected_hours = worked_h + short_h
+            slip.attendance_expected_hours = worked_h
+            slip.total_scheduled_days = worked_d
             if short_h > 0:
                 slip.attendance_shortage_display = _("Shortage: %s hrs") % round(short_h, 2)
             else:
@@ -366,7 +375,7 @@ class HrPayslip(models.Model):
             gross = sum(l.total for l in slip.line_ids if l.category_id.code == 'GROSS')
             net = sum(l.total for l in slip.line_ids if l.category_id.code == 'NET')
             slip.gross_wage = gross
-            slip.net_wage = net
+            slip.net_wage = max(0.0, net)
 
     @api.depends('line_ids.total', 'line_ids.category_id.code', 'contract_id.basic_salary', 'contract_id.wage')
     def _compute_basic_wage(self):
@@ -432,11 +441,16 @@ class HrPayslip(models.Model):
                         "Employee '%(emp)s' already has a payslip in this pay run batch! Duplicate payslips for the same employee are not allowed."
                     ) % {'emp': slip.employee_id.name})
 
-    @api.depends('worked_days_line_ids.number_of_days', 'worked_days_line_ids.number_of_hours')
+    @api.depends('worked_days_line_ids.number_of_days', 'worked_days_line_ids.number_of_hours', 'worked_days_line_ids.code')
     def _compute_worked_days_totals(self):
         for slip in self:
-            slip.total_worked_days = sum(line.number_of_days for line in slip.worked_days_line_ids)
-            slip.total_worked_hours = sum(line.number_of_hours for line in slip.worked_days_line_ids)
+            work_days = sum(l.number_of_days for l in slip.worked_days_line_ids if l.code == 'WORK100')
+            ded_days = sum(l.number_of_days for l in slip.worked_days_line_ids if l.code in ('SHORTAGE', 'UNPAID', 'LOP', 'ABSENT'))
+            slip.total_worked_days = max(0.0, work_days - ded_days)
+
+            work_hours = sum(l.number_of_hours for l in slip.worked_days_line_ids if l.code == 'WORK100')
+            ded_hours = sum(l.number_of_hours for l in slip.worked_days_line_ids if l.code in ('SHORTAGE', 'UNPAID', 'LOP', 'ABSENT'))
+            slip.total_worked_hours = max(0.0, work_hours - ded_hours)
 
     @api.depends('employee_id', 'employee_id.bank_account_id')
     def _compute_bank_account_id(self):
@@ -560,22 +574,35 @@ class HrPayslip(models.Model):
     @api.model
     def get_worked_day_lines(self, contracts, date_from, date_to):
         """Standard method for computing worked days lines.
+        Uses employee working schedule (resource.calendar) to compute scheduled work days and hours.
         Extended by attendance and leave modules (e.g. hudson_attendance_payroll_link).
         """
         res = []
         for contract in contracts:
-            total_days = (date_to - date_from).days + 1
             hours_per_day = 8.0
             calendar = contract.resource_calendar_id or contract.employee_id.resource_calendar_id
             if calendar and calendar.hours_per_day:
                 hours_per_day = calendar.hours_per_day
+
+            if calendar:
+                tz = pytz.timezone(calendar.tz or 'UTC')
+                d_from = fields.Date.from_string(date_from)
+                d_to = fields.Date.from_string(date_to)
+                day_start = tz.localize(datetime.combine(d_from, time.min))
+                day_end = tz.localize(datetime.combine(d_to, time.max))
+                work_data = calendar.get_work_duration_data(day_start, day_end, compute_leaves=True)
+                total_days = work_data.get('days', 0.0)
+                total_hours = work_data.get('hours', 0.0)
+            else:
+                total_days = (fields.Date.from_string(date_to) - fields.Date.from_string(date_from)).days + 1
+                total_hours = total_days * hours_per_day
 
             res.append({
                 'name': _("Normal Working Days"),
                 'sequence': 1,
                 'code': 'WORK100',
                 'number_of_days': total_days,
-                'number_of_hours': total_days * hours_per_day,
+                'number_of_hours': total_hours,
                 'contract_id': contract.id,
             })
         return res

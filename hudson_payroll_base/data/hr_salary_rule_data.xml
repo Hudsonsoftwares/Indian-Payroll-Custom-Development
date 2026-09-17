@@ -156,7 +156,7 @@
             <field name="category_id" ref="rule_category_net"/>
             <field name="condition_select">none</field>
             <field name="amount_select">code</field>
-            <field name="amount_python_compute">result = categories.BASIC + categories.ALW + categories.DED</field>
+            <field name="amount_python_compute">result = max(0.0, categories.BASIC + categories.ALW + categories.DED)</field>
         </record>
     </data>
 </odoo>

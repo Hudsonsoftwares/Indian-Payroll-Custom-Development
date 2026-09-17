@@ -10,10 +10,11 @@ except ImportError:
     xlsxwriter = None
 
 
-class HdsPfEcrWizard(models.TransientModel):
+class HdsPfEcrWizard(models.Model):
     _name = 'hds.pf.ecr.wizard'
     _inherit = 'hds.pf.report.wizard.base'
     _description = 'EPFO ECR Export Wizard'
+    _order = 'id desc'
 
     report_type = fields.Selection([
         ('epf_report', 'EPF Report'),
@@ -287,11 +288,9 @@ class HdsPfEcrWizard(models.TransientModel):
         self.ensure_one()
         self._generate_ecr_report_files()
         return {
-            'type': 'ir.actions.act_window',
-            'res_model': self._name,
-            'res_id': self.id,
-            'view_mode': 'form',
-            'target': 'current',
+            'type': 'ir.actions.act_url',
+            'url': f'/web/content/?model={self._name}&id={self.id}&field=xlsx_file&filename_field=xlsx_filename&download=true',
+            'target': 'self',
         }
 
     def action_export_xlsx(self):
@@ -304,4 +303,4 @@ class HdsPfEcrWizard(models.TransientModel):
                 rec._generate_ecr_report_files()
             except Exception:
                 pass
-        return super().web_save({}, specification, next_id=next_id)
+        return res

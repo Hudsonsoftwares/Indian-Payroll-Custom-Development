@@ -74,6 +74,71 @@ class HrEmployee(models.Model):
         ('actual_pf_wage', 'Actual PF Wage (Uncapped)'),
     ], string="Employer PF Contribution Basis", default='statutory_ceiling', required=True)
 
+    hds_in_pf_wage_info_note = fields.Char(
+        string="PF Wage Info Note",
+        compute='_compute_hds_in_pf_wage_info',
+        help="Informative note regarding PF wage and statutory ceiling calculation."
+    )
+    hds_in_pf_wage_is_below_ceiling = fields.Boolean(
+        string="PF Wage Below Ceiling",
+        compute='_compute_hds_in_pf_wage_info'
+    )
+
+    @api.depends('hds_in_epf_applicable', 'hds_in_pf_contribution_basis', 'wage', 'basic_salary')
+    def _compute_hds_in_pf_wage_info(self):
+        for emp in self:
+            emp.hds_in_pf_wage_info_note = False
+            emp.hds_in_pf_wage_is_below_ceiling = False
+            if not emp.hds_in_epf_applicable:
+                continue
+
+            contract = False
+            if emp.id and isinstance(emp.id, int):
+                contract = self.env['hr.version'].search([
+                    ('employee_id', '=', emp.id)
+                ], order='date_version desc, id desc', limit=1)
+
+            pf_wage = 0.0
+            if contract:
+                pf_rules = self.env['hr.salary.rule'].search([
+                    ('hds_in_include_in_pf_wage', '=', True),
+                    ('active', '=', True),
+                    ('code', '!=', 'PF_WAGE')
+                ])
+                code_field_map = {
+                    'BASIC': 'basic_salary',
+                    'DA': 'da',
+                    'HRA': 'hra',
+                    'FIXED': 'fixed_allowance',
+                    'STANDARD': 'standard_allowance',
+                    'PERF': 'performance_bonus',
+                    'RET': 'retention_bonus',
+                    'LTA': 'lta_allowance',
+                    'TRAVEL': 'travel_allowance',
+                    'MEAL': 'meal_allowance',
+                    'MEDICAL': 'medical_allowance',
+                    'OTHER': 'other_allowance',
+                }
+                for rule in pf_rules:
+                    fld = code_field_map.get(rule.code, rule.code.lower())
+                    if hasattr(contract, fld):
+                        pf_wage += float(getattr(contract, fld, 0.0) or 0.0)
+
+                if pf_wage <= 0.0:
+                    pf_wage = float(getattr(contract, 'basic_salary', 0.0) or getattr(contract, 'wage', 0.0) or 0.0)
+            elif hasattr(emp, 'basic_salary') and emp.basic_salary:
+                pf_wage = float(emp.basic_salary) + float(getattr(emp, 'da', 0.0) or 0.0)
+            elif hasattr(emp, 'wage') and emp.wage:
+                pf_wage = float(emp.wage)
+
+            if 0.0 < pf_wage < 15000.0:
+                emp.hds_in_pf_wage_is_below_ceiling = True
+                pf_deduction = round(pf_wage * 0.12)
+                emp.hds_in_pf_wage_info_note = (
+                    f"Current PF wage (₹{pf_wage:,.0f}) is below the ₹15,000 ceiling. "
+                    f"Therefore, PF (12%) will only be deducted on the actual wage of ₹{pf_wage:,.0f} (₹{pf_deduction:,.0f}/month)."
+                )
+
     # VPF (Voluntary Provident Fund)
     hds_in_vpf_type = fields.Selection([
         ('none', 'None'),
@@ -130,7 +195,7 @@ class HrEmployee(models.Model):
     hds_in_esic_contribution_period = fields.Char(
         string="Contribution Period",
         compute='_compute_esic_contribution_period',
-        store=True,
+        store=False,
         readonly=True,
         help="Half-yearly ESIC statutory contribution period derived automatically from joining date or current date."
     )
@@ -202,19 +267,45 @@ class HrEmployee(models.Model):
         compute='_compute_hds_in_statutory_audit_count'
     )
 
-    @api.depends('hds_in_esic_applicable', 'hds_in_is_pwd', 'wage', 'basic_salary')
+    hds_in_payment_mode = fields.Selection([
+        ('bank_transfer', 'Bank Transfer'),
+        ('neft_rtgs', 'NEFT / RTGS'),
+        ('cheque', 'Cheque'),
+        ('cash', 'Cash'),
+        ('upi', 'UPI'),
+    ], string="Payment Mode", default='bank_transfer', tracking=True,
+       help="Preferred mode of salary payment for this employee.")
+
+    @api.depends(
+        'hds_in_esic_applicable', 'hds_in_is_pwd', 'wage', 'basic_salary',
+        'da', 'hra', 'fixed_allowance', 'standard_allowance',
+        'contract_date_start', 'date_start', 'date_version', 'hds_in_esic_joining_date'
+    )
     def _compute_esic_contribution_period(self):
         today = fields.Date.today()
+        from ..services.esic.contribution_period_service import ESICContributionPeriodService
+        period_service = ESICContributionPeriodService(self.env)
         for emp in self:
             ref_date = today
-            if emp.id and isinstance(emp.id, int):
-                version = self.env['hr.version'].search([
-                    ('employee_id', '=', emp.id)
-                ], order='date_version desc, id desc', limit=1)
-                if version:
-                    v_start = getattr(version, 'date_start', None) or getattr(version, 'date_version', None)
-                    if v_start and v_start > today:
-                        ref_date = v_start
+            join_date = (
+                getattr(emp, 'contract_date_start', None) or
+                getattr(emp, 'date_start', None) or
+                getattr(emp, 'hds_in_esic_joining_date', None) or
+                getattr(emp, 'date_version', None)
+            )
+            if not join_date and hasattr(emp, 'version_id') and emp.version_id:
+                join_date = emp.version_id.date_start or emp.version_id.date_version
+            if not join_date:
+                emp_id = emp._origin.id if (getattr(emp, '_origin', None) and emp._origin.id and isinstance(emp._origin.id, int)) else (emp.id if isinstance(emp.id, int) else False)
+                if emp_id:
+                    version = self.env['hr.version'].search([
+                        ('employee_id', '=', emp_id)
+                    ], order='date_version desc, id desc', limit=1)
+                    if version:
+                        join_date = getattr(version, 'date_start', None) or getattr(version, 'date_version', None)
+
+            if join_date and join_date > today:
+                ref_date = join_date
 
             year = ref_date.year
             month = ref_date.month
@@ -232,22 +323,48 @@ class HrEmployee(models.Model):
             gross = emp._get_gross_wage()
             ceiling = 25000.0 if emp.hds_in_is_pwd else 21000.0
 
-            if not emp.hds_in_esic_applicable:
+            is_covered = period_service.is_covered_for_contribution_period(emp, eval_date=ref_date, current_wage=gross)
+            if is_covered:
+                if not emp.hds_in_esic_applicable:
+                    origin_emp = getattr(emp, '_origin', emp)
+                    is_existing = bool(getattr(origin_emp, 'id', False) and isinstance(origin_emp.id, int))
+                    if is_existing:
+                        emp.hds_in_esic_contribution_period = f"{period_str} — Mandated under Reg. 31 till {valid_until} (Currently Disabled)"
+                    else:
+                        emp.hds_in_esic_contribution_period = f"{period_str} (Valid until {valid_until})"
+                else:
+                    emp.hds_in_esic_contribution_period = f"{period_str} (Valid until {valid_until})"
+            else:
                 if gross > ceiling:
                     emp.hds_in_esic_contribution_period = f"{period_str} — Exempt (Wage ₹{gross:,.0f} > ₹{ceiling:,.0f})"
+                elif gross > 0:
+                    emp.hds_in_esic_contribution_period = f"{period_str} (Valid until {valid_until})"
                 else:
                     emp.hds_in_esic_contribution_period = f"{period_str} — Not Applicable (Exempt)"
-            else:
-                emp.hds_in_esic_contribution_period = f"{period_str} (Valid until {valid_until})"
 
     def _get_gross_wage(self):
         """Helper to reliably retrieve gross wage from record, _origin, or contract version."""
         self.ensure_one()
-        wage = float(getattr(self, 'wage', 0.0) or getattr(self, 'basic_salary', 0.0) or 0.0)
+        wage = float(getattr(self, 'wage', 0.0) or 0.0)
+        breakdown = float(
+            (getattr(self, 'basic_salary', 0.0) or 0.0) + (getattr(self, 'hra', 0.0) or 0.0) +
+            (getattr(self, 'da', 0.0) or 0.0) + (getattr(self, 'standard_allowance', 0.0) or 0.0) +
+            (getattr(self, 'performance_bonus', 0.0) or 0.0) + (getattr(self, 'retention_bonus', 0.0) or 0.0) +
+            (getattr(self, 'lta_allowance', 0.0) or 0.0) + (getattr(self, 'fixed_allowance', 0.0) or 0.0)
+        )
+        if breakdown > wage:
+            wage = breakdown
         if wage <= 0.0:
             origin = getattr(self, '_origin', None)
             if origin:
-                wage = float(getattr(origin, 'wage', 0.0) or getattr(origin, 'basic_salary', 0.0) or 0.0)
+                orig_wage = float(getattr(origin, 'wage', 0.0) or 0.0)
+                orig_bd = float(
+                    (getattr(origin, 'basic_salary', 0.0) or 0.0) + (getattr(origin, 'hra', 0.0) or 0.0) +
+                    (getattr(origin, 'da', 0.0) or 0.0) + (getattr(origin, 'standard_allowance', 0.0) or 0.0) +
+                    (getattr(origin, 'performance_bonus', 0.0) or 0.0) + (getattr(origin, 'retention_bonus', 0.0) or 0.0) +
+                    (getattr(origin, 'lta_allowance', 0.0) or 0.0) + (getattr(origin, 'fixed_allowance', 0.0) or 0.0)
+                )
+                wage = max(orig_wage, orig_bd)
         if wage <= 0.0:
             version = getattr(self, 'version_id', None) or (getattr(self, '_origin', None) and getattr(self._origin, 'version_id', None))
             if version:
@@ -295,12 +412,32 @@ class HrEmployee(models.Model):
                 emp.hds_in_esic_exit_reason = False
             else:
                 emp.hds_in_esic_ip_status = 'exempt'
-                if gross > ceiling:
+                is_mandated = emp._evaluate_default_esic_applicable(gross_wage=gross)
+                if is_mandated:
+                    emp.hds_in_esic_exit_reason = 'other'
+                    return {
+                        'warning': {
+                            'title': _("ESIC Statutory Continuity Notice"),
+                            'message': _(
+                                "Under ESIC Regulation 31, this employee is legally covered until the end of the "
+                                "current contribution period because their wage at the start of the period was within the ceiling.\n\n"
+                                "If you uncheck ESIC Applicable, statutory ESIC deductions will be bypassed for upcoming payslips."
+                            )
+                        }
+                    }
+                elif gross > ceiling:
                     emp.hds_in_esic_exit_reason = 'wage_exceeded'
+            emp._sync_and_compute_employer_cost()
 
-    @api.onchange('wage', 'basic_salary', 'hds_in_is_pwd', 'company_id')
+    @api.onchange(
+        'wage', 'basic_salary', 'da', 'hra', 'fixed_allowance', 'standard_allowance',
+        'performance_bonus', 'retention_bonus', 'lta_allowance',
+        'contract_date_start', 'date_start', 'date_version', 'hds_in_esic_joining_date',
+        'hds_in_is_pwd', 'company_id'
+    )
     def _onchange_esic_default_triggers(self):
-        """Triggered on employee form when salary, wage, PWD status or company changes."""
+        """Triggered on employee form when salary, joining date, PWD status or company changes."""
+        today = fields.Date.today()
         for emp in self:
             gross = emp._get_gross_wage()
             ceiling = 25000.0 if emp.hds_in_is_pwd else 21000.0
@@ -308,7 +445,16 @@ class HrEmployee(models.Model):
                 emp.hds_in_esic_applicable = False
                 emp.hds_in_esic_ip_status = 'exempt'
                 continue
-            is_applicable = emp._evaluate_default_esic_applicable(gross_wage=gross)
+
+            join_date = (
+                getattr(emp, 'contract_date_start', None) or
+                getattr(emp, 'date_start', None) or
+                getattr(emp, 'hds_in_esic_joining_date', None) or
+                getattr(emp, 'date_version', None)
+            )
+            ref_date = join_date if (join_date and join_date > today) else today
+
+            is_applicable = emp._evaluate_default_esic_applicable(gross_wage=gross, eval_date=ref_date)
             emp.hds_in_esic_applicable = is_applicable
             if not is_applicable:
                 emp.hds_in_esic_ip_status = 'exempt'
@@ -322,6 +468,13 @@ class HrEmployee(models.Model):
     def create(self, vals_list):
         for vals in vals_list:
             wage = vals.get('wage') if 'wage' in vals else vals.get('basic_salary')
+            if wage is None or float(wage or 0.0) <= 0.0:
+                bd = sum(float(vals.get(k, 0.0) or 0.0) for k in (
+                    'basic_salary', 'da', 'hra', 'fixed_allowance', 'standard_allowance',
+                    'performance_bonus', 'retention_bonus', 'lta_allowance'
+                ))
+                if bd > 0:
+                    wage = bd
             if wage is not None:
                 gross = float(wage or 0.0)
                 is_pwd = vals.get('hds_in_is_pwd', False)
@@ -330,7 +483,7 @@ class HrEmployee(models.Model):
                     vals['hds_in_esic_applicable'] = False
                     vals['hds_in_esic_ip_status'] = 'exempt'
                     vals['hds_in_esic_exit_reason'] = 'wage_exceeded'
-                elif gross > 0.0 and 'hds_in_esic_applicable' not in vals:
+                elif 0.0 < gross <= ceiling and not vals.get('hds_in_esic_applicable'):
                     vals['hds_in_esic_applicable'] = True
                     vals['hds_in_esic_ip_status'] = 'active'
                     vals['hds_in_esic_exit_reason'] = False
@@ -372,7 +525,9 @@ class HrEmployee(models.Model):
             'wage', 'basic_salary', 'da', 'hra', 'fixed_allowance', 'standard_allowance',
             'performance_bonus', 'retention_bonus', 'lta_allowance',
             'hds_in_pf_contribution_basis', 'hds_in_pf_employer_basis',
-            'hds_in_epf_applicable', 'hds_in_eps_applicable', 'hds_in_esic_applicable', 'hds_in_lwf_applicable'
+            'hds_in_epf_applicable', 'hds_in_eps_applicable', 'hds_in_esic_applicable', 'hds_in_lwf_applicable',
+            'private_state_id', 'work_location_id', 'address_id', 'company_id',
+            'hds_in_is_pwd', 'hds_in_is_international_worker'
         )):
             for emp in self:
                 emp._sync_and_compute_employer_cost()
@@ -382,7 +537,9 @@ class HrEmployee(models.Model):
         'wage', 'basic_salary', 'da', 'hra', 'fixed_allowance', 'standard_allowance',
         'performance_bonus', 'retention_bonus', 'lta_allowance',
         'hds_in_pf_contribution_basis', 'hds_in_pf_employer_basis',
-        'hds_in_epf_applicable', 'hds_in_eps_applicable', 'hds_in_esic_applicable', 'hds_in_lwf_applicable'
+        'hds_in_epf_applicable', 'hds_in_eps_applicable', 'hds_in_esic_applicable', 'hds_in_lwf_applicable',
+        'private_state_id', 'work_location_id', 'address_id', 'company_id',
+        'hds_in_is_pwd', 'hds_in_is_international_worker'
     )
     def _onchange_ctc_and_statutory_inputs(self):
         """Immediately recomputes Monthly Employer Cost and Annual CTC dynamically on employee form."""
@@ -393,6 +550,8 @@ class HrEmployee(models.Model):
         'performance_bonus', 'retention_bonus', 'lta_allowance',
         'hds_in_pf_contribution_basis', 'hds_in_pf_employer_basis',
         'hds_in_epf_applicable', 'hds_in_eps_applicable', 'hds_in_esic_applicable', 'hds_in_lwf_applicable',
+        'private_state_id', 'work_location_id', 'address_id', 'company_id',
+        'hds_in_is_pwd', 'hds_in_is_international_worker',
         'version_id.hds_in_employer_cost_monthly', 'version_id.hds_in_employer_cost_annual',
         'version_id.wage', 'version_id.basic_salary', 'version_id.da'
     )
@@ -473,7 +632,13 @@ class HrEmployee(models.Model):
                     employer_contrib += round(gross_wage * 0.0325, 2)
 
                 if emp.hds_in_lwf_applicable and gross_wage > 0.0:
-                    employer_contrib += 20.0
+                    company = emp.company_id or self.env.company
+                    from ..services.payroll.work_location_service import PayrollWorkLocationService
+                    from ..services.lwf.lwf_rate_service import LWFRateService
+                    work_state = PayrollWorkLocationService(self.env).get_work_state(emp)
+                    rate_cfg = LWFRateService(self.env).get_rate_config(work_state, eval_date=fields.Date.today(), company=company)
+                    if rate_cfg:
+                        employer_contrib += float(rate_cfg.empl_contribution or 0.0)
 
                 monthly_ctc = round(gross_wage + employer_contrib, 2)
                 emp.hds_in_employer_cost_monthly = monthly_ctc

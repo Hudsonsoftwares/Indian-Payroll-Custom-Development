@@ -167,7 +167,7 @@ class HdsInSalaryRevision(models.Model):
             next_start, next_end = period_service.get_contribution_period_bounds(next_ref)
             rec.esic_next_period_label = f"({next_start.strftime('%b %Y')} – {next_end.strftime('%b %Y')})"
 
-            esic_ceiling = period_service.get_parameter('hds_in_esic_pwd_wage_ceiling', date=next_start) if getattr(employee, 'hds_in_is_pwd', False) else period_service.get_parameter('hds_in_esic_wage_ceiling', date=next_start)
+            esic_ceiling = period_service.get_parameter('hds_in_esic_pwd_wage_ceiling', date=next_start, as_decimal=False) if getattr(employee, 'hds_in_is_pwd', False) else period_service.get_parameter('hds_in_esic_wage_ceiling', date=next_start, as_decimal=False)
             next_app = bool(company.hds_in_esic_applicable and employee.hds_in_esic_applicable and (rec.new_wage <= esic_ceiling if esic_ceiling else True))
             rec.esic_next_period_status = next_app
 
@@ -193,3 +193,52 @@ class HdsInSalaryRevision(models.Model):
             if vals.get('name', _('New')) == _('New'):
                 vals['name'] = self.env['ir.sequence'].next_by_code('hds.in.salary.revision') or _('New')
         return super().create(vals_list)
+
+    def action_launch_wizard(self):
+        """Launches the Salary Revision Wizard modal dialog."""
+        action = self.env['ir.actions.act_window']._for_xml_id('hudson_in_payroll.action_hds_in_salary_revision_wizard')
+        action['target'] = 'new'
+        return action
+
+    def action_cancel(self):
+        """Cancels this salary revision and reverts employee compensation to old_wage."""
+        for rec in self:
+            if rec.state == 'cancelled':
+                continue
+            contract = rec.contract_id or self.env['hr.version'].search([
+                ('employee_id', '=', rec.employee_id.id)
+            ], order='date_start desc, id desc', limit=1)
+
+            if contract and rec.old_wage > 0:
+                from ..services.revision.payroll_refresh_service import PayrollRefreshService
+                from ..services.revision.statutory_refresh_service import StatutoryRefreshService
+                PayrollRefreshService(self.env).refresh_contract_payroll(
+                    contract, rec.old_wage, effective_date=rec.effective_date, mode='auto_structure'
+                )
+                StatutoryRefreshService(self.env).refresh_statutory_components(
+                    rec.employee_id, rec.old_wage, effective_date=rec.effective_date
+                )
+
+            rec.state = 'cancelled'
+
+    def action_draft(self):
+        """Sets salary revision back to draft state."""
+        for rec in self:
+            rec.state = 'draft'
+
+    def action_approve(self):
+        """Approves salary revision and applies revised wage to employee contract."""
+        for rec in self:
+            contract = rec.contract_id or self.env['hr.version'].search([
+                ('employee_id', '=', rec.employee_id.id)
+            ], order='date_start desc, id desc', limit=1)
+            if contract and rec.new_wage > 0:
+                from ..services.revision.payroll_refresh_service import PayrollRefreshService
+                from ..services.revision.statutory_refresh_service import StatutoryRefreshService
+                PayrollRefreshService(self.env).refresh_contract_payroll(
+                    contract, rec.new_wage, effective_date=rec.effective_date, mode='auto_structure'
+                )
+                StatutoryRefreshService(self.env).refresh_statutory_components(
+                    rec.employee_id, rec.new_wage, effective_date=rec.effective_date
+                )
+            rec.state = 'approved'

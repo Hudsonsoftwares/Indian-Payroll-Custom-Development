@@ -31,7 +31,6 @@ class HrEmployee(models.Model):
         string='Bank Account Number',
         compute='_compute_bank_account_id',
         inverse='_inverse_bank_account_id',
-        search='_search_bank_account_id',
         store=True,
         help="Employee primary bank account from Personal tab for payroll payment transfers and payment advice"
     )
@@ -48,9 +47,6 @@ class HrEmployee(models.Model):
         for emp in self:
             if emp.bank_account_id and emp.bank_account_id not in emp.bank_account_ids:
                 emp.bank_account_ids = [(4, emp.bank_account_id.id)]
-
-    def _search_bank_account_id(self, operator, value):
-        return ['|', ('primary_bank_account_id', operator, value), ('bank_account_ids', operator, value)]
 
     @api.depends('bank_account_ids', 'salary_distribution')
     def _compute_primary_bank_account_id(self):

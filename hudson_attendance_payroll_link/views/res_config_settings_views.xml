@@ -7,16 +7,6 @@
         <field name="arch" type="xml">
             <xpath expr="//app[@name='hr_attendance']" position="inside">
                 <block title="Attendance &amp; Payroll Connection" name="attendance_payroll_connection_setting_container">
-                    <setting id="standard_working_days_setting" string="Standard Working Days / Month" help="Standard divisor days per month for hourly rate calculation.">
-                        <div class="content-group mt4">
-                            <field name="standard_working_days_per_month"/>
-                        </div>
-                    </setting>
-                    <setting id="standard_hours_per_day_setting" string="Standard Hours / Day" help="Standard hours per day for hourly rate calculation.">
-                        <div class="content-group mt4">
-                            <field name="standard_hours_per_day"/>
-                        </div>
-                    </setting>
                     <setting id="overtime_multiplier_setting" string="Overtime Rate Multiplier" help="Default multiplier for overtime rate calculation.">
                         <div class="content-group mt4">
                             <field name="overtime_multiplier"/>

@@ -83,6 +83,11 @@
     ],
 
 
+    'assets': {
+        'web.assets_backend': [
+            'hudson_in_payroll/static/src/js/salary_revision_list_controller.js',
+        ],
+    },
     'post_init_hook': 'post_init_hook',
     'installable': True,
     'application': False,

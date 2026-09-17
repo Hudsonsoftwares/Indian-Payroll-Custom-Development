@@ -94,11 +94,21 @@
                                 <div class="text-muted">
                                     Enable Labour Welfare Fund (LWF) statutory compliance for this company.
                                 </div>
+                                <div class="mt-2">
+                                    <field name="hds_in_lwf_threshold_info" widget="html" readonly="1" nolabel="1"/>
+                                </div>
                                 <div class="content-group mt8" invisible="not hds_in_enable_lwf">
                                     <div class="row mt8">
                                         <label for="hds_in_lwf_registration_no" class="col-lg-5 o_light_label"/>
                                         <field name="hds_in_lwf_registration_no" placeholder="e.g. LWF/MH/2024/00123"/>
                                     </div>
+                                </div>
+                                <div class="mt8">
+                                    <button name="%(hudson_in_payroll.action_lwf_state_rate_act)d"
+                                            icon="fa-arrow-right"
+                                            type="action"
+                                            string="Configure State Rates &amp; Thresholds"
+                                            class="btn-link"/>
                                 </div>
                             </div>
                         </div>

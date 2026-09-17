@@ -1,6 +1,9 @@
 /** @odoo-module **/
 
 import { registry } from "@web/core/registry";
+import { rpc } from "@web/core/network/rpc";
+
+window.__hds_rpc = rpc;
 
 let globalActionService = null;
 
@@ -117,10 +120,10 @@ registry.category("services").add("hds_dashboard_nav_service", hdsDashboardNavSe
             domain: [["state", "in", ["submitted", "proof_submitted", "proof_under_review"]]],
         },
         attendance_exceptions: {
-            name: "Draft Payslips & Exceptions",
+            name: "Payslips to Validate",
             res_model: "hr.payslip",
             views: [[false, "list"], [false, "form"]],
-            domain: [["state", "=", "draft"]],
+            domain: [["state", "in", ["draft", "verify"]]],
         },
         new_joiners: {
             name: "New Joiners",
@@ -147,37 +150,37 @@ registry.category("services").add("hds_dashboard_nav_service", hdsDashboardNavSe
             domain: [["active", "=", true], ["bank_account_id", "=", false]],
         },
         aadhaar_health: {
-            name: "Employees Missing Aadhaar / ID",
+            name: "Employees Missing Aadhaar",
             res_model: "hr.employee",
             views: [[false, "list"], [false, "form"]],
-            domain: [["active", "=", true], "|", ["identification_id", "=", false], ["identification_id", "=", ""]],
+            domain: [["active", "=", true], "|", ["hds_in_aadhaar", "=", false], ["hds_in_aadhaar", "=", ""]],
         },
         contact_health: {
             name: "Employees Missing Emergency Contact",
             res_model: "hr.employee",
             views: [[false, "list"], [false, "form"]],
-            domain: [["active", "=", true]],
+            domain: [["active", "=", true], "&", "|", ["emergency_contact", "=", false], ["emergency_contact", "=", ""], "|", ["emergency_phone", "=", false], ["emergency_phone", "=", ""]],
         },
         epf_status: {
-            name: "EPF Applicable Employees",
+            name: "Employees Missing EPF UAN",
             res_model: "hr.employee",
             views: [[false, "list"], [false, "form"]],
-            domain: [["active", "=", true], ["hds_in_epf_applicable", "=", true]],
+            domain: [["active", "=", true], ["hds_in_epf_applicable", "=", true], "|", ["hds_in_uan", "=", false], ["hds_in_uan", "=", ""]],
         },
         esic_status: {
-            name: "ESIC Applicable Employees",
+            name: "Employees Missing ESIC IP Number",
             res_model: "hr.employee",
             views: [[false, "list"], [false, "form"]],
-            domain: [["active", "=", true], ["hds_in_esic_applicable", "=", true]],
+            domain: [["active", "=", true], ["hds_in_esic_applicable", "=", true], "|", ["hds_in_esic_ip", "=", false], ["hds_in_esic_ip", "=", ""]],
         },
         lwf_status: {
-            name: "LWF Registered Employees",
+            name: "Employees Missing LWF Registration",
             res_model: "hr.employee",
             views: [[false, "list"], [false, "form"]],
-            domain: [["active", "=", true]],
+            domain: [["active", "=", true], ["hds_in_lwf_applicable", "=", true]],
         },
         readiness_status: {
-            name: "Payroll Ready Employees",
+            name: "Employees with Statutory Data Errors",
             res_model: "hr.employee",
             views: [[false, "list"], [false, "form"]],
             domain: [["active", "=", true]],
@@ -229,30 +232,71 @@ registry.category("services").add("hds_dashboard_nav_service", hdsDashboardNavSe
             cardEl.classList.add("hds-card-active");
         }
 
-        const actionDef = CARD_ACTIONS[cardType] || {
-            name: "Employees",
-            res_model: "hr.employee",
-            views: [[false, "list"], [false, "form"]],
-            domain: [["active", "=", true]],
+        const actionService = getActionService();
+
+        const executeAction = (actionDef) => {
+            if (actionService && actionService.doAction) {
+                actionService.doAction({
+                    type: "ir.actions.act_window",
+                    name: actionDef.name,
+                    res_model: actionDef.res_model,
+                    views: actionDef.views || [[false, "list"], [false, "form"]],
+                    domain: actionDef.domain || [],
+                    target: actionDef.target || "current",
+                }, { clearBreadcrumbs: false });
+            } else {
+                const fallbackUrl = ACTION_URL_MAP[cardType] || "/odoo/action-197";
+                window.location.href = fallbackUrl;
+            }
         };
 
-        const actionService = getActionService();
-        if (actionService && actionService.doAction) {
-            actionService.doAction({
-                type: "ir.actions.act_window",
-                name: actionDef.name,
-                res_model: actionDef.res_model,
-                views: actionDef.views,
-                domain: actionDef.domain,
-                target: "current",
-            }, { clearBreadcrumbs: false });
-            return false;
-        } else {
-            // Fallback: navigate in the current page
-            const fallbackUrl = ACTION_URL_MAP[cardType] || "/odoo/action-197";
-            window.location.href = fallbackUrl;
+        function fallbackLocal() {
+            const baseDef = CARD_ACTIONS[cardType] || {
+                name: "Employees",
+                res_model: "hr.employee",
+                views: [[false, "list"], [false, "form"]],
+                domain: [["active", "=", true]],
+            };
+
+            const rootEl = (cardEl && cardEl.closest) ? (cardEl.closest(".o_hds_dashboard_root") || cardEl.closest("[data-hds-dashboard-root]")) : document.querySelector(".o_hds_dashboard_root");
+            const dateFrom = cardEl?.dataset?.dateFrom || rootEl?.dataset?.dateFrom;
+            const dateTo = cardEl?.dataset?.dateTo || rootEl?.dataset?.dateTo;
+
+            let domain = Array.isArray(baseDef.domain) ? [...baseDef.domain] : [];
+            if (baseDef.res_model === "hr.payslip" && dateFrom && dateTo) {
+                domain.push(["date_from", "<=", dateTo]);
+                domain.push(["date_to", ">=", dateFrom]);
+            }
+
+            executeAction({
+                name: baseDef.name,
+                res_model: baseDef.res_model,
+                views: baseDef.views,
+                domain: domain,
+            });
+        }
+
+        if (rpc && actionService) {
+            rpc("/web/dataset/call_kw/hds.payroll.dashboard/get_card_action", {
+                model: "hds.payroll.dashboard",
+                method: "get_card_action",
+                args: [],
+                kwargs: { card_type: cardType },
+            }).then(backendAction => {
+                if (backendAction && backendAction.res_model) {
+                    executeAction(backendAction);
+                } else {
+                    fallbackLocal();
+                }
+            }).catch(err => {
+                console.warn("[HDS Dashboard] get_card_action RPC error, using local fallback:", err);
+                fallbackLocal();
+            });
             return false;
         }
+
+        fallbackLocal();
+        return false;
     };
 
     // Single record view (e.g. employee click)

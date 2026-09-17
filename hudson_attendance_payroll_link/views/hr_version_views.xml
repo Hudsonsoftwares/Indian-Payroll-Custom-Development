@@ -10,8 +10,6 @@
                     <field name="salary_calculation_type"/>
                     <field name="pay_by_attendance" widget="boolean_toggle"/>
                     <field name="pay_overtime" widget="boolean_toggle"/>
-                    <field name="standard_working_days_per_month"/>
-                    <field name="standard_hours_per_day"/>
                     <field name="overtime_multiplier"/>
                     <field name="hourly_rate" readonly="1"/>
                     <field name="overtime_hourly_rate" readonly="1"/>

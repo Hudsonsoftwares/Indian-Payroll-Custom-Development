@@ -8,24 +8,18 @@
                   web_icon="hudson_payroll_base,static/description/icon.png"
                   groups="group_payroll_user"/>
 
-        <!-- Work Entries Menu -->
-        <menuitem id="menu_hr_payroll_work_entries"
-                  name="Work Entries"
+        <!-- Time Off Menu (Dropdown with Submenu) -->
+        <menuitem id="menu_hr_payroll_time_off_root"
+                  name="Time Off"
                   parent="menu_hr_payroll_root"
                   sequence="10"
                   groups="group_payroll_user"/>
 
-        <menuitem id="menu_action_hr_work_entry"
-                  name="Work Entries"
-                  parent="menu_hr_payroll_work_entries"
-                  action="hr_work_entry.hr_work_entry_action"
-                  sequence="10"/>
-
         <menuitem id="menu_action_hr_payroll_time_off"
                   name="Time Off"
-                  parent="menu_hr_payroll_work_entries"
+                  parent="menu_hr_payroll_time_off_root"
                   action="hr_holidays.hr_leave_action_action_approve_department"
-                  sequence="20"/>
+                  sequence="10"/>
 
         <!-- Payslips Menu -->
         <menuitem id="menu_hr_payroll_payslips"

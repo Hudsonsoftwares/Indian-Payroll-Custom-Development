@@ -33,14 +33,39 @@ class HdsInSalaryRevisionWizard(models.TransientModel):
                     res['struct_id'] = contract.struct_id.id
         return res
 
-    # Section 1: Employee Information (Read Only)
-    employee_id = fields.Many2one('hr.employee', string="Employee", required=True, readonly=True)
+    # Section 1: Employee Information
+    employee_id = fields.Many2one('hr.employee', string="Employee", required=True)
     employee_code = fields.Char(string="Employee Code", compute='_compute_employee_code', readonly=True)
     department_id = fields.Many2one('hr.department', string="Department", related='employee_id.department_id', readonly=True)
     job_id = fields.Many2one('hr.job', string="Designation", related='employee_id.job_id', readonly=True)
     company_id = fields.Many2one('res.company', string="Company", related='employee_id.company_id', readonly=True)
     currency_id = fields.Many2one('res.currency', string="Currency", related='company_id.currency_id', readonly=True)
     contract_id = fields.Many2one('hr.version', string="Current Contract", readonly=True)
+
+    @api.onchange('employee_id')
+    def _onchange_employee_id(self):
+        if self.employee_id:
+            contracts = self.env['hr.version'].search([('employee_id', '=', self.employee_id.id)])
+            contract = contracts.sorted(lambda c: c.date_start or fields.Date.today(), reverse=True)[0] if contracts else False
+            if contract:
+                self.contract_id = contract.id
+                self.current_wage = contract.wage or 0.0
+                self.current_employer_cost_monthly = contract.hds_in_employer_cost_monthly or 0.0
+                self.current_employer_cost_annual = contract.hds_in_employer_cost_annual or 0.0
+                self.struct_id = contract.struct_id.id if contract.struct_id else False
+            else:
+                self.contract_id = False
+                self.current_wage = self.employee_id.wage or 0.0
+                self.current_employer_cost_monthly = 0.0
+                self.current_employer_cost_annual = 0.0
+                self.struct_id = False
+            self._onchange_breakdown_distribution_mode()
+        else:
+            self.contract_id = False
+            self.current_wage = 0.0
+            self.current_employer_cost_monthly = 0.0
+            self.current_employer_cost_annual = 0.0
+            self.struct_id = False
 
     @api.depends('employee_id')
     def _compute_employee_code(self):

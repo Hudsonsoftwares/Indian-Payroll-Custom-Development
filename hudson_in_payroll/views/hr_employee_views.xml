@@ -56,6 +56,11 @@
                 <!-- Employee Contribution Subdivision -->
                 <separator string="Employee Contribution" class="mt-3 mb-2" invisible="not hds_in_epf_applicable"/>
                 <field name="hds_in_pf_contribution_basis" string="Contribution Basis" invisible="not hds_in_epf_applicable"/>
+                <field name="hds_in_pf_wage_is_below_ceiling" invisible="1"/>
+                <div class="text-info small mt-1 mb-2" invisible="not hds_in_epf_applicable or not hds_in_pf_wage_is_below_ceiling or hds_in_pf_contribution_basis != 'statutory_ceiling'">
+                    <i class="fa fa-info-circle me-1"/>
+                    <field name="hds_in_pf_wage_info_note" readonly="1" class="d-inline"/>
+                </div>
 
                 <!-- Employer Contribution Subdivision -->
                 <separator string="Employer Contribution" class="mt-3 mb-2" invisible="not hds_in_epf_applicable"/>
@@ -212,6 +217,7 @@
                     <field name="hds_in_pf_member_id" string="PF Account Number" placeholder="22 character PF A/c Number"/>
                     <field name="hds_in_lwf_number" string="LWF Account Number" placeholder="Labour Welfare Fund Account Number"/>
                     <field name="hds_in_esic_ip_number" string="ESIC Number" placeholder="e.g. 1234567890"/>
+                    <field name="hds_in_payment_mode" string="Payment Mode"/>
                 </group>
                 <group string="Disability &amp; Special Status" name="group_disability_status">
                     <field name="hds_in_is_pwd"/>

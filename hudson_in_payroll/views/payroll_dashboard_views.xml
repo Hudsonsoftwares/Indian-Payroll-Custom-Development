@@ -305,10 +305,10 @@
     </record>
 
     <record id="action_dashboard_attendance_exceptions" model="ir.actions.act_window">
-        <field name="name">Attendance &amp; Payslip Exceptions</field>
+        <field name="name">Payslips to Validate</field>
         <field name="res_model">hr.payslip</field>
         <field name="view_mode">list,form</field>
-        <field name="domain">[('state', '=', 'draft')]</field>
+        <field name="domain">[('state', 'in', ('draft', 'verify'))]</field>
     </record>
 
 

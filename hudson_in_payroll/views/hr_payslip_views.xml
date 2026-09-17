@@ -28,6 +28,20 @@
                 </button>
             </xpath>
 
+            <!-- Payment Mode in Other Info Tab -->
+            <xpath expr="//page[@name='other_info']//field[@name='payment_date']" position="after">
+                <field name="hds_in_payment_mode" string="Payment Mode"/>
+            </xpath>
+            <xpath expr="//page[@name='other_info']" position="inside">
+                <group string="ESIC Statutory Exemption (Rule 51-B)" name="esic_rule_51b_info">
+                    <group>
+                        <field name="hds_in_esic_daily_wage_exempt"/>
+                        <field name="hds_in_esic_average_daily_wage"/>
+                        <field name="hds_in_esic_paid_days"/>
+                    </group>
+                </group>
+            </xpath>
+
             <!-- Salary Computation Tab Column Toggles -->
             <xpath expr="//field[@name='line_ids']/*[self::tree or self::list]/field[@name='code']" position="attributes">
                 <attribute name="optional">show</attribute>

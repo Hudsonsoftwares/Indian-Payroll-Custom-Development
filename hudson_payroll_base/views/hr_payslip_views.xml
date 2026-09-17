@@ -76,16 +76,16 @@
                             <!-- Right: Modern KPI Stat Widgets -->
                             <div class="d-flex gap-3 mt-1">
                                 <!-- Card 1: Worked days -->
-                                <div class="card p-3 shadow-sm border-0 text-center" style="min-width: 140px; background: rgba(128,128,128,0.08); border-radius: 8px;">
+                                <div class="card p-3 shadow-sm border-0 text-center" style="min-width: 160px; background: rgba(128,128,128,0.08); border-radius: 8px;">
                                     <div class="text-muted small fw-bold text-uppercase">Worked days</div>
                                     <div class="fs-4 my-1 fw-bold"><field name="total_worked_days"/> days</div>
-                                    <div class="text-muted small"><field name="total_worked_hours"/>h</div>
+                                    <div class="text-muted small"><field name="total_worked_hours"/>h / <field name="attendance_expected_hours"/>h (<field name="total_scheduled_days"/> d)</div>
                                 </div>
-                                <!-- Card 2: Wage -->
-                                <div class="card p-3 shadow-sm border-0 text-center" style="min-width: 140px; background: rgba(128,128,128,0.08); border-radius: 8px;">
-                                    <div class="text-muted small fw-bold text-uppercase">Wage</div>
-                                    <div class="fs-4 my-1 fw-bold"><field name="gross_wage" widget="monetary"/></div>
-                                    <div class="text-muted small"><field name="net_wage" widget="monetary"/> Net</div>
+                                <!-- Card 2: Net Wage -->
+                                <div class="card p-3 shadow-sm border-0 text-center" style="min-width: 160px; background: rgba(128,128,128,0.08); border-radius: 8px;">
+                                    <div class="text-muted small fw-bold text-uppercase">Net Wage</div>
+                                    <div class="fs-4 my-1 fw-bold"><field name="net_wage" widget="monetary"/></div>
+                                    <div class="text-muted small">Gross: <field name="gross_wage" widget="monetary"/></div>
                                 </div>
                             </div>
                         </div>

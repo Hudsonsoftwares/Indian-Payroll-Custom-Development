@@ -42,6 +42,9 @@ class HdsPayrollDashboard(models.Model):
     missing_bank_count = fields.Integer(string="Missing Bank Count", compute='_compute_dashboard_metrics')
     pending_declarations_count = fields.Integer(string="Pending Declarations Count", compute='_compute_dashboard_metrics')
     attendance_pending_count = fields.Integer(string="Attendance Pending Count", compute='_compute_dashboard_metrics')
+    draft_slips_count = fields.Integer(string="Draft Payslips Count", compute='_compute_dashboard_metrics')
+    verify_slips_count = fields.Integer(string="To Validate Payslips Count", compute='_compute_dashboard_metrics')
+    unconfirmed_slips_count = fields.Integer(string="Unconfirmed Payslips Count", compute='_compute_dashboard_metrics')
     missing_salary_count = fields.Integer(string="Missing Salary Info Count", compute='_compute_dashboard_metrics')
 
     # 3. Employee Data Health Percentages
@@ -82,7 +85,7 @@ class HdsPayrollDashboard(models.Model):
     final_settlement_paid_count = fields.Integer(string="Paid Settlements", compute='_compute_dashboard_metrics')
 
     # 9. Rich HTML Dashboard Canvas
-    dashboard_html = fields.Html(string="Dashboard Canvas", compute='_compute_dashboard_html', store=True, sanitize=False)
+    dashboard_html = fields.Html(string="Dashboard Canvas", compute='_compute_dashboard_html', store=False, sanitize=False)
 
     @api.model
     def _default_financial_year(self):
@@ -93,6 +96,19 @@ class HdsPayrollDashboard(models.Model):
         if not fy:
             fy = self.env['tds.financial.year'].search([], order='id desc', limit=1)
         return fy.id if fy else False
+
+    @staticmethod
+    def _has_pan(emp):
+        for f in ('hds_in_pan', 'pan_no', 'pan'):
+            val = getattr(emp, f, False)
+            if val and str(val).strip():
+                return True
+        partner = getattr(emp, 'work_contact_id', False) or getattr(emp, 'address_home_id', False)
+        if partner:
+            p_pan = getattr(partner, 'pan', False) or getattr(partner, 'vat', False)
+            if p_pan and str(p_pan).strip():
+                return True
+        return False
 
     @staticmethod
     def _has_bank_account(emp):
@@ -106,6 +122,22 @@ class HdsPayrollDashboard(models.Model):
             return True
         if getattr(getattr(emp, 'address_home_id', None), 'bank_account_id', False):
             return True
+        return False
+
+    @staticmethod
+    def _has_aadhaar(emp):
+        for f in ('hds_in_aadhaar', 'aadhaar_no', 'identification_id'):
+            val = getattr(emp, f, False)
+            if val and str(val).strip():
+                return True
+        return False
+
+    @staticmethod
+    def _has_emergency_contact(emp):
+        for f in ('emergency_contact', 'emergency_phone'):
+            val = getattr(emp, f, False)
+            if val and str(val).strip():
+                return True
         return False
 
     @api.depends('financial_year_id', 'payroll_month_num')
@@ -134,12 +166,12 @@ class HdsPayrollDashboard(models.Model):
             tot_emp = len(active_emps) or 1
             rec.active_employee_count = len(active_emps)
 
-            pan_count = len(active_emps.filtered(lambda e: bool(getattr(e, 'hds_in_pan', False) or getattr(e, 'pan_no', False) or getattr(e, 'pan', False))))
+            pan_count = len(active_emps.filtered(lambda e: self._has_pan(e)))
             bank_count = len(active_emps.filtered(lambda e: self._has_bank_account(e)))
-            aadhaar_count = len(active_emps.filtered(lambda e: bool(getattr(e, 'identification_id', False) or getattr(e, 'aadhaar_no', False))))
-            contact_count = len(active_emps.filtered(lambda e: bool(getattr(e, 'emergency_contact', False) or getattr(e, 'mobile_phone', False) or getattr(e, 'work_phone', False))))
+            aadhaar_count = len(active_emps.filtered(lambda e: self._has_aadhaar(e)))
+            contact_count = len(active_emps.filtered(lambda e: self._has_emergency_contact(e)))
 
-            rec.missing_pan_count = len(active_emps.filtered(lambda e: not (getattr(e, 'hds_in_pan', False) or getattr(e, 'pan_no', False) or getattr(e, 'pan', False))))
+            rec.missing_pan_count = len(active_emps.filtered(lambda e: not self._has_pan(e)))
             rec.missing_bank_count = len(active_emps.filtered(lambda e: not self._has_bank_account(e)))
             rec.pan_health_pct = round((pan_count / tot_emp) * 100.0, 1)
             rec.bank_health_pct = round((bank_count / tot_emp) * 100.0, 1)
@@ -257,7 +289,18 @@ class HdsPayrollDashboard(models.Model):
                     latest_slips_by_emp[slip.employee_id.id] = slip
             slips = self.env['hr.payslip'].browse([s.id for s in latest_slips_by_emp.values()])
 
-            rec.attendance_pending_count = len(slips.filtered(lambda s: getattr(s, 'has_attendance_discrepancy', False) or s.state in ('draft', 'verify')))
+            # Unconfirmed slips (Draft & To Validate) - count actual payslips requiring validation for selected month
+            unconfirmed_domain = [
+                ('date_from', '<=', month_end),
+                ('date_to', '>=', month_start),
+                ('state', 'in', ('draft', 'verify')),
+            ] + company_domain
+            unconfirmed_slips = self.env['hr.payslip'].search(unconfirmed_domain)
+
+            rec.draft_slips_count = len(unconfirmed_slips.filtered(lambda s: s.state == 'draft'))
+            rec.verify_slips_count = len(unconfirmed_slips.filtered(lambda s: s.state == 'verify'))
+            rec.unconfirmed_slips_count = rec.draft_slips_count + rec.verify_slips_count
+            rec.attendance_pending_count = rec.unconfirmed_slips_count
 
             tot_gross = 0.0
             tot_net = 0.0
@@ -386,9 +429,9 @@ class HdsPayrollDashboard(models.Model):
             # Total Action Required Items
             rec.pending_actions_count = rec.missing_pan_count + rec.missing_bank_count + rec.pending_declarations_count + rec.attendance_pending_count + rec.missing_salary_count
 
-    @api.depends('financial_year_id', 'payroll_month_num', 'active_employee_count', 'total_payroll_cost', 'total_net_pay', 'tds_this_month', 'pending_actions_count', 'final_settlements_due_count')
     def _compute_dashboard_html(self):
         for rec in self:
+            rec._compute_dashboard_metrics()
             currency_symbol = rec.currency_id.symbol or '₹'
             month_name = dict(rec._fields['payroll_month_num'].selection).get(rec.payroll_month_num, 'August')
             fy_name = rec.financial_year_id.name if rec.financial_year_id else 'FY 2026-27'
@@ -421,7 +464,7 @@ class HdsPayrollDashboard(models.Model):
                     j_date_val = getattr(j, join_field, False) if join_field else False
                     j_date = j_date_val.strftime('%d %b') if (j_date_val and hasattr(j_date_val, 'strftime')) else 'N/A'
                     dept = j.department_id.name if j.department_id else 'General'
-                    has_pan = bool(getattr(j, 'hds_in_pan', False) or getattr(j, 'pan_no', False) or getattr(j, 'pan', False))
+                    has_pan = self._has_pan(j)
                     has_bank = self._has_bank_account(j)
 
                     if not has_pan:
@@ -453,7 +496,9 @@ class HdsPayrollDashboard(models.Model):
                 """
 
             # 6-Month Payroll Trend Visualizer Data (Payrun Styled)
-            trend_bars_html = ""
+            state_priority = {'paid': 4, 'done': 3, 'verify': 2, 'draft': 1}
+            company_domain = [('company_id', 'in', self.env.companies.ids)]
+            trend_data = []
             for i in range(5, -1, -1):
                 t_month = (m_num - i - 1) % 12 + 1
                 t_year = year if (m_num - i) > 0 else year - 1
@@ -461,20 +506,237 @@ class HdsPayrollDashboard(models.Model):
                 t_start = date(t_year, t_month, 1)
                 t_end = date(t_year, t_month, calendar.monthrange(t_year, t_month)[1])
 
-                t_slips = self.env['hr.payslip'].search([
-                    ('date_from', '>=', t_start), ('date_to', '<=', t_end)
-                ])
-                t_cost = sum(float(getattr(s, 'gross_amount', None) or getattr(s, 'gross_wage', None) or getattr(s, 'net_amount', None) or getattr(s, 'net_wage', 0.0) or 0.0) for s in t_slips)
-                bar_height = min(100, max(15, int((t_cost / (rec.total_payroll_cost or 1.0)) * 70))) if rec.total_payroll_cost > 0 else 20
+                t_domain = [
+                    ('date_from', '<=', t_end),
+                    ('date_to', '>=', t_start),
+                    ('state', '!=', 'cancel'),
+                ] + company_domain
+                t_all_slips = self.env['hr.payslip'].search(t_domain)
+                t_latest = {}
+                for s in t_all_slips.sorted(key=lambda s: (state_priority.get(s.state, 0), s.id), reverse=True):
+                    if s.employee_id.id not in t_latest:
+                        t_latest[s.employee_id.id] = s
+
+                t_gross = 0.0
+                t_er_epf = 0.0
+                t_er_esic = 0.0
+                t_admin = 0.0
+                t_er_lwf = 0.0
+                t_worked_days = 0.0
+
+                for s in t_latest.values():
+                    gross_val = float(getattr(s, 'gross_amount', None) or getattr(s, 'gross_wage', 0.0) or 0.0)
+                    if not gross_val:
+                        for line in s.line_ids:
+                            if (line.code or '').upper() == 'GROSS':
+                                gross_val = abs(float(line.total or 0.0))
+                                break
+                    if not gross_val:
+                        net_val = float(getattr(s, 'net_amount', None) or getattr(s, 'net_wage', 0.0) or 0.0)
+                        if not net_val:
+                            for line in s.line_ids:
+                                if (line.code or '').upper() == 'NET':
+                                    net_val = abs(float(line.total or 0.0))
+                                    break
+                        gross_val = net_val
+
+                    t_gross += gross_val
+
+                    for wd in s.worked_days_line_ids:
+                        code = (wd.code or '').upper()
+                        if 'SHORT' not in code and 'UNPAID' not in code and 'LOP' not in code:
+                            t_worked_days += float(wd.number_of_days or 0.0)
+
+                    codes = set((l.code or '').upper() for l in s.line_ids)
+                    has_er_epf = 'EMPLOYER_EPF' in codes or 'ER_PF' in codes
+
+                    for line in s.line_ids:
+                        code = (line.code or '').upper()
+                        amt = abs(float(line.total or 0.0))
+                        if code in ('EMPLOYER_EPF', 'ER_PF'):
+                            t_er_epf += amt
+                        elif not has_er_epf and code in ('EPS', 'EPF_SHARE'):
+                            t_er_epf += amt
+                        elif code == 'ESIC_ER':
+                            t_er_esic += amt
+                        elif code in ('EDLI', 'EPF_ADMIN', 'EDLI_ADMIN'):
+                            t_admin += amt
+                        elif code == 'LWF_ER':
+                            t_er_lwf += amt
+
+                t_cost = t_gross + t_er_epf + t_er_esic + t_admin + t_er_lwf
+
+                trend_data.append({
+                    'month_num': t_month,
+                    'year': t_year,
+                    'month_name': t_m_name,
+                    'gross': t_gross,
+                    'er_epf': t_er_epf,
+                    'er_esic': t_er_esic,
+                    'admin': t_admin,
+                    'er_lwf': t_er_lwf,
+                    'emp_count': len(t_latest),
+                    'worked_days': t_worked_days,
+                    'avg_days': round(t_worked_days / len(t_latest), 1) if t_latest else 0.0,
+                    'cost': t_cost,
+                    'is_current': (t_month == m_num and t_year == year),
+                    'date_from': str(t_start),
+                    'date_to': str(t_end),
+                })
+
+            max_trend_cost = max([d['cost'] for d in trend_data] or [0.0])
+            trend_bars_html = ""
+            for d in trend_data:
+                t_cost = d['cost']
+                t_m_name = d['month_name']
+                is_curr = d['is_current']
+                t_gross = d['gross']
+                t_er_epf = d['er_epf']
+                t_er_esic = d['er_esic']
+                t_admin = d['admin']
+                t_wd = d['worked_days']
+                t_avg_d = d['avg_days']
+
+                if max_trend_cost > 0 and t_cost > 0:
+                    bar_height = max(18, min(85, int((t_cost / max_trend_cost) * 85)))
+                    pct_g = (t_gross / t_cost) * 100.0
+                    pct_p = (t_er_epf / t_cost) * 100.0
+                    pct_e = (t_er_esic / t_cost) * 100.0
+                    pct_a = (t_admin / t_cost) * 100.0
+
+                    bar_inner = f"""
+                    <div style="height: {pct_g:.1f}%; width: 100%; background: #7c3aed;"></div>
+                    """
+                    if t_er_epf > 0:
+                        bar_inner += f"""<div style="height: {pct_p:.1f}%; width: 100%; background: #38bdf8;"></div>"""
+                    if t_er_esic > 0:
+                        bar_inner += f"""<div style="height: {pct_e:.1f}%; width: 100%; background: #34d399;"></div>"""
+                    if t_admin > 0:
+                        bar_inner += f"""<div style="height: {pct_a:.1f}%; width: 100%; background: #fbbf24;"></div>"""
+
+                    bar_container_style = f"width: 100%; max-width: 38px; height: {bar_height}px; border-radius: 6px 6px 0 0; overflow: hidden; display: flex; flex-direction: column-reverse; box-shadow: 0 2px 8px rgba(124, 58, 237, 0.25); transition: height 0.3s ease;"
+                else:
+                    bar_height = 6
+                    bar_inner = ""
+                    bar_container_style = "width: 100%; max-width: 38px; background: var(--hds-track-bg, #374151); height: 6px; border-radius: 4px;"
+
                 cost_lbl = f"{currency_symbol} {t_cost/100000:.1f}L" if t_cost >= 100000 else f"{currency_symbol} {t_cost:,.0f}"
+                curr_style = 'color: #c084fc; font-weight: 800;' if is_curr else 'color: var(--hds-text-secondary, #94a3b8); font-weight: 600;'
+                badge_curr = ' <span style="font-size: 8px; background: rgba(192, 132, 252, 0.2); color: #c084fc; padding: 1px 4px; border-radius: 4px; margin-left: 2px;">Active</span>' if is_curr else ''
+                days_lbl = f'<div style="font-size: 9px; color: #38bdf8; font-weight: 600; margin-top: 1px;">{t_wd:.0f}d worked</div>' if t_wd > 0 else ''
+
+                tooltip = f"{t_m_name} {d['year']} Cost Breakdown:&#10;&bull; Attendance: {t_wd:.0f} Worked Days (Avg {t_avg_d} Days/Emp)&#10;&bull; Gross Salary ({d['emp_count']} Emps): {currency_symbol} {t_gross:,.2f}&#10;&bull; Employer EPF: {currency_symbol} {t_er_epf:,.2f}&#10;&bull; Employer ESIC: {currency_symbol} {t_er_esic:,.2f}&#10;&bull; EDLI &amp; Admin: {currency_symbol} {t_admin:,.2f}&#10;━━━━━━━━━━━━━━━━━━━━&#10;Total Cost to Company (CTC): {currency_symbol} {t_cost:,.2f}&#10;(Click to view payslips)"
 
                 trend_bars_html += f"""
-                <div style="display: flex; flex-direction: column; align-items: center; gap: 6px; flex: 1;">
+                <div role="button" tabindex="0" onclick="window.hdsCardClick &amp;&amp; window.hdsCardClick(this, 'total_payroll_cost')" data-card-type="total_payroll_cost" data-date-from="{d['date_from']}" data-date-to="{d['date_to']}" class="o_hds_dashboard_card_clickable" title="{tooltip}" style="display: flex; flex-direction: column; align-items: center; gap: 4px; flex: 1; cursor: pointer; padding: 4px; border-radius: 6px; transition: transform 0.15s ease;">
                     <div class="hds-text-primary" style="font-size: 11px; font-weight: 700;">{cost_lbl}</div>
-                    <div style="width: 100%; max-width: 36px; background: linear-gradient(180deg, #c084fc 0%, #7c3aed 100%); height: {bar_height}px; border-radius: 6px 6px 0 0; box-shadow: 0 2px 8px rgba(124, 58, 237, 0.25);"></div>
-                    <div class="hds-text-muted" style="font-size: 10px; font-weight: 600;">{t_m_name}</div>
+                    <div style="{bar_container_style}">
+                        {bar_inner}
+                    </div>
+                    <div style="font-size: 10px; {curr_style} display: flex; align-items: center;">{t_m_name}{badge_curr}</div>
+                    {days_lbl}
                 </div>
                 """
+
+            # Detailed Cost Component Breakdown for Active Month
+            active_item = next((d for d in trend_data if d['is_current'] and d['cost'] > 0), None)
+            if not active_item:
+                active_item = next((d for d in reversed(trend_data) if d['cost'] > 0), None)
+
+            if active_item and active_item['cost'] > 0:
+                act_cost = active_item['cost']
+                act_gross = active_item['gross']
+                act_epf = active_item['er_epf']
+                act_esic = active_item['er_esic']
+                act_admin = active_item['admin']
+                act_m_name = active_item['month_name']
+                act_year = active_item['year']
+                act_emp_count = active_item['emp_count']
+                act_worked_days = active_item['worked_days']
+                act_avg_days = active_item['avg_days']
+
+                pct_gross = (act_gross / act_cost) * 100.0
+                pct_epf = (act_epf / act_cost) * 100.0
+                pct_esic = (act_esic / act_cost) * 100.0
+                pct_admin = (act_admin / act_cost) * 100.0
+
+                trend_breakdown_html = f"""
+                <div style="margin-top: 18px; padding-top: 14px; border-top: 1px dashed var(--hds-row-border);">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+                        <span class="hds-text-primary" style="font-size: 12px; font-weight: 700; display: flex; align-items: center; gap: 6px;">
+                            <i class="fa fa-pie-chart" style="color: #c084fc;"/> {act_m_name} {act_year} Employer Cost Breakdown (CTC)
+                        </span>
+                        <span style="font-size: 11px; font-weight: 700; color: #c084fc;">
+                            Total Payroll Cost: {currency_symbol} {act_cost:,.2f}
+                        </span>
+                    </div>
+
+                    <!-- Visual Segmented Ratio Bar -->
+                    <div style="width: 100%; height: 8px; border-radius: 4px; overflow: hidden; display: flex; margin-bottom: 12px; background: var(--hds-track-bg, #374151);">
+                        <div style="width: {pct_gross:.1f}%; background: #7c3aed;" title="Gross Salary: {pct_gross:.1f}%"></div>
+                        <div style="width: {pct_epf:.1f}%; background: #38bdf8;" title="Employer EPF: {pct_epf:.1f}%"></div>
+                        <div style="width: {pct_esic:.1f}%; background: #34d399;" title="Employer ESIC: {pct_esic:.1f}%"></div>
+                        <div style="width: {pct_admin:.1f}%; background: #fbbf24;" title="EDLI &amp; Admin: {pct_admin:.1f}%"></div>
+                    </div>
+
+                    <!-- Breakdown Grid Cards (including Attendance Base) -->
+                    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 10px; font-size: 12px;">
+                        
+                        <!-- 1. Gross Salary -->
+                        <div style="background: rgba(124, 58, 237, 0.08); border-left: 3px solid #8b5cf6; padding: 10px 12px; border-radius: 6px;">
+                            <div style="display: flex; justify-content: space-between; align-items: center;">
+                                <span style="font-size: 11px; color: var(--hds-text-secondary); font-weight: 600;">Gross Salary ({act_emp_count} Emps)</span>
+                                <span style="font-size: 10px; font-weight: 700; color: #8b5cf6;">{pct_gross:.1f}%</span>
+                            </div>
+                            <div style="font-size: 14px; font-weight: 700; color: #a78bfa; margin-top: 3px;">{currency_symbol} {act_gross:,.2f}</div>
+                            <div style="font-size: 10px; color: var(--hds-text-muted); margin-top: 2px;">Basic + HRA + Allowances</div>
+                        </div>
+
+                        <!-- 2. Attendance Base Card -->
+                        <div style="background: rgba(14, 165, 233, 0.08); border-left: 3px solid #0284c7; padding: 10px 12px; border-radius: 6px;">
+                            <div style="display: flex; justify-content: space-between; align-items: center;">
+                                <span style="font-size: 11px; color: var(--hds-text-secondary); font-weight: 600;">Attendance Base</span>
+                                <span style="font-size: 10px; font-weight: 700; color: #0284c7;">{act_avg_days}d / Emp</span>
+                            </div>
+                            <div style="font-size: 14px; font-weight: 700; color: #0284c7; margin-top: 3px;">{act_worked_days:.0f} Worked Days</div>
+                            <div style="font-size: 10px; color: var(--hds-text-muted); margin-top: 2px;">Salaries prorated on worked days</div>
+                        </div>
+
+                        <!-- 3. Employer EPF -->
+                        <div style="background: rgba(56, 189, 248, 0.08); border-left: 3px solid #38bdf8; padding: 10px 12px; border-radius: 6px;">
+                            <div style="display: flex; justify-content: space-between; align-items: center;">
+                                <span style="font-size: 11px; color: var(--hds-text-secondary); font-weight: 600;">Employer EPF Share</span>
+                                <span style="font-size: 10px; font-weight: 700; color: #38bdf8;">{pct_epf:.1f}%</span>
+                            </div>
+                            <div style="font-size: 14px; font-weight: 700; color: #38bdf8; margin-top: 3px;">{currency_symbol} {act_epf:,.2f}</div>
+                            <div style="font-size: 10px; color: var(--hds-text-muted); margin-top: 2px;">PF &amp; Pension Contribution (EPS)</div>
+                        </div>
+
+                        <!-- 4. Employer ESIC -->
+                        <div style="background: rgba(52, 211, 153, 0.08); border-left: 3px solid #34d399; padding: 10px 12px; border-radius: 6px;">
+                            <div style="display: flex; justify-content: space-between; align-items: center;">
+                                <span style="font-size: 11px; color: var(--hds-text-secondary); font-weight: 600;">Employer ESIC Share</span>
+                                <span style="font-size: 10px; font-weight: 700; color: #34d399;">{pct_esic:.1f}%</span>
+                            </div>
+                            <div style="font-size: 14px; font-weight: 700; color: #34d399; margin-top: 3px;">{currency_symbol} {act_esic:,.2f}</div>
+                            <div style="font-size: 10px; color: var(--hds-text-muted); margin-top: 2px;">3.25% Statutory Contribution</div>
+                        </div>
+
+                        <!-- 5. EDLI & Admin -->
+                        <div style="background: rgba(245, 158, 11, 0.08); border-left: 3px solid #f59e0b; padding: 10px 12px; border-radius: 6px;">
+                            <div style="display: flex; justify-content: space-between; align-items: center;">
+                                <span style="font-size: 11px; color: var(--hds-text-secondary); font-weight: 600;">EDLI &amp; Admin Charges</span>
+                                <span style="font-size: 10px; font-weight: 700; color: #f59e0b;">{pct_admin:.1f}%</span>
+                            </div>
+                            <div style="font-size: 14px; font-weight: 700; color: #fbbf24; margin-top: 3px;">{currency_symbol} {act_admin:,.2f}</div>
+                            <div style="font-size: 10px; color: var(--hds-text-muted); margin-top: 2px;">Admin (0.5%) + EDLI (0.5%)</div>
+                        </div>
+
+                    </div>
+                </div>
+                """
+            else:
+                trend_breakdown_html = ""
 
             rec.dashboard_html = f"""
             <div class="o_hds_dashboard_root" data-hds-dashboard-root="true" style="font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; width: 100%; box-sizing: border-box;">
@@ -624,15 +886,19 @@ class HdsPayrollDashboard(models.Model):
                             <div class="hds-text-muted" style="font-size: 11px; margin-top: 4px;">Pending Tax Firm / HR verification &bull; <u style="color: #fbbf24;">Click to view</u></div>
                         </div>
 
-                        <!-- Attendance / Payslip Exceptions -->
+                        <!-- Payslips Pending Validation (Draft & To Validate) -->
                         <div role="button" tabindex="0" onclick="window.hdsCardClick &amp;&amp; window.hdsCardClick(this, 'attendance_exceptions')" data-card-type="attendance_exceptions" class="hds-subcard o_hds_dashboard_card_clickable" style="text-decoration: none; display: block; padding: 12px 14px; border-left: 4px solid #8b5cf6 !important; cursor: pointer;">
                             <div style="display: flex; justify-content: space-between; align-items: center;">
                                 <div style="font-size: 12px; font-weight: 700; color: #c084fc;">
-                                    <i class="fa fa-clock-o me-1"/> {rec.attendance_pending_count} Slip Exceptions
+                                    <i class="fa fa-file-text-o me-1"/> {rec.unconfirmed_slips_count} Payslips to Validate
                                 </div>
                                 <span style="font-size: 12px; color: #8b5cf6; font-weight: 700;">&darr;</span>
                             </div>
-                            <div class="hds-text-muted" style="font-size: 11px; margin-top: 4px;">Draft status or discrepancy pending &bull; <u style="color: #c084fc;">Click to view</u></div>
+                            <div style="margin-top: 6px; display: flex; align-items: center; gap: 8px;">
+                                <span style="background: rgba(148, 163, 184, 0.2); color: var(--hds-text-primary); border: 1px solid rgba(148, 163, 184, 0.35); padding: 2px 8px; border-radius: 6px; font-size: 11px; font-weight: 600;">Draft: <b style="color: #38bdf8;">{rec.draft_slips_count}</b></span>
+                                <span style="background: rgba(192, 132, 252, 0.2); color: var(--hds-text-primary); border: 1px solid rgba(192, 132, 252, 0.35); padding: 2px 8px; border-radius: 6px; font-size: 11px; font-weight: 600;">To Validate: <b style="color: #c084fc;">{rec.verify_slips_count}</b></span>
+                            </div>
+                            <div class="hds-text-muted" style="font-size: 10.5px; margin-top: 4px;">Pending verification / confirmation &bull; <u style="color: #c084fc;">Click to view</u></div>
                         </div>
                     </div>
                 </div>
@@ -724,11 +990,11 @@ class HdsPayrollDashboard(models.Model):
                 <div class="hds-dash-card" style="padding: 18px; margin-bottom: 22px;">
                     <div style="font-size: 14px; font-weight: 700; margin-bottom: 12px; border-bottom: 1px solid var(--hds-row-border); padding-bottom: 8px; display: flex; justify-content: space-between; align-items: center;">
                         <span class="hds-text-primary">
-                            <i class="fa fa-shield me-1" style="color: #38bdf8;"/> Statutory Identifier Compliance &amp; Readiness
+                            <i class="fa fa-shield me-1" style="color: #38bdf8;"/> Statutory Identifier Compliance
                         </span>
                         <span class="hds-text-muted" style="font-size: 12px; font-weight: 600;">Active Workforce: {rec.active_employee_count} Employees</span>
                     </div>
-                    <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; font-size: 12px;">
+                    <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; font-size: 12px;">
 
                         <!-- EPF Tile -->
                         <div role="button" tabindex="0" onclick="window.hdsCardClick &amp;&amp; window.hdsCardClick(this, 'epf_status')" data-card-type="epf_status" class="hds-subcard o_hds_dashboard_card_clickable" style="text-decoration: none; display: block; padding: 12px; cursor: pointer;">
@@ -775,22 +1041,6 @@ class HdsPayrollDashboard(models.Model):
                             <div style="display: flex; justify-content: space-between;">
                                 <span style="color: #f87171; font-weight: 600;">Missing Number:</span>
                                 <span style="font-weight: 700; color: #f87171;">{rec.lwf_missing_count}</span>
-                            </div>
-                        </div>
-
-                        <!-- Overall Readiness Tile -->
-                        <div role="button" tabindex="0" onclick="window.hdsCardClick &amp;&amp; window.hdsCardClick(this, 'readiness_status')" data-card-type="readiness_status" class="hds-subcard o_hds_dashboard_card_clickable" style="text-decoration: none; display: block; padding: 12px; cursor: pointer;">
-                            <div class="hds-text-primary" style="font-size: 12px; font-weight: 700; border-bottom: 1px dashed var(--hds-row-border); padding-bottom: 4px; margin-bottom: 6px; display: flex; justify-content: space-between;">
-                                <span>Data Readiness</span>
-                                <span style="font-size: 10px; color: #818cf8;">&darr;</span>
-                            </div>
-                            <div style="display: flex; justify-content: space-between; margin-bottom: 4px;">
-                                <span style="color: #4ade80; font-weight: 600;">Processing Ready:</span>
-                                <span style="font-weight: 700; color: #4ade80;">{rec.statutory_ready_count}</span>
-                            </div>
-                            <div style="display: flex; justify-content: space-between;">
-                                <span style="color: #f87171; font-weight: 600;">Data Errors:</span>
-                                <span style="font-weight: 700; color: #f87171;">{rec.statutory_data_errors_count}</span>
                             </div>
                         </div>
 
@@ -857,12 +1107,18 @@ class HdsPayrollDashboard(models.Model):
 
                 <!-- 6. HISTORICAL PAYROLL COST TREND CHART (PAYRUN PALETTE) -->
                 <div class="hds-dash-card" style="padding: 18px;">
-                    <div class="hds-text-primary" style="font-size: 14px; font-weight: 700; margin-bottom: 15px; border-bottom: 1px solid var(--hds-row-border); padding-bottom: 8px; display: flex; align-items: center; gap: 8px;">
-                        <i class="fa fa-line-chart" style="color: #c084fc;"/> Historical Payroll Cost Trend (Last 6 Months)
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px; border-bottom: 1px solid var(--hds-row-border); padding-bottom: 8px;">
+                        <span class="hds-text-primary" style="font-size: 14px; font-weight: 700; display: flex; align-items: center; gap: 8px;">
+                            <i class="fa fa-line-chart" style="color: #c084fc;"/> Historical Payroll Cost Trend (Last 6 Months)
+                        </span>
+                        <span class="hds-text-muted" style="font-size: 11px; font-weight: 600;">
+                            Stacked by Cost Component &bull; Hover for details &bull; Click to view slips
+                        </span>
                     </div>
-                    <div style="display: flex; align-items: flex-end; justify-content: space-around; height: 110px; padding: 0 20px;">
+                    <div style="display: flex; align-items: flex-end; justify-content: space-around; height: 115px; padding: 0 20px;">
                         {trend_bars_html}
                     </div>
+                    {trend_breakdown_html}
                 </div>
 
                 <!-- 7. INLINE DETAILS CONTAINER (LOADS ON CURRENT PAGE) -->
@@ -873,8 +1129,27 @@ class HdsPayrollDashboard(models.Model):
 
     def action_refresh_dashboard(self):
         self.ensure_one()
+        self.env.invalidate_all()
         self._compute_dashboard_metrics()
-        return True
+        self._compute_dashboard_html()
+        return {
+            'type': 'ir.actions.client',
+            'tag': 'reload',
+        }
+
+    def web_read(self, specification: dict) -> list[dict]:
+        self.env.invalidate_all()
+        for rec in self:
+            rec._compute_dashboard_metrics()
+            rec._compute_dashboard_html()
+        return super().web_read(specification)
+
+    def read(self, fields=None, load='_classic_read'):
+        self.env.invalidate_all()
+        for rec in self:
+            rec._compute_dashboard_metrics()
+            rec._compute_dashboard_html()
+        return super().read(fields=fields, load=load)
 
     @api.model
     def get_card_action(self, dashboard_id=None, card_type=None, month_num=None, fy_id=None):
@@ -900,6 +1175,7 @@ class HdsPayrollDashboard(models.Model):
         month_start = date(year, m_num, 1)
         month_end = date(year, m_num, calendar.monthrange(year, m_num)[1])
         month_name = calendar.month_name[m_num]
+        active_emps = self.env['hr.employee'].search([('active', '=', True)])
 
         # 1. Payslips / Total Payroll Cost / Net Salary / TDS This Month / Liabilities
         if card_type in ('total_payroll_cost', 'total_net_pay', 'tds_this_month', 'tds_withholding', 'epf_liability', 'esic_liability', 'pt_liability'):
@@ -929,39 +1205,44 @@ class HdsPayrollDashboard(models.Model):
                 'target': 'current',
             }
 
-        # 2. Draft / Attendance Exceptions
+        # 2. Draft / Attendance Exceptions -> Payslips to Validate
         if card_type == 'attendance_exceptions':
+            company_filter = [('company_id', 'in', self.env.companies.ids)] if 'company_id' in self.env['hr.payslip']._fields else []
+            slips = self.env['hr.payslip'].search([('date_from', '<=', month_end), ('date_to', '>=', month_start), ('state', 'in', ('draft', 'verify'))] + company_filter)
+            domain = [('date_from', '<=', month_end), ('date_to', '>=', month_start), ('state', 'in', ('draft', 'verify'))] if slips else [('state', 'in', ('draft', 'verify'))]
             return {
                 'type': 'ir.actions.act_window',
-                'name': f"Draft Payslips & Exceptions — {month_name} {year}",
+                'name': f"Payslips to Validate — {month_name} {year}",
                 'res_model': 'hr.payslip',
                 'view_mode': 'list,form',
                 'views': [[False, 'list'], [False, 'form']],
-                'domain': [('date_from', '<=', month_end), ('date_to', '>=', month_start), ('state', 'in', ('draft', 'verify'))],
+                'domain': domain,
                 'target': 'current',
             }
 
         # 3. Missing PAN
         if card_type in ('missing_pan', 'pan_health'):
+            missing_emps = active_emps.filtered(lambda e: not self._has_pan(e))
             return {
                 'type': 'ir.actions.act_window',
                 'name': 'Employees Missing PAN',
                 'res_model': 'hr.employee',
                 'view_mode': 'list,form',
                 'views': [[False, 'list'], [False, 'form']],
-                'domain': ['&', ('active', '=', True), '|', ('hds_in_pan', '=', False), ('hds_in_pan', '=', '')],
+                'domain': [('id', 'in', missing_emps.ids)],
                 'target': 'current',
             }
 
         # 4. Missing Bank
         if card_type in ('missing_bank', 'bank_health'):
+            missing_emps = active_emps.filtered(lambda e: not self._has_bank_account(e))
             return {
                 'type': 'ir.actions.act_window',
                 'name': 'Employees Missing Bank Details',
                 'res_model': 'hr.employee',
                 'view_mode': 'list,form',
                 'views': [[False, 'list'], [False, 'form']],
-                'domain': ['&', ('active', '=', True), ('bank_account_id', '=', False)],
+                'domain': [('id', 'in', missing_emps.ids)],
                 'target': 'current',
             }
 
@@ -1038,63 +1319,81 @@ class HdsPayrollDashboard(models.Model):
                 'target': 'current',
             }
 
-        # 9. Statutory Applicability (EPF / ESIC / LWF)
+        # 9. Statutory Applicability (EPF / ESIC / LWF / Readiness - Filter Missing Only)
         if card_type == 'epf_status':
+            from ..services.compliance.statutory_compliance_service import StatutoryComplianceValidationService
+            comp_service = StatutoryComplianceValidationService(self.env)
+            epf_missing = active_emps.filtered(lambda e: getattr(e, 'hds_in_epf_applicable', False) and not comp_service.validate_employee_epf(e)[0])
             return {
                 'type': 'ir.actions.act_window',
-                'name': 'EPF Applicable Employees',
+                'name': 'Employees Missing EPF UAN',
                 'res_model': 'hr.employee',
                 'view_mode': 'list,form',
                 'views': [[False, 'list'], [False, 'form']],
-                'domain': ['&', ('active', '=', True), ('hds_in_epf_applicable', '=', True)],
+                'domain': [('id', 'in', epf_missing.ids)],
                 'target': 'current',
             }
         if card_type == 'esic_status':
+            from ..services.compliance.statutory_compliance_service import StatutoryComplianceValidationService
+            comp_service = StatutoryComplianceValidationService(self.env)
+            esic_missing = active_emps.filtered(lambda e: getattr(e, 'hds_in_esic_applicable', False) and not comp_service.validate_employee_esic(e)[0])
             return {
                 'type': 'ir.actions.act_window',
-                'name': 'ESIC Applicable Employees',
+                'name': 'Employees Missing ESIC IP Number',
                 'res_model': 'hr.employee',
                 'view_mode': 'list,form',
                 'views': [[False, 'list'], [False, 'form']],
-                'domain': ['&', ('active', '=', True), ('hds_in_esic_applicable', '=', True)],
+                'domain': [('id', 'in', esic_missing.ids)],
                 'target': 'current',
             }
-        if card_type in ('lwf_status', 'readiness_status'):
+        if card_type == 'lwf_status':
+            from ..services.compliance.statutory_compliance_service import StatutoryComplianceValidationService
+            comp_service = StatutoryComplianceValidationService(self.env)
+            lwf_missing = active_emps.filtered(lambda e: getattr(e, 'hds_in_lwf_applicable', False) and not comp_service.validate_employee_lwf(e)[0])
             return {
                 'type': 'ir.actions.act_window',
-                'name': 'Workforce Statutory Records',
+                'name': 'Employees Missing LWF Registration',
                 'res_model': 'hr.employee',
                 'view_mode': 'list,form',
                 'views': [[False, 'list'], [False, 'form']],
-                'domain': [('active', '=', True)],
+                'domain': [('id', 'in', lwf_missing.ids)],
+                'target': 'current',
+            }
+        if card_type in ('readiness_status', 'statutory_errors'):
+            from ..services.compliance.statutory_compliance_service import StatutoryComplianceValidationService
+            comp_service = StatutoryComplianceValidationService(self.env)
+            error_emps = active_emps.filtered(lambda e: not comp_service.validate_employee_all(e)['is_compliant'])
+            return {
+                'type': 'ir.actions.act_window',
+                'name': 'Employees with Statutory Data Errors',
+                'res_model': 'hr.employee',
+                'view_mode': 'list,form',
+                'views': [[False, 'list'], [False, 'form']],
+                'domain': [('id', 'in', error_emps.ids)],
                 'target': 'current',
             }
 
         # 10. Aadhaar / Emergency Contact Health
         if card_type == 'aadhaar_health':
+            missing_emps = active_emps.filtered(lambda e: not self._has_aadhaar(e))
             return {
                 'type': 'ir.actions.act_window',
-                'name': 'Employees Missing Aadhaar / ID',
+                'name': 'Employees Missing Aadhaar',
                 'res_model': 'hr.employee',
                 'view_mode': 'list,form',
                 'views': [[False, 'list'], [False, 'form']],
-                'domain': ['&', ('active', '=', True), '|', ('identification_id', '=', False), ('identification_id', '=', '')],
+                'domain': [('id', 'in', missing_emps.ids)],
                 'target': 'current',
             }
         if card_type == 'contact_health':
-            emp_fields = self.env['hr.employee']._fields
-            c_domain = ['&', ('active', '=', True)]
-            if 'emergency_contact' in emp_fields:
-                c_domain.extend(['|', ('emergency_contact', '=', False), ('emergency_contact', '=', '')])
-            elif 'emergency_phone' in emp_fields:
-                c_domain.extend(['|', ('emergency_phone', '=', False), ('emergency_phone', '=', '')])
+            missing_emps = active_emps.filtered(lambda e: not self._has_emergency_contact(e))
             return {
                 'type': 'ir.actions.act_window',
                 'name': 'Employees Missing Emergency Contact',
                 'res_model': 'hr.employee',
                 'view_mode': 'list,form',
                 'views': [[False, 'list'], [False, 'form']],
-                'domain': c_domain,
+                'domain': [('id', 'in', missing_emps.ids)],
                 'target': 'current',
             }
 
@@ -1216,7 +1515,7 @@ class HdsPayrollDashboard(models.Model):
 
         # 3. Missing PAN
         elif card_type in ('missing_pan', 'pan_health'):
-            missing = active_emps.filtered(lambda e: not (getattr(e, 'hds_in_pan', False) or getattr(e, 'pan_no', False) or getattr(e, 'pan', False)))
+            missing = active_emps.filtered(lambda e: not self._has_pan(e))
             title = "Employees Missing PAN (Action Required)"
             badge = f"{len(missing)} Employees"
             columns = [
@@ -1293,20 +1592,26 @@ class HdsPayrollDashboard(models.Model):
                 'action_label': 'Review Declaration'
             } for d in decls]
 
-        # 6. Attendance Exceptions & Draft Slips
+        # 6. Payslips Pending Validation (Draft & To Validate)
         elif card_type == 'attendance_exceptions':
-            title = f"Attendance & Payslip Exceptions — {month_name} {year}"
+            title = f"Payslips to Validate — {month_name} {year}"
+            company_filter = [('company_id', 'in', self.env.companies.ids)] if 'company_id' in self.env['hr.payslip']._fields else []
             slips = self.env['hr.payslip'].search([
                 ('date_from', '<=', month_end),
                 ('date_to', '>=', month_start),
                 ('state', 'in', ('draft', 'verify')),
-            ])
-            badge = f"{len(slips)} Exceptions / Drafts"
+            ] + company_filter)
+            if not slips:
+                slips = self.env['hr.payslip'].search([('state', 'in', ('draft', 'verify'))] + company_filter)
+
+            draft_count = len(slips.filtered(lambda s: s.state == 'draft'))
+            verify_count = len(slips.filtered(lambda s: s.state == 'verify'))
+            badge = f"Draft: {draft_count} | To Validate: {verify_count}"
             columns = [
                 {'key': 'employee', 'label': 'Employee'},
                 {'key': 'number', 'label': 'Slip Ref'},
                 {'key': 'period', 'label': 'Period'},
-                {'key': 'status', 'label': 'Status'},
+                {'key': 'status', 'label': 'Stage'},
                 {'key': 'action', 'label': 'Action'}
             ]
             rows = [{
@@ -1316,10 +1621,10 @@ class HdsPayrollDashboard(models.Model):
                     'employee': s.employee_id.name if s.employee_id else '-',
                     'number': s.number or s.name or 'Draft',
                     'period': f"{s.date_from.strftime('%d %b')} - {s.date_to.strftime('%d %b')}" if s.date_from and s.date_to else '',
-                    'status': f"<span class='badge bg-info text-dark'>{s.state}</span>",
-                    'action': 'Verify / Compute'
+                    'status': f"<span class='badge' style='background: {'#64748b' if s.state == 'draft' else '#8b5cf6'}; color: #fff; padding: 3px 8px; border-radius: 6px; font-size: 11px; font-weight: 600;'>{'Draft' if s.state == 'draft' else 'To Validate'}</span>",
+                    'action': 'Verify / Confirm'
                 },
-                'action_label': 'Verify / Compute'
+                'action_label': 'Verify / Confirm'
             } for s in slips]
 
         # 7. Final Settlements Due
@@ -1431,8 +1736,7 @@ class HdsPayrollDashboard(models.Model):
             from ..services.compliance.statutory_compliance_service import StatutoryComplianceValidationService
             comp_service = StatutoryComplianceValidationService(self.env)
             epf_emps = active_emps.filtered(lambda e: getattr(e, 'hds_in_epf_applicable', False))
-            title = "EPF (Employee Provident Fund) Status & Liabilities"
-            badge = f"{len(epf_emps)} EPF Applicable Employees"
+            title = "Employees Missing EPF (UAN / PF No)"
             columns = [
                 {'key': 'name', 'label': 'Employee'},
                 {'key': 'uan', 'label': 'UAN Number'},
@@ -1442,6 +1746,8 @@ class HdsPayrollDashboard(models.Model):
             ]
             for e in epf_emps:
                 valid, reason = comp_service.validate_employee_epf(e)
+                if valid:
+                    continue
                 uan = getattr(e, 'hds_in_uan', '') or getattr(e, 'uan', '') or '-'
                 pf = getattr(e, 'hds_in_pf_no', '') or getattr(e, 'pf_no', '') or '-'
                 rows.append({
@@ -1451,19 +1757,19 @@ class HdsPayrollDashboard(models.Model):
                         'name': e.name,
                         'uan': uan,
                         'pf_no': pf,
-                        'validity': '<span class="text-success fw-bold">✔ Compliant</span>' if valid else f'<span class="text-danger fw-bold">✖ {reason}</span>',
+                        'validity': f'<span class="text-danger fw-bold">✖ {reason}</span>',
                         'action': 'Update EPF'
                     },
                     'action_label': 'Update EPF'
                 })
+            badge = f"{len(rows)} Employees Missing UAN"
 
         # 11. ESIC Status / Missing / Liability
         elif card_type in ('esic_status', 'esic_missing', 'esic_complete', 'esic_liability'):
             from ..services.compliance.statutory_compliance_service import StatutoryComplianceValidationService
             comp_service = StatutoryComplianceValidationService(self.env)
             esic_emps = active_emps.filtered(lambda e: getattr(e, 'hds_in_esic_applicable', False))
-            title = "ESIC (Employee State Insurance) Status & Liabilities"
-            badge = f"{len(esic_emps)} ESIC Applicable Employees"
+            title = "Employees Missing ESIC (IP Number)"
             columns = [
                 {'key': 'name', 'label': 'Employee'},
                 {'key': 'ip_no', 'label': 'ESIC IP Number'},
@@ -1473,6 +1779,8 @@ class HdsPayrollDashboard(models.Model):
             ]
             for e in esic_emps:
                 valid, reason = comp_service.validate_employee_esic(e)
+                if valid:
+                    continue
                 ip = getattr(e, 'hds_in_esic_ip', '') or getattr(e, 'esic_no', '') or '-'
                 disp = getattr(e, 'hds_in_esic_dispensary', '') or '-'
                 rows.append({
@@ -1482,19 +1790,19 @@ class HdsPayrollDashboard(models.Model):
                         'name': e.name,
                         'ip_no': ip,
                         'dispensary': disp,
-                        'validity': '<span class="text-success fw-bold">✔ Compliant</span>' if valid else f'<span class="text-danger fw-bold">✖ {reason}</span>',
+                        'validity': f'<span class="text-danger fw-bold">✖ {reason}</span>',
                         'action': 'Update ESIC'
                     },
                     'action_label': 'Update ESIC'
                 })
+            badge = f"{len(rows)} Employees Missing IP"
 
         # 12. LWF Status
         elif card_type in ('lwf_status', 'lwf_missing', 'lwf_complete'):
             from ..services.compliance.statutory_compliance_service import StatutoryComplianceValidationService
             comp_service = StatutoryComplianceValidationService(self.env)
             lwf_emps = active_emps.filtered(lambda e: getattr(e, 'hds_in_lwf_applicable', False))
-            title = "LWF (Labour Welfare Fund) Compliance Status"
-            badge = f"{len(lwf_emps)} LWF Applicable Employees"
+            title = "Employees Missing LWF Registration"
             columns = [
                 {'key': 'name', 'label': 'Employee'},
                 {'key': 'state', 'label': 'State'},
@@ -1503,6 +1811,8 @@ class HdsPayrollDashboard(models.Model):
             ]
             for e in lwf_emps:
                 valid, reason = comp_service.validate_employee_lwf(e)
+                if valid:
+                    continue
                 st = getattr(e, 'hds_in_lwf_state_id', None)
                 st_name = st.name if st else '-'
                 rows.append({
@@ -1511,46 +1821,59 @@ class HdsPayrollDashboard(models.Model):
                     'cells': {
                         'name': e.name,
                         'state': st_name,
-                        'validity': '<span class="text-success fw-bold">✔ Compliant</span>' if valid else f'<span class="text-danger fw-bold">✖ {reason}</span>',
+                        'validity': f'<span class="text-danger fw-bold">✖ {reason}</span>',
                         'action': 'Update LWF'
                     },
                     'action_label': 'Update LWF'
                 })
+            badge = f"{len(rows)} Employees Missing LWF"
 
-        # 13. Data Readiness & Errors
+        # 13. Data Readiness & Compliance Issues
         elif card_type in ('readiness_status', 'statutory_errors'):
             from ..services.compliance.statutory_compliance_service import StatutoryComplianceValidationService
             comp_service = StatutoryComplianceValidationService(self.env)
-            title = "Statutory Data Readiness & Error Inspection"
+            title = "Employees with Incomplete Compliance Data"
             columns = [
                 {'key': 'name', 'label': 'Employee'},
                 {'key': 'pan', 'label': 'PAN'},
                 {'key': 'bank', 'label': 'Bank'},
                 {'key': 'epf', 'label': 'EPF'},
                 {'key': 'esic', 'label': 'ESIC'},
-                {'key': 'status', 'label': 'Readiness'},
+                {'key': 'issues', 'label': 'Missing Information / Action Needed'},
                 {'key': 'action', 'label': 'Action'}
             ]
             for e in active_emps:
                 res = comp_service.validate_employee_all(e)
-                ready = res['is_compliant']
-                if card_type == 'statutory_errors' and ready:
+                if res['is_compliant']:
                     continue
+                err_badges = []
+                if not res['pan_valid']:
+                    err_badges.append("<span class='badge' style='background: #fee2e2; color: #dc2626; border: 1px solid #fca5a5; font-size: 10.5px; margin-right: 4px; padding: 2px 7px; border-radius: 4px; font-weight: 600;'>Missing PAN</span>")
+                if not res['bank_valid']:
+                    err_badges.append("<span class='badge' style='background: #ffedd5; color: #ea580c; border: 1px solid #fdba74; font-size: 10.5px; margin-right: 4px; padding: 2px 7px; border-radius: 4px; font-weight: 600;'>Missing Bank</span>")
+                if not res['epf_valid'] and getattr(e, 'hds_in_epf_applicable', False):
+                    err_badges.append("<span class='badge' style='background: #f3e8ff; color: #9333ea; border: 1px solid #d8b4fe; font-size: 10.5px; margin-right: 4px; padding: 2px 7px; border-radius: 4px; font-weight: 600;'>Missing UAN</span>")
+                if not res['esic_valid'] and getattr(e, 'hds_in_esic_applicable', False):
+                    err_badges.append("<span class='badge' style='background: #e0e7ff; color: #4f46e5; border: 1px solid #c7d2fe; font-size: 10.5px; margin-right: 4px; padding: 2px 7px; border-radius: 4px; font-weight: 600;'>Missing IP</span>")
+                if not res['lwf_valid'] and getattr(e, 'hds_in_lwf_applicable', False):
+                    err_badges.append("<span class='badge' style='background: #e0f2fe; color: #0284c7; border: 1px solid #bae6fd; font-size: 10.5px; margin-right: 4px; padding: 2px 7px; border-radius: 4px; font-weight: 600;'>Missing LWF</span>")
+                issues_html = "".join(err_badges) if err_badges else "<span class='text-muted'>-</span>"
+
                 rows.append({
                     'id': e.id,
                     'model': 'hr.employee',
                     'cells': {
                         'name': e.name,
-                        'pan': '<span class="text-success">✔</span>' if res['pan_valid'] else '<span class="text-danger">✖</span>',
-                        'bank': '<span class="text-success">✔</span>' if res['bank_valid'] else '<span class="text-danger">✖</span>',
-                        'epf': '<span class="text-success">✔</span>' if res['epf_valid'] else '<span class="text-danger">✖</span>',
-                        'esic': '<span class="text-success">✔</span>' if res['esic_valid'] else '<span class="text-danger">✖</span>',
-                        'status': '<span class="badge bg-success">Ready</span>' if ready else '<span class="badge bg-danger">Errors Found</span>',
-                        'action': 'Fix Details'
+                        'pan': '<span class="text-success fw-bold">✔</span>' if res['pan_valid'] else '<span class="text-danger fw-bold">✖</span>',
+                        'bank': '<span class="text-success fw-bold">✔</span>' if res['bank_valid'] else '<span class="text-danger fw-bold">✖</span>',
+                        'epf': '<span class="text-success fw-bold">✔</span>' if res['epf_valid'] else '<span class="text-danger fw-bold">✖</span>',
+                        'esic': '<span class="text-success fw-bold">✔</span>' if res['esic_valid'] else '<span class="text-danger fw-bold">✖</span>',
+                        'issues': issues_html,
+                        'action': 'Fix Profile'
                     },
-                    'action_label': 'Fix Details'
+                    'action_label': 'Fix Profile'
                 })
-            badge = f"{len(rows)} Employees"
+            badge = f"{len(rows)} Employees with Incomplete Info"
 
         # 14. Old / New Tax Regimes
         elif card_type in ('old_regime', 'new_regime'):
@@ -1579,14 +1902,14 @@ class HdsPayrollDashboard(models.Model):
 
         # 15. Aadhaar / Emergency Contact
         elif card_type == 'aadhaar_health':
-            missing = active_emps.filtered(lambda e: not (getattr(e, 'identification_id', False) or getattr(e, 'aadhaar_no', False)))
-            title = "Employees Missing Aadhaar / National ID"
+            missing = active_emps.filtered(lambda e: not self._has_aadhaar(e))
+            title = "Employees Missing Aadhaar"
             badge = f"{len(missing)} Employees"
             columns = [{'key': 'name', 'label': 'Employee'}, {'key': 'dept', 'label': 'Department'}, {'key': 'action', 'label': 'Action'}]
-            rows = [{'id': e.id, 'model': 'hr.employee', 'cells': {'name': e.name, 'dept': e.department_id.name if e.department_id else '-', 'action': 'Add ID'}, 'action_label': 'Add ID'} for e in missing]
+            rows = [{'id': e.id, 'model': 'hr.employee', 'cells': {'name': e.name, 'dept': e.department_id.name if e.department_id else '-', 'action': 'Add Aadhaar'}, 'action_label': 'Add Aadhaar'} for e in missing]
 
         elif card_type == 'contact_health':
-            missing = active_emps.filtered(lambda e: not (getattr(e, 'emergency_contact', False) or getattr(e, 'mobile_phone', False) or getattr(e, 'work_phone', False)))
+            missing = active_emps.filtered(lambda e: not self._has_emergency_contact(e))
             title = "Employees Missing Emergency Contact"
             badge = f"{len(missing)} Employees"
             columns = [{'key': 'name', 'label': 'Employee'}, {'key': 'dept', 'label': 'Department'}, {'key': 'action', 'label': 'Action'}]

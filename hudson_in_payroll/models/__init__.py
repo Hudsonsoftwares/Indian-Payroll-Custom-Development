@@ -33,3 +33,5 @@ from . import tds_recalculation_schedule
 from . import payroll_dashboard
 from . import hr_leave_type
 from . import hds_salary_statement_report
+from . import ir_ui_menu
+

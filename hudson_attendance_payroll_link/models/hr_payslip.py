@@ -20,7 +20,7 @@ class HrPayslip(models.Model):
             return self.env._attendance_cache[cache_key]
 
         # 1. Setup timezone and datetime boundaries
-        calendar = contract.resource_calendar_id
+        calendar = contract.resource_calendar_id or contract.employee_id.resource_calendar_id or contract.company_id.resource_calendar_id
         tz = pytz.timezone(calendar.tz or 'UTC') if calendar else pytz.UTC
         
         day_from = datetime.combine(fields.Date.from_string(date_from), time.min)
@@ -63,35 +63,65 @@ class HrPayslip(models.Model):
                 day_from, day_to, calendar=calendar
             )
             for day, hours, leave in day_leave_intervals:
-                is_unpaid = False
-                for l in leave:
-                    if l.holiday_id and l.holiday_id.holiday_status_id.unpaid:
-                        is_unpaid = True
-                        break
+                # Only individual employee leaves (having holiday_id or resource_id) populate leave hours
+                # Global calendar leaves are handled via mandatory_holiday_dates
+                emp_leaves = [l for l in leave if l.holiday_id or l.resource_id]
+                if not emp_leaves:
+                    continue
+                is_unpaid = any(l.holiday_id and l.holiday_id.holiday_status_id.unpaid for l in emp_leaves)
                 if is_unpaid:
                     unpaid_hours_by_date[day] = unpaid_hours_by_date.get(day, 0.0) + hours
                 else:
                     paid_hours_by_date[day] = paid_hours_by_date.get(day, 0.0) + hours
 
+        # 4b. Pre-query mandatory public holidays from Time Off (resource.calendar.leaves)
+        mandatory_holiday_dates = set()
+        if calendar:
+            holiday_leaves = self.env['resource.calendar.leaves'].search([
+                ('calendar_id', 'in', [calendar.id, False]),
+                ('resource_id', '=', False),
+                ('date_from', '<=', day_to),
+                ('date_to', '>=', day_from),
+            ])
+            for hl in holiday_leaves:
+                if getattr(hl, 'is_mandatory', True):
+                    hl_start = pytz.utc.localize(hl.date_from).astimezone(tz).date()
+                    hl_end = pytz.utc.localize(hl.date_to).astimezone(tz).date()
+                    cur_d = max(hl_start, fields.Date.from_string(date_from))
+                    max_d = min(hl_end, fields.Date.from_string(date_to))
+                    while cur_d <= max_d:
+                        mandatory_holiday_dates.add(cur_d)
+                        cur_d += relativedelta(days=1)
+
         # 5. Day-by-day scheduled vs actual audit loop
         total_scheduled_hours = 0.0
+        total_scheduled_days = 0.0
         total_actual_hours = 0.0
         total_shortage_hours = 0.0
+        total_shortage_days = 0.0
         total_unpaid_hours = 0.0
         total_unpaid_days = 0.0
         
         current_date = fields.Date.from_string(date_from)
         end_date = fields.Date.from_string(date_to)
+        day_std_hours = (calendar.hours_per_day if calendar and calendar.hours_per_day else 8.0)
         
         while current_date <= end_date:
-            # Scheduled work hours for the day
+            # Scheduled work hours for the day (factoring in working schedule and mandatory holidays)
             scheduled_hours = 0.0
             if calendar:
                 day_start = tz.localize(datetime.combine(current_date, time.min))
                 day_end = tz.localize(datetime.combine(current_date, time.max))
-                scheduled_hours = calendar.get_work_hours_count(day_start, day_end, compute_leaves=False)
+                base_scheduled = calendar.get_work_hours_count(day_start, day_end, compute_leaves=False)
+                if current_date in mandatory_holiday_dates:
+                    # Mandatory Public Holiday: scheduled work is 0 for employee (paid holiday, no shortage)
+                    scheduled_hours = 0.0
+                else:
+                    scheduled_hours = base_scheduled
             
             total_scheduled_hours += scheduled_hours
+            if scheduled_hours > 0.0:
+                total_scheduled_days += min(1.0, scheduled_hours / day_std_hours)
             
             # Actual worked hours for the day
             day_atts = attendances_by_date.get(current_date, [])
@@ -100,12 +130,11 @@ class HrPayslip(models.Model):
             
             unpaid_leave_hours = unpaid_hours_by_date.get(current_date, 0.0)
             paid_leave_hours = paid_hours_by_date.get(current_date, 0.0)
+            denom = scheduled_hours if scheduled_hours > 0.0 else day_std_hours
             
             # Unpaid leave accounting
             if unpaid_leave_hours > 0.0:
                 total_unpaid_hours += unpaid_leave_hours
-                std_hours = contract.standard_hours_per_day or 8.0
-                denom = scheduled_hours if scheduled_hours > 0.0 else std_hours
                 total_unpaid_days += unpaid_leave_hours / denom
             
             # Shortage reconciliation
@@ -119,6 +148,8 @@ class HrPayslip(models.Model):
                 shortage_hours = max(remaining_scheduled - actual_hours, 0.0)
                 
             total_shortage_hours += shortage_hours
+            if shortage_hours > 0.0:
+                total_shortage_days += min(1.0, shortage_hours / denom)
             current_date += relativedelta(days=1)
 
         # 6. Overtime calculation (Calculate net extra hours beyond shift, e.g. 1 hr)
@@ -138,10 +169,12 @@ class HrPayslip(models.Model):
 
         data = {
             'scheduled_hours': total_scheduled_hours,
+            'scheduled_days': total_scheduled_days,
             'actual_hours': total_actual_hours,
             'validated_overtime_hours': net_overtime_hours,
             'overtime_hours_delta': net_overtime_hours,
             'shortage_hours_delta': total_shortage_hours,
+            'shortage_days': total_shortage_days,
             'unpaid_hours': total_unpaid_hours,
             'unpaid_days': total_unpaid_days,
         }
@@ -218,6 +251,24 @@ class HrPayslip(models.Model):
         res = super(HrPayslip, self).get_worked_day_lines(contracts, date_from, date_to)
         for contract in contracts:
             data = self._get_attendance_vs_schedule(contract, date_from, date_to)
+            sched_days = data.get('scheduled_days', 0.0)
+            sched_hours = data.get('scheduled_hours', 0.0)
+            work100_found = False
+            for line in res:
+                if line.get('code') == 'WORK100' and line.get('contract_id') == contract.id:
+                    line['number_of_days'] = sched_days
+                    line['number_of_hours'] = sched_hours
+                    work100_found = True
+            if not work100_found and sched_days > 0.0:
+                res.insert(0, {
+                    'name': _('Normal Working Days'),
+                    'sequence': 1,
+                    'code': 'WORK100',
+                    'number_of_days': sched_days,
+                    'number_of_hours': sched_hours,
+                    'contract_id': contract.id,
+                })
+
             if data.get('unpaid_days', 0.0) > 0.01:
                 res.append({
                     'name': _('Unpaid Leave'),
@@ -227,17 +278,17 @@ class HrPayslip(models.Model):
                     'number_of_hours': data['unpaid_hours'],
                     'contract_id': contract.id,
                 })
-            if data.get('shortage_hours_delta', 0.0) > 0.01:
+            if contract.pay_by_attendance and data.get('shortage_hours_delta', 0.0) > 0.01:
                 if not any(l.get('code') == 'SHORTAGE' for l in res):
                     res.append({
                         'name': _('Attendance Shortage'),
                         'sequence': 5,
                         'code': 'SHORTAGE',
-                        'number_of_days': 0.0,
+                        'number_of_days': data.get('shortage_days', 0.0),
                         'number_of_hours': data['shortage_hours_delta'],
                         'contract_id': contract.id,
                     })
-            if data.get('overtime_hours_delta', 0.0) > 0.01:
+            if contract.pay_by_attendance and data.get('overtime_hours_delta', 0.0) > 0.01:
                 if not any(l.get('code') == 'OVERTIME' for l in res):
                     res.append({
                         'name': _('Overtime Hours'),

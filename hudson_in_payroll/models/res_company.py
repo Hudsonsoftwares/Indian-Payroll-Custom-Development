@@ -276,4 +276,74 @@ class ResCompany(models.Model):
     def write(self, vals):
         if vals.get('hds_in_tan'):
             vals['hds_in_tan'] = vals['hds_in_tan'].strip().upper()
-        return super().write(vals)
+        res = super().write(vals)
+        if 'hds_in_enable_lwf' in vals:
+            self.env.registry.clear_cache()
+        return res
+
+
+    @api.constrains('partner_id', 'hds_in_enable_lwf', 'hds_in_enable_professional_tax')
+    def _check_company_state_statutory(self):
+        """Ensures company address has a state when statutory compliance modules (LWF / PT) are active."""
+        if self.env.context.get('install_mode') or self.env.context.get('test_enable'):
+            return
+        for company in self:
+            if company.hds_in_enable_lwf or company.hds_in_enable_professional_tax:
+                if not company.partner_id or not company.partner_id.state_id:
+                    raise ValidationError(_(
+                        "Company State is required! Please configure the State in Company Address "
+                        "(Settings > Companies > Address) for statutory payroll calculations (LWF, Professional Tax)."
+                    ))
+
+    @api.constrains('hds_in_enable_lwf', 'partner_id')
+    def _check_company_lwf_minimum_headcount(self):
+        """
+        Ensures that enabling LWF at the company level strictly complies with the state's
+        statutory minimum employee count threshold. If the active headcount in the company's
+        state is below the mandated threshold, LWF cannot be enabled.
+        """
+        if self.env.context.get('install_mode') or self.env.context.get('skip_statutory_threshold_check'):
+            return
+        if self.env.context.get('test_enable') and not self.env.context.get('validate_statutory_threshold'):
+            return
+
+        today = fields.Date.today()
+        for company in self:
+            if not company.hds_in_enable_lwf:
+                continue
+            state = company.partner_id.state_id if company.partner_id else False
+            if not state:
+                continue
+
+            rate_config = self.env['lwf.state.rate'].search([
+                ('state_id', '=', state.id),
+                ('date_from', '<=', today),
+                '|', ('date_to', '=', False), ('date_to', '>=', today),
+            ], order='date_from desc, id desc', limit=1)
+
+            if rate_config and rate_config.min_employee_count > 0:
+                base_domain = [('company_id', '=', company.id), ('active', '=', True)]
+                state_domain = base_domain + [
+                    '|',
+                    ('address_id.state_id', '=', state.id),
+                    '|',
+                    '&', ('address_id.state_id', '=', False), ('work_location_id.address_id.state_id', '=', state.id),
+                    '&', ('address_id.state_id', '=', False), ('work_location_id.address_id.state_id', '=', False),
+                ]
+                headcount = self.env['hr.employee'].search_count(state_domain)
+                if headcount < rate_config.min_employee_count:
+                    raise ValidationError(_(
+                        "Cannot enable Labour Welfare Fund (LWF) for company '%(company)s'!\n\n"
+                        "• Registered State: %(state)s\n"
+                        "• Statutory Minimum Required Headcount: %(required)s employees\n"
+                        "• Current Active Headcount in %(state)s: %(current)s employees\n\n"
+                        "The company active headcount is below the statutory threshold mandated by "
+                        "the %(state)s Labour Welfare Fund Act. LWF cannot be enabled at company level until "
+                        "the minimum employee threshold is reached, or update the threshold in 'Configure State Rates & Thresholds' if government rules have changed."
+                    ) % {
+                        'company': company.name,
+                        'state': state.name,
+                        'required': rate_config.min_employee_count,
+                        'current': headcount,
+                    })
+

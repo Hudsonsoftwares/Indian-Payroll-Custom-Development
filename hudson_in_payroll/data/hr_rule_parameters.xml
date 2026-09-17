@@ -197,13 +197,27 @@
             <field name="name">ESIC: Daily Wage Exemption Limit</field>
             <field name="code">hds_in_esic_daily_wage_exemption</field>
             <field name="category">other</field>
-            <field name="description">Statutory daily average wage exemption threshold. Employees earning up to this daily average wage are exempt from employee share contribution. Statutory basis: ESI (Central) Rules 1950 Rule 52.</field>
+            <field name="description">Statutory daily average wage exemption threshold. Employees earning up to this daily average wage are exempt from employee share contribution. Statutory basis: ESI (Central) Rules 1950 Rule 51-B / Rule 52.</field>
         </record>
         <record id="hds_in_esic_daily_wage_exemption_val_1" model="hr.rule.parameter.value">
             <field name="parameter_id" ref="hds_in_esic_daily_wage_exemption"/>
             <field name="date_from">2019-07-01</field>
             <field name="parameter_value">176</field>
             <field name="description">Government Notification S.O. 2182(E) raised average daily wage exemption limit from INR 137 to INR 176 per day w.e.f. 01-Jul-2019.</field>
+        </record>
+
+        <!-- 14b. ESIC: Daily Wage Exemption Threshold (Rule 51-B Canonical Parameter) -->
+        <record id="esic_daily_wage_exemption_threshold" model="hr.rule.parameter">
+            <field name="name">ESIC Daily Wage Exemption Threshold (Rule 51-B)</field>
+            <field name="code">esic_daily_wage_exemption_threshold</field>
+            <field name="category">other</field>
+            <field name="description">Statutory daily average wage exemption threshold under ESI (Central) Rules 1950 Rule 51-B. Employees earning an average daily wage up to this threshold are exempt from employee contribution.</field>
+        </record>
+        <record id="esic_daily_wage_exemption_threshold_val_1" model="hr.rule.parameter.value">
+            <field name="parameter_id" ref="esic_daily_wage_exemption_threshold"/>
+            <field name="date_from">2019-07-01</field>
+            <field name="parameter_value">176</field>
+            <field name="description">Government Notification S.O. 2182(E) w.e.f. 01-Jul-2019 sets Rule 51-B threshold at INR 176/day.</field>
         </record>
 
         <!-- ======================================================= -->

@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <odoo>
-    <data noupdate="1">
+    <data noupdate="0">
         <!-- Overtime Pay Salary Rule -->
         <record id="hr_rule_overtime_pay" model="hr.salary.rule">
             <field name="name">Overtime Pay</field>
@@ -28,7 +28,11 @@ result_qty = worked_days.OVERTIME.number_of_hours if (worked_days.OVERTIME and c
             <field name="amount_select">code</field>
             <field name="amount_python_compute">
 result = -contract.get_period_shortage_rate(payslip.date_from, payslip.date_to)
-result_qty = worked_days.SHORTAGE.number_of_hours if (worked_days.SHORTAGE and contract.pay_by_attendance) else 0.0
+shortage_hours = worked_days.SHORTAGE.number_of_hours if (worked_days.SHORTAGE and contract.pay_by_attendance) else 0.0
+raw_ded = shortage_hours * abs(result)
+total_earnings = categories.BASIC + categories.ALW
+result = -min(raw_ded, total_earnings) if total_earnings > 0.0 else 0.0
+result_qty = 1.0
             </field>
             <field name="appears_on_payslip" eval="True"/>
         </record>
@@ -43,7 +47,17 @@ result_qty = worked_days.SHORTAGE.number_of_hours if (worked_days.SHORTAGE and c
             <field name="condition_select">none</field>
             <field name="amount_select">code</field>
             <field name="amount_python_compute">
-result = -(worked_days.UNPAID.number_of_days if worked_days.UNPAID else 0.0) * (contract.hourly_rate * contract.standard_hours_per_day)
+if worked_days.UNPAID and worked_days.UNPAID.number_of_hours > 0.0:
+    raw_ded = worked_days.UNPAID.number_of_hours * contract.get_period_shortage_rate(payslip.date_from, payslip.date_to)
+elif worked_days.UNPAID and worked_days.UNPAID.number_of_days > 0.0:
+    raw_ded = worked_days.UNPAID.number_of_days * contract.get_period_day_rate(payslip.date_from, payslip.date_to)
+else:
+    raw_ded = 0.0
+total_earnings = categories.BASIC + categories.ALW
+short_ded = abs(rules.SHORT.total if 'SHORT' in rules else 0.0)
+rem_earnings = max(0.0, total_earnings - short_ded)
+result = -min(raw_ded, rem_earnings) if rem_earnings > 0.0 else 0.0
+result_qty = 1.0
             </field>
             <field name="appears_on_payslip" eval="True"/>
         </record>

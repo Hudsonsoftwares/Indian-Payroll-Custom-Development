@@ -112,3 +112,67 @@ class TestLWFService(TransactionCase):
         er_amount = service.compute_lwf_employer(payslip_april)
         self.assertEqual(ee_amount, 0.0)
         self.assertEqual(er_amount, 0.0)
+
+    def test_05_lwf_service_exempt_employee_uncheck(self):
+        """June 2026 payslip for MH Employee with LWF Applicable unchecked -> LWF = 0."""
+        self.emp_mh.hds_in_lwf_applicable = False
+        payslip_june = self.env['hr.payslip'].create({
+            'employee_id': self.emp_mh.id,
+            'date_from': '2026-06-01',
+            'date_to': '2026-06-30',
+        })
+        service = LWFService(self.env)
+        ee_amount = service.compute_lwf_employee(payslip_june)
+        er_amount = service.compute_lwf_employer(payslip_june)
+        self.assertEqual(ee_amount, 0.0)
+        self.assertEqual(er_amount, 0.0)
+
+    def test_06_lwf_service_contractor_exempt(self):
+        """June 2026 payslip for contractor -> LWF = 0."""
+        self.emp_mh.hds_in_lwf_applicable = True
+        self.emp_mh.employee_type = 'contractor'
+        payslip_june = self.env['hr.payslip'].create({
+            'employee_id': self.emp_mh.id,
+            'date_from': '2026-06-01',
+            'date_to': '2026-06-30',
+        })
+        service = LWFService(self.env)
+        ee_amount = service.compute_lwf_employee(payslip_june)
+        er_amount = service.compute_lwf_employer(payslip_june)
+        self.assertEqual(ee_amount, 0.0)
+        self.assertEqual(er_amount, 0.0)
+
+    def test_07_state_scoped_headcount(self):
+        """Verify that headcount is scoped to employee's state rather than nationwide total."""
+        # KA requires min_employee_count = 50
+        self.lwf_ka.min_employee_count = 50
+        
+        # Partner with KA state
+        partner_ka = self.env['res.partner'].create({
+            'name': 'KA Partner',
+            'state_id': self.state_ka.id,
+            'country_id': self.country_in.id,
+        })
+        
+        # Create 2 employees in KA using address_id (primary priority)
+        emp_ka1 = self.env['hr.employee'].create({
+            'name': 'KA Employee 1',
+            'address_id': partner_ka.id,
+        })
+        emp_ka2 = self.env['hr.employee'].create({
+            'name': 'KA Employee 2',
+            'address_id': partner_ka.id,
+        })
+        
+        # Dec 2026 payslip for KA employee (Dec is scheduled month for KA)
+        payslip_ka = self.env['hr.payslip'].create({
+            'employee_id': emp_ka1.id,
+            'date_from': '2026-12-01',
+            'date_to': '2026-12-31',
+        })
+        service = LWFService(self.env)
+        # Even though company may have other employees nationwide, KA headcount is only 2 (< 50)
+        ee_amount = service.compute_lwf_employee(payslip_ka)
+        er_amount = service.compute_lwf_employer(payslip_ka)
+        self.assertEqual(ee_amount, 0.0)
+        self.assertEqual(er_amount, 0.0)

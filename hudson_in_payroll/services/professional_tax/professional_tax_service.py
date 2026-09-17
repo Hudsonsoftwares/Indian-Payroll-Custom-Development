@@ -146,6 +146,10 @@ class ProfessionalTaxService(BaseStatutoryService):
         except (TypeError, ValueError):
             target_salary = 0.0
 
+        if slip and hasattr(slip, '_get_earned_wage_ratio'):
+            ratio = slip._get_earned_wage_ratio(localdict=dict_ctx)
+            target_salary = round(target_salary * ratio, 2)
+
         target_gender = gender
         if not target_gender and target_emp:
             target_gender = self.slab_service.resolve_employee_gender(target_emp)

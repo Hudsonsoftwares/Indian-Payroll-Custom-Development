@@ -66,7 +66,8 @@ class HrVersion(models.Model):
         'wage', 'basic_salary', 'da', 'struct_id', 'struct_id.rule_ids', 'company_id', 'company_id.country_id',
         'employee_id.hds_in_pf_contribution_basis', 'employee_id.hds_in_pf_employer_basis',
         'employee_id.hds_in_epf_applicable', 'employee_id.hds_in_eps_applicable',
-        'employee_id.hds_in_esic_applicable', 'employee_id.hds_in_lwf_applicable'
+        'employee_id.hds_in_esic_applicable', 'employee_id.hds_in_lwf_applicable',
+        'employee_id.private_state_id', 'employee_id.work_location_id', 'employee_id.address_id'
     )
     def _compute_employer_cost(self, employee=None):
         for contract in self:
@@ -169,10 +170,19 @@ class HrVersion(models.Model):
             if not contract._is_india_localization():
                 continue
             if contract.employee_id:
+                eval_date = fields.Date.today()
+                if contract.date_start and contract.date_start > eval_date:
+                    eval_date = contract.date_start
                 default_esic = contract.employee_id._evaluate_default_esic_applicable(
                     gross_wage=contract.wage,
-                    eval_date=contract.date_start or fields.Date.today()
+                    eval_date=eval_date
                 )
+                if contract.employee_id.hds_in_esic_applicable and not default_esic:
+                    from ..services.esic.contribution_period_service import ESICContributionPeriodService
+                    period_service = ESICContributionPeriodService(self.env)
+                    if period_service.is_covered_for_contribution_period(contract.employee_id, eval_date=eval_date):
+                        default_esic = True
+
                 contract.employee_id.hds_in_esic_applicable = default_esic
                 if not default_esic:
                     contract.employee_id.hds_in_esic_ip_status = 'exempt'
@@ -180,11 +190,12 @@ class HrVersion(models.Model):
                 else:
                     if contract.employee_id.hds_in_esic_ip_status == 'exempt':
                         contract.employee_id.hds_in_esic_ip_status = 'active'
+                        contract.employee_id.hds_in_esic_exit_reason = False
 
     def _sync_employee_esic_default(self):
         """
         Updates default ESIC applicability on employee when contract wage changes,
-        while maintaining manual override capability.
+        while maintaining manual override capability and enforcing Regulation 31 continuity.
         """
         self.ensure_one()
         if not self._is_india_localization():
@@ -192,10 +203,19 @@ class HrVersion(models.Model):
         employee = self.employee_id
         if not employee:
             return
+        eval_date = fields.Date.today()
+        if self.date_start and self.date_start > eval_date:
+            eval_date = self.date_start
         default_esic = employee._evaluate_default_esic_applicable(
             gross_wage=self.wage,
-            eval_date=self.date_start or fields.Date.today()
+            eval_date=eval_date
         )
+        if employee.hds_in_esic_applicable and not default_esic:
+            from ..services.esic.contribution_period_service import ESICContributionPeriodService
+            period_service = ESICContributionPeriodService(self.env)
+            if period_service.is_covered_for_contribution_period(employee, eval_date=eval_date):
+                default_esic = True
+
         vals = {'hds_in_esic_applicable': default_esic}
         if not default_esic:
             vals['hds_in_esic_ip_status'] = 'exempt'
@@ -203,6 +223,7 @@ class HrVersion(models.Model):
         else:
             if employee.hds_in_esic_ip_status == 'exempt':
                 vals['hds_in_esic_ip_status'] = 'active'
+                vals['hds_in_esic_exit_reason'] = False
         employee.write(vals)
 
     def _estimate_statutory_rule_amount(self, contract, rule, employee=None):
@@ -252,6 +273,14 @@ class HrVersion(models.Model):
         elif 'compute_lwf_employer' in code_text or rule_code == 'LWF_ER':
             if employee and hasattr(employee, 'hds_in_lwf_applicable') and not employee.hds_in_lwf_applicable:
                 return 0.0
-            return 20.0
+            company = getattr(contract, 'company_id', False) or (employee.company_id if employee else False) or self.env.company
+            from ..services.payroll.work_location_service import PayrollWorkLocationService
+            from ..services.lwf.lwf_rate_service import LWFRateService
+            eval_date = contract.date_start or fields.Date.today()
+            work_state = PayrollWorkLocationService(self.env).get_work_state(employee)
+            rate_cfg = LWFRateService(self.env).get_rate_config(work_state, eval_date=eval_date, company=company)
+            if rate_cfg:
+                return float(rate_cfg.empl_contribution or 0.0)
+            return 0.0
 
         return 0.0

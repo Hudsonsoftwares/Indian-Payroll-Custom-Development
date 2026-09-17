@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 from datetime import date
+from odoo.exceptions import ValidationError
 from odoo.tests.common import TransactionCase
 from ..services.lwf.company_configuration_validator import CompanyConfigurationValidator
 from ..services.lwf.lwf_eligibility_validator import LWFEligibilityValidator
@@ -99,3 +100,81 @@ class TestLWFValidatorsCalculators(TransactionCase):
 
         self.assertEqual(ee, 25.0)
         self.assertEqual(er, 75.0)
+
+    def test_07_lwf_eligibility_employee_unchecked(self):
+        """Validates ineligibility when HR unchecks LWF Applicable for employee."""
+        self.emp.hds_in_lwf_applicable = False
+        res = self.elig_validator.validate(
+            employee=self.emp,
+            state=self.state_mh,
+            rate_config=self.rate_mh,
+            eval_date=date(2026, 6, 30),
+            establishment_headcount=15
+        )
+        self.assertFalse(res.is_eligible)
+        self.assertIn("exempt", res.reason.lower())
+
+    def test_08_lwf_eligibility_contractor(self):
+        """Validates ineligibility when employee is a contractor/freelancer."""
+        self.emp.hds_in_lwf_applicable = True
+        self.emp.employee_type = 'contractor'
+        res = self.elig_validator.validate(
+            employee=self.emp,
+            state=self.state_mh,
+            rate_config=self.rate_mh,
+            eval_date=date(2026, 6, 30),
+            establishment_headcount=15
+        )
+        self.assertFalse(res.is_eligible)
+        self.assertIn("contractor", res.reason.lower())
+
+    def test_09_company_enable_lwf_below_threshold_blocked(self):
+        """Enabling LWF at company level when headcount < state threshold raises ValidationError."""
+        partner_mh = self.env['res.partner'].create({
+            'name': 'Test MH Company Partner',
+            'state_id': self.state_mh.id,
+            'country_id': self.country_in.id,
+        })
+        test_comp = self.env['res.company'].create({
+            'name': 'Test Small MH Company',
+            'partner_id': partner_mh.id,
+            'hds_in_enable_lwf': False,
+        })
+        # Create only 2 employees (< 10 threshold)
+        self.env['hr.employee'].create({
+            'name': 'Emp 1',
+            'company_id': test_comp.id,
+            'address_id': partner_mh.id,
+        })
+        self.env['hr.employee'].create({
+            'name': 'Emp 2',
+            'company_id': test_comp.id,
+            'address_id': partner_mh.id,
+        })
+
+        with self.assertRaises(ValidationError):
+            test_comp.with_context(validate_statutory_threshold=True).hds_in_enable_lwf = True
+
+    def test_10_company_enable_lwf_above_threshold_allowed(self):
+        """Enabling LWF at company level when headcount >= state threshold succeeds."""
+        partner_mh = self.env['res.partner'].create({
+            'name': 'Test Large MH Company Partner',
+            'state_id': self.state_mh.id,
+            'country_id': self.country_in.id,
+        })
+        test_comp = self.env['res.company'].create({
+            'name': 'Test Large MH Company',
+            'partner_id': partner_mh.id,
+            'hds_in_enable_lwf': False,
+        })
+        # Create 10 employees (>= 10 threshold)
+        for i in range(10):
+            self.env['hr.employee'].create({
+                'name': f'Emp {i}',
+                'company_id': test_comp.id,
+                'address_id': partner_mh.id,
+            })
+
+        test_comp.with_context(validate_statutory_threshold=True).hds_in_enable_lwf = True
+        self.assertTrue(test_comp.hds_in_enable_lwf)
+

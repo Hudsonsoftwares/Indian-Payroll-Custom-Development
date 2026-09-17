@@ -30,22 +30,23 @@ class ESICService:
         if 'ESIC_WAGE' in ld:
             return float(ld['ESIC_WAGE'] or 0.0)
 
-        # 2. Categories.GROSS
-        categories = ld.get('categories')
-        if categories and hasattr(categories, 'GROSS'):
-            return float(getattr(categories, 'GROSS', 0.0) or 0.0)
-
+        # 2. Direct GROSS in localdict (e.g. simulation or direct payload)
         gross_wage = 0.0
-        # 3. Sum evaluated numeric earning rule values in localdict if categories.GROSS wasn't populated
-        if ld:
-            for k, v in ld.items():
-                if isinstance(v, (int, float)) and k not in ('result', 'result_qty', 'result_rate', 'NET', 'ESIC_EE', 'ESIC_ER', 'EPF_EE', 'EPF_ER', 'PT', 'LWF', 'ESIC_WAGE', 'PF_WAGE', 'GROSS'):
-                    gross_wage += float(v)
-            if gross_wage > 0.0:
-                return gross_wage
+        if 'GROSS' in ld and isinstance(ld['GROSS'], (int, float)) and ld['GROSS'] > 0:
+            gross_wage = float(ld['GROSS'])
 
-        # 4. Fallback to contract.wage ONLY when localdict is empty or outside payslip evaluation context
-        if not ld:
+        # 3. Categories.GROSS
+        elif ld.get('categories') and hasattr(ld['categories'], 'GROSS'):
+            gross_wage = float(getattr(ld['categories'], 'GROSS', 0.0) or 0.0)
+
+        # 4. Sum evaluated numeric earning rule values in localdict if categories.GROSS wasn't populated
+        elif ld:
+            for k, v in ld.items():
+                if isinstance(v, (int, float)) and k not in ('result', 'result_qty', 'result_rate', 'NET', 'ESIC_EE', 'ESIC_ER', 'EPF_EE', 'EPF_ER', 'PT', 'LWF', 'ESIC_WAGE', 'PF_WAGE', 'GROSS', 'wage'):
+                    gross_wage += float(v)
+
+        # 5. Fallback to contract.wage ONLY when localdict is empty or outside payslip evaluation context
+        if gross_wage <= 0.0:
             contract = ld.get('contract') or (payslip.contract_id if payslip else False)
             if not contract and payslip and getattr(payslip, 'employee_id', False):
                 contracts = self.env['hr.version'].search([('employee_id', '=', payslip.employee_id.id)])
@@ -54,7 +55,11 @@ class ESICService:
                 bd = float(getattr(contract, 'breakdown_total', 0.0) or 0.0)
                 gross_wage = bd if bd > 0.0 else float(getattr(contract, 'wage', 0.0) or 0.0)
 
-        return max(gross_wage, 0.0)
+        if payslip and hasattr(payslip, '_get_earned_wage_ratio'):
+            ratio = payslip._get_earned_wage_ratio(localdict=ld)
+            gross_wage = gross_wage * ratio
+
+        return max(round(gross_wage, 2), 0.0)
 
     def _get_esic_contributable_wage(self, payslip):
         """Single entry eligibility validation & gross wage resolution."""
@@ -74,6 +79,12 @@ class ESICService:
             _logger.info("<-- [ESICService] compute_esic_wage -> %s", esic_wage)
             return esic_wage
 
+    def check_daily_wage_exemption(self, payslip, esic_wage=None, eval_date=None):
+        """Public facade method for evaluating Rule 51-B daily-wage exemption."""
+        if esic_wage is None:
+            esic_wage = self._get_esic_contributable_wage(payslip)
+        return self.employee_calc.check_daily_wage_exemption(payslip, esic_wage=esic_wage, eval_date=eval_date)
+
     def compute_esic_employee(self, payslip):
         _logger.info("--> [ESICService] compute_esic_employee(payslip=%s)", payslip)
         with StatutoryAuditSession(self.env, payslip, statutory_module='esic', rule_code='ESIC_EE') as audit:
@@ -82,14 +93,37 @@ class ESICService:
             ee_rate = self.env['hr.rule.parameter'].get_parameter('hds_in_esic_employee_rate', date=eval_date, as_decimal=False)
             ceiling = self.validator.get_applicable_ceiling(payslip)
 
+            is_exempt, avg_daily_wage, paid_days, threshold = self.employee_calc.check_daily_wage_exemption(
+                payslip, esic_wage=esic_wage, eval_date=eval_date
+            )
+
             audit.attach_input('esic_wage', esic_wage)
             audit.attach_input('is_pwd', payslip.employee_id.hds_in_is_pwd if payslip.employee_id else False)
+            audit.attach_input('paid_days_in_period', paid_days)
+            audit.attach_input('average_daily_wage', avg_daily_wage)
             audit.attach_parameter('ESIC_EE_RATE', ee_rate)
             audit.attach_parameter('APPLICABLE_ESIC_CEILING', ceiling)
+            audit.attach_parameter('ESIC_DAILY_WAGE_EXEMPTION_THRESHOLD', threshold)
+            audit.attach_output('esic_daily_wage_exempt', is_exempt)
 
-            amount = self.employee_calc.compute(payslip, esic_wage=esic_wage)
+            if is_exempt:
+                amount = 0.0
+                audit.log_message(
+                    f"Rule 51-B Exemption Applied: Average daily wage (₹{avg_daily_wage:,.2f}) <= Threshold (₹{threshold:,.2f}). "
+                    f"Employee contribution is ₹0.00."
+                )
+            else:
+                amount = self.employee_calc.compute(payslip, esic_wage=esic_wage)
+
             audit.attach_output('esic_employee_deduction', amount)
-            _logger.info("<-- [ESICService] compute_esic_employee -> %s", amount)
+            _logger.info("<-- [ESICService] compute_esic_employee -> %s (is_exempt=%s, avg_daily_wage=%s)", amount, is_exempt, avg_daily_wage)
+
+            # Persist audit snapshot directly to payslip if present
+            if hasattr(payslip, 'hds_in_esic_daily_wage_exempt'):
+                payslip.hds_in_esic_daily_wage_exempt = is_exempt
+                payslip.hds_in_esic_average_daily_wage = avg_daily_wage
+                payslip.hds_in_esic_paid_days = paid_days
+
             return amount
 
     def compute_esic_employer(self, payslip):

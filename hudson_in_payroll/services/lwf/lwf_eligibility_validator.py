@@ -22,7 +22,7 @@ class LWFEligibilityValidator:
     def __init__(self, env):
         self.env = env
 
-    def validate(self, employee, state, rate_config, eval_date, establishment_headcount=0):
+    def validate(self, employee, state, rate_config, eval_date, establishment_headcount=0, contract=None, net_salary=None, is_employer=False):
         """
         Validates statutory employee eligibility for LWF deduction/contribution.
 
@@ -31,12 +31,38 @@ class LWFEligibilityValidator:
         :param rate_config: lwf.state.rate recordset or False
         :param eval_date: datetime.date object
         :param establishment_headcount: int (active headcount in company/establishment)
+        :param contract: optional hr.contract / hr.version recordset
+        :param net_salary: float (employee net salary for minimum threshold evaluation)
+        :param is_employer: bool (True when evaluating employer statutory contribution)
         :return: EligibilityValidationResult
         """
         if not employee:
             return EligibilityValidationResult(
                 is_eligible=False,
                 reason="No employee record found in payslip context."
+            )
+
+        # 1. Employee-level LWF Applicability check (HR Manager setting / Exempt / Contractor)
+        if hasattr(employee, 'hds_in_lwf_applicable') and not employee.hds_in_lwf_applicable:
+            return EligibilityValidationResult(
+                is_eligible=False,
+                reason=f"LWF is not applicable for employee '{employee.name}' (LWF Applicable unchecked / exempt)."
+            )
+
+        # 2. Contractor / Exempt Employee Type check
+        if hasattr(employee, 'employee_type') and employee.employee_type in ('contractor', 'freelance'):
+            if hasattr(employee, 'hds_in_lwf_applicable') and not employee.hds_in_lwf_applicable:
+                return EligibilityValidationResult(
+                    is_eligible=False,
+                    reason=f"Employee '{employee.name}' is a contractor/exempt and LWF is not applicable."
+                )
+
+        # 3. Contract-level LWF applicability check (if contract passed or linked)
+        contract_rec = contract or (getattr(employee, 'contract_id', False) if hasattr(employee, 'contract_id') else False)
+        if contract_rec and hasattr(contract_rec, 'hds_in_lwf_applicable') and not contract_rec.hds_in_lwf_applicable:
+            return EligibilityValidationResult(
+                is_eligible=False,
+                reason=f"LWF is not applicable under contract for employee '{employee.name}'."
             )
 
         if not state:
@@ -73,6 +99,22 @@ class LWFEligibilityValidator:
                 min_threshold=min_threshold,
                 is_scheduled_month=False
             )
+
+        # Minimum Net / Earned Salary check (applicable only for employee deduction)
+        # If employee's earned/net salary is less than the state employee contribution amount (e.g. 0 on LOP or < state amount),
+        # employee contribution is not deducted (returns 0.0).
+        if not is_employer and rate_config:
+            emp_contrib = getattr(rate_config, 'emp_contribution', 0.0) or 0.0
+            eval_net = net_salary if net_salary is not None else 0.0
+            if emp_contrib > 0.0 and eval_net < emp_contrib:
+                return EligibilityValidationResult(
+                    is_eligible=False,
+                    reason=f"Employee Net/Earned Salary ({eval_net:,.2f}) is less than the state LWF contribution amount ({emp_contrib:,.2f}) for '{state.name}'.",
+                    rate_config=rate_config,
+                    headcount=establishment_headcount,
+                    min_threshold=min_threshold,
+                    is_scheduled_month=True
+                )
 
         return EligibilityValidationResult(
             is_eligible=True,

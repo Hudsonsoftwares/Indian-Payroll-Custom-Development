@@ -24,6 +24,41 @@ class HrPayslip(models.Model):
         string="TDS Applicable",
         readonly=True,
     )
+    hds_in_esic_daily_wage_exempt = fields.Boolean(
+        string="ESIC Daily Wage Exempt (Rule 51-B)",
+        copy=False,
+        readonly=True,
+        help="Statutory exemption under ESI Rule 51-B when average daily wage is <= ₹176/day."
+    )
+    hds_in_esic_average_daily_wage = fields.Monetary(
+        string="ESIC Average Daily Wage",
+        currency_field='currency_id',
+        copy=False,
+        readonly=True,
+        help="Average daily wage during the wage period (ESI Wage / Paid Days)."
+    )
+    hds_in_esic_paid_days = fields.Float(
+        string="ESIC Paid Days in Period",
+        copy=False,
+        readonly=True,
+        help="Number of payable/worked days in the wage period (after deducting LOP/unpaid leave)."
+    )
+    hds_in_payment_mode = fields.Selection([
+        ('bank_transfer', 'Bank Transfer'),
+        ('neft_rtgs', 'NEFT / RTGS'),
+        ('cheque', 'Cheque'),
+        ('cash', 'Cash'),
+        ('upi', 'UPI'),
+    ], string="Payment Mode", compute='_compute_hds_in_payment_mode', store=True, readonly=False,
+       help="Mode of salary disbursement for this payslip.")
+
+    @api.depends('employee_id', 'employee_id.hds_in_payment_mode')
+    def _compute_hds_in_payment_mode(self):
+        for slip in self:
+            if slip.employee_id and getattr(slip.employee_id, 'hds_in_payment_mode', False):
+                slip.hds_in_payment_mode = slip.employee_id.hds_in_payment_mode
+            elif not slip.hds_in_payment_mode:
+                slip.hds_in_payment_mode = 'bank_transfer'
 
     # Transient in-memory dictionary cache for active payslip evaluation contexts
     _eval_contexts = {}
@@ -80,6 +115,8 @@ class HrPayslip(models.Model):
                 getattr(self.employee_id, 'id', 'N/A'),
                 self.name or self.id
             )
+            return 0.0
+        if self._get_earned_wage_ratio() <= 0.0:
             return 0.0
 
         _logger.warning(
@@ -1182,15 +1219,45 @@ else:
         """Public API entrypoint for ESIC_ER Salary Rule (Zero arguments)."""
         return self._delegate_statutory_service(ESICService, 'compute_esic_employer')
 
+    def _validate_company_state_statutory(self):
+        """Validates that statutory work state is resolvable (via Work Address or Company Address)."""
+        if self.env.context.get('install_mode') or self.env.context.get('test_enable'):
+            return
+        emp = self.employee_id
+        if emp and emp.address_id and emp.address_id.state_id:
+            return
+        if emp and emp.work_location_id and emp.work_location_id.address_id and emp.work_location_id.address_id.state_id:
+            return
+        company = self.company_id or (emp.company_id if emp else self.env.company)
+        if company and company.partner_id and company.partner_id.state_id:
+            return
+        from odoo.exceptions import ValidationError
+        raise ValidationError(_(
+            "Company State is not configured! Please configure the State in Company Address "
+            "(Settings > Companies > Address) or Employee Work Address (Employees > Work Information) "
+            "for employee '%(emp)s' to calculate statutory deductions.",
+            emp=emp.name if emp else ''
+        ))
+
     # -------------------------------------------------------------------------
     # PUBLIC LWF ORCHESTRATION API FOR SALARY RULES (Zero Arguments in XML)
     # -------------------------------------------------------------------------
     def hds_in_compute_lwf_employee(self):
         """Public API entrypoint for LWF_EE Salary Rule (Zero arguments)."""
+        if self.employee_id and hasattr(self.employee_id, 'hds_in_lwf_applicable') and not self.employee_id.hds_in_lwf_applicable:
+            return 0.0
+        if self.employee_id and getattr(self.employee_id, 'employee_type', None) in ('contractor', 'freelance'):
+            return 0.0
+        self._validate_company_state_statutory()
         return self._delegate_statutory_service(LWFService, 'compute_lwf_employee', negate=True)
 
     def hds_in_compute_lwf_employer(self):
         """Public API entrypoint for LWF_ER Salary Rule (Zero arguments)."""
+        if self.employee_id and hasattr(self.employee_id, 'hds_in_lwf_applicable') and not self.employee_id.hds_in_lwf_applicable:
+            return 0.0
+        if self.employee_id and getattr(self.employee_id, 'employee_type', None) in ('contractor', 'freelance'):
+            return 0.0
+        self._validate_company_state_statutory()
         return self._delegate_statutory_service(LWFService, 'compute_lwf_employer')
 
     # -------------------------------------------------------------------------
@@ -1213,6 +1280,7 @@ else:
         Delegates computation to ProfessionalTaxService via _delegate_statutory_service DRY helper.
         Thin orchestration layer containing zero business logic.
         """
+        self._validate_company_state_statutory()
         import logging
         _logger = logging.getLogger(__name__)
         _logger.warning(">>> hds_in_compute_professional_tax() CALLED")
@@ -1236,9 +1304,75 @@ else:
     # -------------------------------------------------------------------------
     # WAGE RESOLUTION HELPERS
     # -------------------------------------------------------------------------
+    def _get_earned_wage_ratio(self, localdict=None):
+        """
+        Computes the ratio of earned wages to master wages (0.0 to 1.0)
+        taking into account attendance shortage, unpaid leaves, and worked days.
+        If an employee is completely absent (100% shortage or LOP), returns 0.0.
+        If no shortage or unpaid leave, returns 1.0.
+        """
+        self.ensure_one()
+        ld = localdict or {}
+        categories = ld.get('categories')
+        rules = ld.get('rules') if isinstance(ld.get('rules'), dict) else {}
+        worked_days = ld.get('worked_days')
+        contract = ld.get('contract') or self.contract_id
+
+        # 1. Total earnings from categories or contract
+        total_earnings = 0.0
+        if categories:
+            total_earnings = float(getattr(categories, 'BASIC', 0.0) or 0.0) + float(getattr(categories, 'ALW', 0.0) or 0.0)
+        if total_earnings <= 0.0 and contract:
+            total_earnings = float(getattr(contract, 'wage', 0.0) or 0.0)
+
+        # 2. Check shortage & unpaid deductions from evaluated rules
+        short_ded = 0.0
+        unpaid_ded = 0.0
+        if 'SHORT' in rules:
+            r = rules['SHORT']
+            short_ded = abs(float(getattr(r, 'total', 0.0) if hasattr(r, 'total') else (r.get('total', 0.0) if isinstance(r, dict) else 0.0)))
+        elif 'SHORT' in ld:
+            short_ded = abs(float(ld['SHORT'] or 0.0))
+
+        if 'UNPAID' in rules:
+            r = rules['UNPAID']
+            unpaid_ded = abs(float(getattr(r, 'total', 0.0) if hasattr(r, 'total') else (r.get('total', 0.0) if isinstance(r, dict) else 0.0)))
+        elif 'UNPAID' in ld:
+            unpaid_ded = abs(float(ld['UNPAID'] or 0.0))
+
+        total_ded = short_ded + unpaid_ded
+        if total_earnings > 0.0 and total_ded > 0.0:
+            if total_ded >= (total_earnings - 0.5):
+                return 0.0
+            return max(0.0, min(1.0, (total_earnings - total_ded) / total_earnings))
+
+        # 3. Check hours from worked_days or attendance schedule
+        shortage_hrs = 0.0
+        unpaid_hrs = 0.0
+        if worked_days:
+            if hasattr(worked_days, 'SHORTAGE') and worked_days.SHORTAGE:
+                shortage_hrs += float(getattr(worked_days.SHORTAGE, 'number_of_hours', 0.0) or 0.0)
+            if hasattr(worked_days, 'UNPAID') and worked_days.UNPAID:
+                unpaid_hrs += float(getattr(worked_days.UNPAID, 'number_of_hours', 0.0) or 0.0)
+
+        if contract and (shortage_hrs > 0.0 or unpaid_hrs > 0.0):
+            sched_hrs = 0.0
+            if hasattr(contract, '_get_period_scheduled_hours'):
+                sched_hrs = contract._get_period_scheduled_hours(self.date_from, self.date_to)
+            elif hasattr(contract, 'get_period_scheduled_hours'):
+                sched_hrs = contract.get_period_scheduled_hours(self.date_from, self.date_to)
+            if sched_hrs > 0.0:
+                loss_hrs = (shortage_hrs if getattr(contract, 'pay_by_attendance', False) else 0.0) + unpaid_hrs
+                if loss_hrs >= (sched_hrs - 0.1):
+                    return 0.0
+                return max(0.0, min(1.0, (sched_hrs - loss_hrs) / sched_hrs))
+
+        return 1.0
+
     def hds_in_get_actual_pf_wage(self, localdict=None):
         """
-        Calculates actual PF-eligible wage by summing components with hds_in_include_in_pf_wage = True.
+        Calculates actual PF-eligible wage by summing components with hds_in_include_in_pf_wage = True,
+        scaled by the earned wage ratio (factoring in attendance shortage and unpaid leaves).
         Does NOT read localdict['PF_WAGE'] to prevent circular dependency.
         """
         import logging
@@ -1246,6 +1380,9 @@ else:
 
         self.ensure_one()
         ld = localdict or self._get_payroll_eval_context(raise_if_missing=False)
+        if ld and ld.get('PF_WAGE') is not None and float(ld.get('PF_WAGE', 0.0) or 0.0) > 0.0:
+            return float(ld['PF_WAGE'])
+
         pf_wage = 0.0
 
         # Scope rules strictly to current salary structure when available
@@ -1273,13 +1410,15 @@ else:
                 amount = float(val or 0.0)
                 _logger.info("PF Rule %s -> %s", rule.code, amount)
                 pf_wage += amount
-            return pf_wage
+            ratio = self._get_earned_wage_ratio(localdict=ld)
+            return round(pf_wage * ratio, 2)
 
         for line in self.line_ids:
             if line.salary_rule_id.hds_in_include_in_pf_wage and line.salary_rule_id.code != 'PF_WAGE':
                 pf_wage += line.total
 
-        return pf_wage
+        ratio = self._get_earned_wage_ratio(localdict=ld)
+        return round(pf_wage * ratio, 2)
 
     def get_pf_eligible_wage(self, localdict=None):
         """Alias for hds_in_get_actual_pf_wage for backwards compatibility."""
@@ -1446,16 +1585,29 @@ else:
         lop_days = sum(w.number_of_days for w in self.worked_days_line_ids if (w.code or '').upper() in ('UNPAID', 'ABSENT')) if self.worked_days_line_ids else 0.0
         lop_rev_days = sum(w.number_of_days for w in self.worked_days_line_ids if 'REV' in (w.code or '').upper()) if self.worked_days_line_ids else 0.0
 
-        # Bank Details - Fetch active bank account via employee or work contact / user partner relation
-        bank_acc = getattr(emp, 'bank_account_id', False) or getattr(emp, 'primary_bank_account_id', False) or (emp.bank_account_ids[0] if getattr(emp, 'bank_account_ids', False) else False)
-        if not bank_acc:
-            partner = getattr(emp, 'work_contact_id', False) or (emp.user_id.partner_id if getattr(emp, 'user_id', False) else None)
-            if partner and getattr(partner, 'bank_ids', False):
-                bank_acc = partner.bank_ids[0]
+        # Payment Mode & Bank Details
+        mode_key = self.hds_in_payment_mode or (getattr(emp, 'hds_in_payment_mode', False) if emp else False) or 'bank_transfer'
+        mode_labels = {
+            'bank_transfer': 'BANK TRANSFER',
+            'neft_rtgs': 'NEFT / RTGS',
+            'cheque': 'CHEQUE',
+            'cash': 'CASH',
+            'upi': 'UPI',
+        }
+        payment_mode = mode_labels.get(mode_key, mode_key.upper().replace('_', ' '))
 
-        bank_name = bank_acc.bank_id.name if bank_acc and bank_acc.bank_id else '-'
-        acc_no = bank_acc.acc_number if bank_acc else '-'
-        payment_mode = getattr(emp, 'hds_in_bank_account_type', 'BANK TRANSFER') or 'BANK TRANSFER'
+        if mode_key == 'cash':
+            bank_name = 'N/A'
+            acc_no = 'N/A'
+        else:
+            bank_acc = getattr(emp, 'bank_account_id', False) or getattr(emp, 'primary_bank_account_id', False) or (emp.bank_account_ids[0] if getattr(emp, 'bank_account_ids', False) else False)
+            if not bank_acc:
+                partner = getattr(emp, 'work_contact_id', False) or (emp.user_id.partner_id if getattr(emp, 'user_id', False) else None)
+                if partner and getattr(partner, 'bank_ids', False):
+                    bank_acc = partner.bank_ids[0]
+
+            bank_name = bank_acc.bank_id.name if bank_acc and bank_acc.bank_id else '-'
+            acc_no = bank_acc.acc_number if bank_acc else '-'
 
         # Earnings lines vs Deductions lines
         earnings_lines = []
@@ -1546,23 +1698,75 @@ else:
         cess_obj = tds_res.health_education_cess
         monthly_obj = tds_res.monthly_tds_distribution
 
-        b_tot = getattr(sal_proj, 'total_basic', 0.0) if sal_proj else 0.0
-        hra_tot = getattr(sal_proj, 'total_hra', 0.0) if sal_proj else 0.0
-        conv_tot = getattr(sal_proj, 'total_conveyance', 0.0) if sal_proj else 0.0
-        med_tot = getattr(sal_proj, 'total_medical', 0.0) if sal_proj else 0.0
-        spec_tot = getattr(sal_proj, 'total_special', 0.0) if sal_proj else 0.0
+        contract = self.contract_id or (emp.version_id if hasattr(emp, 'version_id') else False)
+        rem_months = getattr(sal_proj, 'months_remaining', max(0, 12 - len(past_slips)))
 
-        b_curr = next((l['amount'] for l in earnings_lines if 'BASIC' in l['code']), b_tot / 12.0)
-        hra_curr = next((l['amount'] for l in earnings_lines if 'HRA' in l['code']), hra_tot / 12.0)
+        b_tot = getattr(sal_proj, 'total_basic', 0.0) if sal_proj else 0.0
+        if b_tot == 0.0 and contract:
+            b_tot = ytd_map.get('BASIC', 0.0) + (float(getattr(contract, 'basic_salary', 0.0) or getattr(contract, 'wage', 0.0) or 0.0) * 12.0)
+
+        hra_tot = getattr(sal_proj, 'total_hra', 0.0) if sal_proj else 0.0
         hra_ex = getattr(deduct, 'hra_exemption', 0.0) if deduct else 0.0
+
+        da_tot = getattr(sal_proj, 'total_da', 0.0) if sal_proj else 0.0
+        if da_tot == 0.0 and contract and getattr(contract, 'da', 0.0):
+            da_tot = ytd_map.get('DA', 0.0) + (float(getattr(contract, 'da', 0.0) or 0.0) * 12.0)
+
+        lta_tot = getattr(sal_proj, 'total_lta', 0.0) if sal_proj else 0.0
+        lta_ex = getattr(deduct, 'lta_exemption', 0.0) if deduct else 0.0
+
+        def _get_projected_component(code, field_name):
+            monthly_val = float(getattr(contract, field_name, 0.0) or 0.0) if contract and hasattr(contract, field_name) else 0.0
+            line = self.line_ids.filtered(lambda l: (l.code or '').upper() == code)
+            curr_val = float(line[0].total or 0.0) if line else monthly_val
+            ytd_val = ytd_map.get(code, 0.0)
+            if self.state in ('done', 'paid'):
+                val = ytd_val + (monthly_val * rem_months)
+            else:
+                val = ytd_val + curr_val + (monthly_val * max(0, rem_months - 1))
+            if not past_slips and self.state not in ('done', 'paid'):
+                val = monthly_val * 12.0
+            return max(0.0, val)
+
+        fixed_tot = _get_projected_component('FIXED', 'fixed_allowance')
+        std_tot = _get_projected_component('STD_ALW', 'standard_allowance')
+        perf_tot = _get_projected_component('PERF_BONUS', 'performance_bonus')
+        ret_tot = _get_projected_component('RETENTION_BONUS', 'retention_bonus')
+        conv_tot = getattr(sal_proj, 'total_conveyance', 0.0) if sal_proj else _get_projected_component('CONV', 'travel_allowance')
+        med_tot = getattr(sal_proj, 'total_medical', 0.0) if sal_proj else _get_projected_component('MED', 'medical_allowance')
+        meal_tot = _get_projected_component('MEAL', 'meal_allowance')
 
         tax_comp_income = [
             {'head': 'Basic Salary', 'annual': b_tot, 'exempt': 0.0, 'taxable': b_tot},
             {'head': 'House Rent Allowance', 'annual': hra_tot, 'exempt': hra_ex, 'taxable': max(0.0, hra_tot - hra_ex)},
-            {'head': 'Conveyance Allowance', 'annual': conv_tot, 'exempt': 0.0, 'taxable': conv_tot},
-            {'head': 'Medical Allowance', 'annual': med_tot, 'exempt': 0.0, 'taxable': med_tot},
-            {'head': 'Special Allowance', 'annual': spec_tot, 'exempt': 0.0, 'taxable': spec_tot},
         ]
+
+        if da_tot > 0:
+            tax_comp_income.append({'head': 'Dearness Allowance', 'annual': da_tot, 'exempt': 0.0, 'taxable': da_tot})
+        if fixed_tot > 0:
+            tax_comp_income.append({'head': 'Fixed Allowance', 'annual': fixed_tot, 'exempt': 0.0, 'taxable': fixed_tot})
+        if std_tot > 0:
+            tax_comp_income.append({'head': 'Standard Allowance', 'annual': std_tot, 'exempt': 0.0, 'taxable': std_tot})
+        if lta_tot > 0:
+            tax_comp_income.append({'head': 'Leave Travel Allowance', 'annual': lta_tot, 'exempt': lta_ex, 'taxable': max(0.0, lta_tot - lta_ex)})
+        if perf_tot > 0:
+            tax_comp_income.append({'head': 'Performance Bonus', 'annual': perf_tot, 'exempt': 0.0, 'taxable': perf_tot})
+        if ret_tot > 0:
+            tax_comp_income.append({'head': 'Retention Bonus', 'annual': ret_tot, 'exempt': 0.0, 'taxable': ret_tot})
+        if conv_tot > 0:
+            tax_comp_income.append({'head': 'Conveyance Allowance', 'annual': conv_tot, 'exempt': 0.0, 'taxable': conv_tot})
+        if med_tot > 0:
+            tax_comp_income.append({'head': 'Medical Allowance', 'annual': med_tot, 'exempt': 0.0, 'taxable': med_tot})
+        if meal_tot > 0:
+            tax_comp_income.append({'head': 'Meal Allowance', 'annual': meal_tot, 'exempt': 0.0, 'taxable': meal_tot})
+
+        # Remaining unaccounted allowances from TDS projection engine
+        engine_alw_tot = getattr(sal_proj, 'total_allowances', 0.0) if sal_proj else 0.0
+        accounted_alw = fixed_tot + std_tot + perf_tot + ret_tot + conv_tot + med_tot + meal_tot
+        remaining_alw = max(0.0, engine_alw_tot - accounted_alw)
+        if remaining_alw > 0.01:
+            tax_comp_income.append({'head': 'Special / Other Allowance', 'annual': remaining_alw, 'exempt': 0.0, 'taxable': remaining_alw})
+
         prev_emp_val = getattr(prev_emp, 'taxable_salary', 0.0) if prev_emp else 0.0
         if prev_emp_val > 0:
             tax_comp_income.append({'head': 'Previous Employer Salary', 'annual': prev_emp_val, 'exempt': 0.0, 'taxable': prev_emp_val})
@@ -1575,39 +1779,71 @@ else:
         gti_exempt = sum(i['exempt'] for i in tax_comp_income)
         gti_taxable = sum(i['taxable'] for i in tax_comp_income)
 
-        # Deductions (Old Regime)
+        # Resolve Tax Regime
+        regime_code = 'new'
+        regime_name = 'New Tax Regime (115BAC)'
+        if tds_res and getattr(tds_res, 'regime_code', False):
+            regime_code = str(tds_res.regime_code).lower()
+            regime_name = getattr(tds_res, 'regime_name', 'New Tax Regime (115BAC)' if regime_code == 'new' else 'Old Tax Regime')
+        else:
+            emp_reg = False
+            if fy:
+                emp_reg = self.env['tds.employee.tax.regime'].sudo().search([
+                    ('employee_id', '=', emp.id),
+                    ('financial_year_id', '=', fy.id)
+                ], limit=1)
+            if emp_reg and emp_reg.regime_id:
+                regime_code = (emp_reg.regime_id.code or 'new').lower()
+                regime_name = emp_reg.regime_id.name
+            else:
+                default_reg = self.env['tds.tax.regime'].search([('code', '=', 'new')], limit=1)
+                if default_reg:
+                    regime_code = 'new'
+                    regime_name = default_reg.name
+
+        is_new_regime = (regime_code == 'new')
+        regime_display = 'New Tax Regime (115BAC)' if is_new_regime else 'Old Tax Regime'
+        regime_header = 'NEW REGIME' if is_new_regime else 'OLD REGIME'
+
+        # Deductions
         decl = self.env['tds.employee.declaration'].search([
             ('employee_id', '=', emp.id),
             ('state', '!=', 'rejected')
         ], order='id desc', limit=1)
 
         std_ded = getattr(deduct, 'standard_deduction', 50000.0) if deduct else 50000.0
-        sec_80c = getattr(deduct, 'c6a_80c_eligible', 0.0) if deduct else 0.0
-        sec_80d = getattr(deduct, 'c6a_80d_eligible', 0.0) if deduct else 0.0
-        sec_80ccd1b = getattr(deduct, 'c6a_80ccd1b_eligible', 0.0) if deduct else 0.0
-        sec_24b = getattr(deduct, 'home_loan_interest_24b', 0.0) if deduct else 0.0
-
-        if decl:
-            if not sec_80c:
-                sec_80c = min(150000.0, getattr(decl, 'decl_80c_total_declared', 0.0) or 0.0)
-            if not sec_80d:
-                sec_80d = getattr(decl, 'decl_80d_total_declared', 0.0) or 0.0
-            if not sec_80ccd1b:
-                sec_80ccd1b = getattr(decl, 'decl_80ccd1b_nps', 0.0) or 0.0
-            if not sec_24b:
-                sec_24b = getattr(decl, 'decl_24b_self_interest', 0.0) or 0.0
-
         tax_comp_deductions = [
             {'name': 'Standard Deduction [u/s 16(ia)]', 'amount': std_ded},
         ]
-        if sec_80c > 0:
-            tax_comp_deductions.append({'name': 'Section 80C (PPF/LIC/EPF/etc)', 'amount': sec_80c})
-        if sec_80d > 0:
-            tax_comp_deductions.append({'name': 'Section 80D (Health Insurance)', 'amount': sec_80d})
-        if sec_80ccd1b > 0:
-            tax_comp_deductions.append({'name': 'Section 80CCD(1B) (NPS)', 'amount': sec_80ccd1b})
-        if sec_24b > 0:
-            tax_comp_deductions.append({'name': 'Section 24(b) (Home Loan Interest)', 'amount': sec_24b})
+
+        if not is_new_regime:
+            sec_80c = getattr(deduct, 'c6a_80c_eligible', 0.0) if deduct else 0.0
+            sec_80d = getattr(deduct, 'c6a_80d_eligible', 0.0) if deduct else 0.0
+            sec_80ccd1b = getattr(deduct, 'c6a_80ccd1b_eligible', 0.0) if deduct else 0.0
+            sec_24b = getattr(deduct, 'home_loan_interest_24b', 0.0) if deduct else 0.0
+
+            if decl:
+                if not sec_80c:
+                    sec_80c = min(150000.0, getattr(decl, 'decl_80c_total_declared', 0.0) or 0.0)
+                if not sec_80d:
+                    sec_80d = getattr(decl, 'decl_80d_total_declared', 0.0) or 0.0
+                if not sec_80ccd1b:
+                    sec_80ccd1b = getattr(decl, 'decl_80ccd1b_nps', 0.0) or 0.0
+                if not sec_24b:
+                    sec_24b = getattr(decl, 'decl_24b_self_interest', 0.0) or 0.0
+
+            if sec_80c > 0:
+                tax_comp_deductions.append({'name': 'Section 80C (PPF/LIC/EPF/etc)', 'amount': sec_80c})
+            if sec_80d > 0:
+                tax_comp_deductions.append({'name': 'Section 80D (Health Insurance)', 'amount': sec_80d})
+            if sec_80ccd1b > 0:
+                tax_comp_deductions.append({'name': 'Section 80CCD(1B) (NPS)', 'amount': sec_80ccd1b})
+            if sec_24b > 0:
+                tax_comp_deductions.append({'name': 'Section 24(b) (Home Loan Interest)', 'amount': sec_24b})
+        else:
+            sec_80ccd2 = getattr(deduct, 'c6a_80ccd2_eligible', 0.0) if deduct else 0.0
+            if sec_80ccd2 > 0:
+                tax_comp_deductions.append({'name': 'Section 80CCD(2) (Employer NPS)', 'amount': sec_80ccd2})
 
         net_taxable_income = getattr(tax_inc, 'net_taxable_income', max(0.0, gti_taxable - sum(d['amount'] for d in tax_comp_deductions)))
         base_tax = getattr(slab, 'base_tax_liability', 0.0) if slab else 0.0
@@ -1625,16 +1861,13 @@ else:
         projected_monthly_tds = round(remaining_tds_liability / remaining_months, 2) if remaining_months > 0 else 0.0
 
         tax_rows = [
-            ('Basic', b_tot - b_curr, b_curr, 0.0, b_tot),
-            ('House Rent Allowance', hra_tot - hra_curr, hra_curr, hra_ex, max(0.0, hra_tot - hra_ex)),
-            ('Conveyance Allowance', conv_tot, 0.0, 0.0, conv_tot),
-            ('Medical', med_tot, 0.0, 0.0, med_tot),
-            ('Special Allowance', spec_tot, 0.0, 0.0, spec_tot),
+            (inc['head'], inc['annual'], 0.0, inc['exempt'], inc['taxable'])
+            for inc in tax_comp_income
         ]
 
         investments = []
         hra_declarations = []
-        if decl:
+        if decl and not is_new_regime:
             c6a_val = getattr(decl, 'decl_80c_total_declared', 0.0) or 0.0
             if c6a_val > 0:
                 investments.append(('Provident Fund & Specified Investments (80C)', c6a_val))
@@ -1696,5 +1929,8 @@ else:
             'investments': investments,
             'hra_declarations': hra_declarations,
             'decl': decl,
+            'regime_code': regime_code,
+            'regime_display': regime_display,
+            'regime_header': regime_header,
         }
 

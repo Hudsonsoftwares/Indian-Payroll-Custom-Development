@@ -57,8 +57,8 @@ class TestPayrollWorkLocationService(TransactionCase):
             'company_id': self.company.id,
         })
 
-    def test_01_primary_work_location_state(self):
-        """Should resolve state_mh via employee.work_location_id.address_id.state_id."""
+    def test_01_primary_work_address_state(self):
+        """Should resolve state_ka via employee.address_id.state_id as Primary priority even if work_location_id is present."""
         employee = self.env['hr.employee'].create({
             'name': 'Employee Location Test 1',
             'company_id': self.company.id,
@@ -66,18 +66,18 @@ class TestPayrollWorkLocationService(TransactionCase):
             'address_id': self.partner_emp_addr.id,
         })
         state = self.location_service.get_work_state(employee)
-        self.assertEqual(state, self.state_mh)
+        self.assertEqual(state, self.state_ka)
 
-    def test_02_secondary_direct_address_state(self):
-        """Should resolve state_ka via employee.address_id.state_id when work_location_id is absent."""
+    def test_02_secondary_work_location_state(self):
+        """Should resolve state_mh via employee.work_location_id.address_id.state_id when address_id is absent."""
         employee = self.env['hr.employee'].create({
             'name': 'Employee Location Test 2',
             'company_id': self.company.id,
-            'work_location_id': False,
-            'address_id': self.partner_emp_addr.id,
+            'work_location_id': self.work_location.id,
+            'address_id': False,
         })
         state = self.location_service.get_work_state(employee)
-        self.assertEqual(state, self.state_ka)
+        self.assertEqual(state, self.state_mh)
 
     def test_03_fallback_company_registered_state(self):
         """Should resolve state_dl via employee.company_id.partner_id.state_id when both locations are absent."""

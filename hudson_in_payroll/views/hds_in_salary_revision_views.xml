@@ -5,7 +5,10 @@
         <field name="name">hds.in.salary.revision.view.list</field>
         <field name="model">hds.in.salary.revision</field>
         <field name="arch" type="xml">
-            <list string="Salary Revisions" create="false" edit="false" delete="false">
+            <list string="Salary Revisions" js_class="hds_salary_revision_list" create="true" edit="false" delete="false">
+                <header>
+                    <button name="%(hudson_in_payroll.action_hds_in_salary_revision_wizard)d" string="New Salary Revision" type="action" class="btn-primary"/>
+                </header>
                 <field name="name"/>
                 <field name="effective_date" optional="show"/>
                 <field name="employee_id"/>
@@ -27,9 +30,13 @@
         <field name="name">hds.in.salary.revision.view.form</field>
         <field name="model">hds.in.salary.revision</field>
         <field name="arch" type="xml">
-            <form string="Salary Revision History" create="false" edit="false" delete="false">
+            <form string="Salary Revision History" create="true" edit="false" delete="false">
                 <header>
-                    <field name="state" widget="statusbar" statusbar_visible="approved"/>
+                    <button name="action_launch_wizard" string="Launch Salary Revision Wizard" type="object" class="btn-primary" invisible="id"/>
+                    <button name="action_approve" string="Approve" type="object" class="btn-primary" invisible="state != 'draft'"/>
+                    <button name="action_cancel" string="Cancel Revision" type="object" class="btn-danger" invisible="state != 'approved'" confirm="Are you sure you want to cancel this Salary Revision? This will revert the employee's wage to the previous amount."/>
+                    <button name="action_draft" string="Set to Draft" type="object" class="btn-secondary" invisible="state != 'cancelled'"/>
+                    <field name="state" widget="statusbar" statusbar_visible="draft,approved,cancelled"/>
                 </header>
                 <sheet>
                     <div class="oe_title">
@@ -95,31 +102,60 @@
                             </group>
 
                             <!-- ESIC CONTRIBUTION PERIOD STATUTORY STATUS PANEL -->
-                            <group string="ESIC Contribution Period Status" class="w-100">
-                                <div class="card p-3 mb-2 bg-light border-0 col-12">
-                                    <div class="row">
-                                        <div class="col-md-6 border-end">
-                                            <h6 class="text-primary font-weight-bold">Current Contribution Period</h6>
-                                            <p class="mb-1 text-muted"><field name="esic_cur_period_label" readonly="1" nolabel="1"/></p>
-                                            <field name="esic_cur_period_status" widget="boolean_toggle" readonly="1" string="Current Period Eligibility"/>
-                                        </div>
-                                        <div class="col-md-6">
-                                            <h6 class="text-primary font-weight-bold">Next Contribution Period</h6>
-                                            <p class="mb-1 text-muted"><field name="esic_next_period_label" readonly="1" nolabel="1"/></p>
-                                            <field name="esic_next_period_status" widget="boolean_toggle" readonly="1" string="Next Period Eligibility"/>
+                            <div class="w-100 mt-4">
+                                <separator string="ESIC Contribution Period Status" class="fw-bold mb-3"/>
+                                <div class="row g-3">
+                                    <!-- Left Card: Current Period -->
+                                    <div class="col-12 col-md-6">
+                                        <div class="card h-100 p-3 shadow-sm border" style="border-radius: 8px; background: rgba(128,128,128,0.06);">
+                                            <div class="d-flex justify-content-between align-items-center mb-2">
+                                                <span class="fw-bold text-uppercase small text-muted">Current Period</span>
+                                                <field name="esic_cur_period_status" widget="boolean_toggle" readonly="1" string="Current Period Eligibility"/>
+                                            </div>
+                                            <div class="fs-6 fw-bold text-primary mb-1">
+                                                <field name="esic_cur_period_label" readonly="1" nolabel="1"/>
+                                            </div>
+                                            <div class="small text-muted">
+                                                Active statutory contribution period status.
+                                            </div>
                                         </div>
                                     </div>
-                                    <div class="alert alert-warning mt-2 mb-0" role="alert" invisible="not esic_next_period_reason">
-                                        <i class="fa fa-exclamation-triangle me-1" title="Warning" aria-label="Warning" role="img"></i>
-                                        <strong>Reason:</strong> <field name="esic_next_period_reason" readonly="1" nolabel="1"/>
-                                    </div>
-                                    <div class="alert alert-info mt-2 mb-0" role="alert">
-                                        <small>
-                                            <strong>Informational Note:</strong> ESIC eligibility is governed by statutory contribution periods. A salary revision during an active contribution period does not immediately stop ESIC deductions. Eligibility is automatically re-evaluated from the beginning of the next contribution period based on the employee's wage on that date.
-                                        </small>
+
+                                    <!-- Right Card: Next Period -->
+                                    <div class="col-12 col-md-6">
+                                        <div class="card h-100 p-3 shadow-sm border" style="border-radius: 8px; background: rgba(128,128,128,0.06);">
+                                            <div class="d-flex justify-content-between align-items-center mb-2">
+                                                <span class="fw-bold text-uppercase small text-muted">Next Period</span>
+                                                <field name="esic_next_period_status" widget="boolean_toggle" readonly="1" string="Next Period Eligibility"/>
+                                            </div>
+                                            <div class="fs-6 fw-bold text-primary mb-1">
+                                                <field name="esic_next_period_label" readonly="1" nolabel="1"/>
+                                            </div>
+                                            <div class="small text-muted">
+                                                Eligibility re-evaluated from next period start.
+                                            </div>
+                                        </div>
                                     </div>
                                 </div>
-                            </group>
+
+                                <!-- Warning Alert if Reason exists -->
+                                <div class="alert alert-warning d-flex align-items-center mt-3 mb-2 p-2" role="alert" invisible="not esic_next_period_reason" style="border-radius: 6px;">
+                                    <i class="fa fa-exclamation-triangle fs-5 me-2 flex-shrink-0"/>
+                                    <div>
+                                        <strong>Wage Ceiling Notice: </strong>
+                                        <field name="esic_next_period_reason" readonly="1" nolabel="1"/>
+                                    </div>
+                                </div>
+
+                                <!-- Informational Note -->
+                                <div class="alert alert-info d-flex align-items-start mt-2 mb-2 p-2" role="alert" style="border-radius: 6px; font-size: 0.85rem;">
+                                    <i class="fa fa-info-circle fs-5 me-2 mt-1 flex-shrink-0"/>
+                                    <div>
+                                        <strong>Statutory Note: </strong>
+                                        ESIC eligibility is governed by fixed half-yearly contribution periods (Apr–Sep &amp; Oct–Mar). A salary revision during an active period does not immediately stop ESIC deductions; re-evaluation applies automatically from the start of the next period.
+                                    </div>
+                                </div>
+                            </div>
                         </page>
 
                         <page string="Reason &amp; Audit Trail">

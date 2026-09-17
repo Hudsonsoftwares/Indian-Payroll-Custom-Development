@@ -75,8 +75,8 @@
                 <tr>
                     <td style="padding: 3px 5px; font-weight: bold; border-right: 1px solid #000000; background: #f4f6f8;">Aadhaar</td>
                     <td style="padding: 3px 5px; border-right: 1px solid #000000;"><t t-esc="pdata['aadhaar']"/></td>
-                    <td style="padding: 3px 5px; font-weight: bold; border-right: 1px solid #000000; background: #f4f6f8;">-</td>
-                    <td style="padding: 3px 5px;">-</td>
+                    <td style="padding: 3px 5px; font-weight: bold; border-right: 1px solid #000000; background: #f4f6f8;">Tax Regime</td>
+                    <td style="padding: 3px 5px;"><t t-esc="pdata.get('regime_display', '-')"/></td>
                 </tr>
             </table>
 
@@ -164,7 +164,7 @@
                         GROSS INCOME &amp; EXEMPTIONS (ANNUAL PROJECTED)
                     </td>
                     <td colspan="2" style="width: 50%; padding: 3px 5px; border-bottom: 1px solid #000000; text-align: left;">
-                        DEDUCTIONS (OLD REGIME) &amp; TAX COMPUTATION
+                        DEDUCTIONS (<t t-esc="pdata.get('regime_header', 'OLD REGIME')"/>) &amp; TAX COMPUTATION
                     </td>
                 </tr>
                 <tr>

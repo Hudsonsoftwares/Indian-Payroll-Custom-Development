@@ -76,10 +76,6 @@ class HrVersion(models.Model):
     def default_get(self, fields_list):
         res = super(HrVersion, self).default_get(fields_list)
         company = self.env.company
-        if 'standard_working_days_per_month' in fields_list and 'standard_working_days_per_month' not in res:
-            res['standard_working_days_per_month'] = company.standard_working_days_per_month or 26.0
-        if 'standard_hours_per_day' in fields_list and 'standard_hours_per_day' not in res:
-            res['standard_hours_per_day'] = company.standard_hours_per_day or 8.0
         if 'overtime_multiplier' in fields_list and 'overtime_multiplier' not in res:
             res['overtime_multiplier'] = company.overtime_multiplier or 1.0
         if 'pay_overtime' in fields_list and 'pay_overtime' not in res:
@@ -244,6 +240,12 @@ class HrVersion(models.Model):
         data = self.env['hr.payslip']._get_attendance_vs_schedule(self, date_from, date_to)
         return data.get('scheduled_hours', 0.0)
 
+    def _get_period_scheduled_days(self, date_from, date_to):
+        """Private helper: Returns total scheduled working days for the period from resource.calendar."""
+        self.ensure_one()
+        data = self.env['hr.payslip']._get_attendance_vs_schedule(self, date_from, date_to)
+        return data.get('scheduled_days', 0.0)
+
     def get_period_shortage_rate(self, date_from, date_to):
         """Public method: Returns hourly shortage rate for the payslip period."""
         self.ensure_one()
@@ -253,6 +255,15 @@ class HrVersion(models.Model):
             sched_hrs = self._get_period_scheduled_hours(date_from, date_to)
             return (self.wage / sched_hrs) if sched_hrs > 0.0 else 0.0
         return self.shortage_deduction_rate_per_hour or 0.0
+
+    def get_period_day_rate(self, date_from, date_to):
+        """Public method: Returns daily rate for the payslip period based on scheduled days."""
+        self.ensure_one()
+        sched_days = self._get_period_scheduled_days(date_from, date_to)
+        if sched_days > 0.0:
+            return self.wage / sched_days
+        divisor = self.standard_working_days_per_month or 26.0
+        return self.wage / divisor if divisor else 0.0
 
     def get_period_overtime_rate(self, date_from, date_to):
         """Public method: Returns hourly overtime rate for the payslip period."""

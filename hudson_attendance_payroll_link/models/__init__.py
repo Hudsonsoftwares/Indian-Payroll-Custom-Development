@@ -8,3 +8,4 @@ from . import hr_attendance
 from . import hudson_attendance_anomaly
 from . import hudson_attendance_regularization
 from . import hr_employee
+from . import resource_calendar_leaves

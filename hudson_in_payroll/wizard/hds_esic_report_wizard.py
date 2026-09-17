@@ -12,9 +12,10 @@ except ImportError:
     xlsxwriter = None
 
 
-class HdsEsicReportWizard(models.TransientModel):
+class HdsEsicReportWizard(models.Model):
     _name = 'hds.esic.report.wizard'
     _description = 'Employees State Insurance (ESI) Report Wizard'
+    _order = 'id desc'
 
     @api.model
     def _default_year(self):
@@ -308,9 +309,22 @@ class HdsEsicReportWizard(models.TransientModel):
         })
 
         return {
-            'type': 'ir.actions.act_window',
-            'res_model': self._name,
-            'res_id': self.id,
-            'view_mode': 'form',
-            'target': 'current',
+            'type': 'ir.actions.act_url',
+            'url': f'/web/content/?model={self._name}&id={self.id}&field=xlsx_file&filename_field=xlsx_filename&download=true',
+            'target': 'self',
         }
+
+    def web_save(self, vals, specification: dict, next_id=None):
+        res = super().web_save(vals, specification, next_id=next_id)
+        for rec in self:
+            try:
+                data = rec._get_esic_data()
+                rec.write({
+                    'record_count': data.get('record_count', 0),
+                    'total_esi_wages': data.get('tot_wages', 0.0),
+                    'total_ee_esic': data.get('tot_ee', 0.0),
+                    'total_er_esic': data.get('tot_er', 0.0),
+                })
+            except Exception:
+                pass
+        return super().web_save({}, specification, next_id=next_id)

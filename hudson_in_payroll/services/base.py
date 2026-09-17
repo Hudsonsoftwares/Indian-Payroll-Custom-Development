@@ -11,7 +11,7 @@ class BaseStatutoryService:
     def __init__(self, env):
         self.env = env
 
-    def get_parameter(self, code, date=None, as_decimal=True):
+    def get_parameter(self, code, date=None, as_decimal=False):
         """Delegates parameter lookup to hr.rule.parameter with date effective rules."""
         return self.env['hr.rule.parameter'].get_parameter(code, date=date, as_decimal=as_decimal)
 

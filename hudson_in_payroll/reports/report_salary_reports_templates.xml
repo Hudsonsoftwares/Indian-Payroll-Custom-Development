@@ -698,35 +698,35 @@
                     <table class="rpt-table">
                         <thead>
                             <tr>
-                                <th style="width: 14%;">IP Number</th>
-                                <th style="width: 20%;">Employee Name</th>
-                                <th style="width: 8%;">Days Worked</th>
-                                <th style="width: 14%;" class="th-earn">Total Monthly Wages (₹)</th>
-                                <th style="width: 10%;">Reason Code</th>
-                                <th style="width: 11%;" class="th-ded">Employee Contrib (0.75%)</th>
-                                <th style="width: 11%;" class="th-er">Employer Contrib (3.25%)</th>
-                                <th style="width: 12%;" class="th-net">Total Remittance (4.0%)</th>
+                                <th style="width: 14%; text-align: center;">IP Number</th>
+                                <th class="text-left" style="width: 20%; text-align: left; padding-left: 6px;">Employee Name</th>
+                                <th style="width: 8%; text-align: center;">Days Worked</th>
+                                <th class="th-earn text-right" style="width: 14%; text-align: right; padding-right: 6px;">Total Monthly Wages (₹)</th>
+                                <th style="width: 10%; text-align: center;">Reason Code</th>
+                                <th class="th-ded text-right" style="width: 11%; text-align: right; padding-right: 6px;">Employee Contrib (0.75%)</th>
+                                <th class="th-er text-right" style="width: 11%; text-align: right; padding-right: 6px;">Employer Contrib (3.25%)</th>
+                                <th class="th-net text-right" style="width: 12%; text-align: right; padding-right: 6px;">Total Remittance (4.0%)</th>
                             </tr>
                         </thead>
                         <tbody>
                             <tr t-foreach="rows" t-as="r">
                                 <td class="text-center"><span t-esc="r['ip_number']"/></td>
-                                <td class="text-left"><strong><span t-esc="r['employee_name']"/></strong></td>
+                                <td class="text-left" style="padding-left: 6px;"><strong><span t-esc="r['employee_name']"/></strong></td>
                                 <td class="text-center"><span t-esc="r['number_of_days']"/></td>
-                                <td class="text-right"><span t-esc="'{:,.2f}'.format(r['total_monthly_wages'])"/></td>
+                                <td class="text-right" style="padding-right: 6px;"><span t-esc="'{:,.2f}'.format(r['total_monthly_wages'])"/></td>
                                 <td class="text-center"><span t-esc="r['reason_code'] or '-'"/></td>
-                                <td class="text-right"><span t-esc="'{:,.2f}'.format(r['employee_contribution'])"/></td>
-                                <td class="text-right"><span t-esc="'{:,.2f}'.format(r['employer_contribution'])"/></td>
-                                <td class="text-right" style="font-weight: bold; background-color: #EAF2E8;"><span t-esc="'{:,.2f}'.format(r['total_contribution'])"/></td>
+                                <td class="text-right" style="padding-right: 6px;"><span t-esc="'{:,.2f}'.format(r['employee_contribution'])"/></td>
+                                <td class="text-right" style="padding-right: 6px;"><span t-esc="'{:,.2f}'.format(r['employer_contribution'])"/></td>
+                                <td class="text-right" style="font-weight: bold; background-color: #EAF2E8; padding-right: 6px;"><span t-esc="'{:,.2f}'.format(r['total_contribution'])"/></td>
                             </tr>
                             <tr class="total-row">
-                                <td colspan="2" class="text-left">TOTAL (Total IPs: <span t-esc="len(rows)"/>)</td>
+                                <td colspan="2" class="text-left" style="padding-left: 6px;">TOTAL (Total IPs: <span t-esc="len(rows)"/>)</td>
                                 <td class="text-center">-</td>
-                                <td class="text-right"><span t-esc="'{:,.2f}'.format(data['tot_wages'])"/></td>
+                                <td class="text-right" style="padding-right: 6px;"><span t-esc="'{:,.2f}'.format(data['tot_wages'])"/></td>
                                 <td class="text-center">-</td>
-                                <td class="text-right"><span t-esc="'{:,.2f}'.format(data['tot_ee'])"/></td>
-                                <td class="text-right"><span t-esc="'{:,.2f}'.format(data['tot_er'])"/></td>
-                                <td class="text-right"><span t-esc="'{:,.2f}'.format(data['total_payable'])"/></td>
+                                <td class="text-right" style="padding-right: 6px;"><span t-esc="'{:,.2f}'.format(data['tot_ee'])"/></td>
+                                <td class="text-right" style="padding-right: 6px;"><span t-esc="'{:,.2f}'.format(data['tot_er'])"/></td>
+                                <td class="text-right" style="padding-right: 6px;"><span t-esc="'{:,.2f}'.format(data['total_payable'])"/></td>
                             </tr>
                         </tbody>
                     </table>

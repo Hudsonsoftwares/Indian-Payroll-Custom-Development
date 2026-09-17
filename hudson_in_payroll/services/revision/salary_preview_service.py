@@ -3,6 +3,8 @@ from odoo import fields
 from ..base import BaseStatutoryService
 from ..epf.epf_service import EPFService
 from ..esic.esic_service import ESICService
+from ..payroll.work_location_service import PayrollWorkLocationService
+from ..lwf.lwf_rate_service import LWFRateService
 
 
 class SimulationPayslip:
@@ -101,11 +103,20 @@ class SalaryPreviewService(BaseStatutoryService):
 
         # 4. Professional Tax & LWF Simulation
         pt_amount = 200.0 if revised_wage > 15000.0 else 0.0
-        lwf_amount = 20.0
+        lwf_amount = 0.0
+        er_lwf_amount = 0.0
+        if getattr(company, 'hds_in_enable_lwf', False) and getattr(employee, 'hds_in_lwf_applicable', False):
+            loc_svc = PayrollWorkLocationService(self.env)
+            rate_svc = LWFRateService(self.env)
+            work_state = loc_svc.get_work_state(employee)
+            rate_cfg = rate_svc.get_rate_config(work_state, eval_date=effective_date, company=company)
+            if rate_cfg:
+                lwf_amount = float(rate_cfg.emp_contribution or 0.0)
+                er_lwf_amount = float(rate_cfg.empl_contribution or 0.0)
 
         # 5. Employer Cost (CTC) Simulation
-        old_ctc = current_wage + old_er_pf + old_edli + (old_epf_wage * 0.005 if employee.hds_in_epf_applicable else 0.0) + old_er_esic
-        new_ctc = revised_wage + new_er_pf + new_edli + (new_epf_wage * 0.005 if employee.hds_in_epf_applicable else 0.0) + new_er_esic
+        old_ctc = current_wage + old_er_pf + old_edli + (old_epf_wage * 0.005 if employee.hds_in_epf_applicable else 0.0) + old_er_esic + er_lwf_amount
+        new_ctc = revised_wage + new_er_pf + new_edli + (new_epf_wage * 0.005 if employee.hds_in_epf_applicable else 0.0) + new_er_esic + er_lwf_amount
 
         # Statutory Contribution Period Details for UI Preview
         import datetime
@@ -117,7 +128,7 @@ class SalaryPreviewService(BaseStatutoryService):
         next_start, next_end = period_service.get_contribution_period_bounds(next_ref_date)
         esic_next_period_label = f"({next_start.strftime('%b %Y')} – {next_end.strftime('%b %Y')})"
 
-        esic_ceiling = period_service.get_parameter('hds_in_esic_pwd_wage_ceiling', date=next_start) if getattr(employee, 'hds_in_is_pwd', False) else period_service.get_parameter('hds_in_esic_wage_ceiling', date=next_start)
+        esic_ceiling = period_service.get_parameter('hds_in_esic_pwd_wage_ceiling', date=next_start, as_decimal=False) if getattr(employee, 'hds_in_is_pwd', False) else period_service.get_parameter('hds_in_esic_wage_ceiling', date=next_start, as_decimal=False)
         esic_next_period_status = bool(company.hds_in_esic_applicable and employee.hds_in_esic_applicable and (revised_wage <= esic_ceiling if esic_ceiling else True))
 
         if not esic_next_period_status and company.hds_in_esic_applicable and employee.hds_in_esic_applicable:
