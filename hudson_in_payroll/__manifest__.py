@@ -52,21 +52,12 @@
         'views/hds_salary_statement_report_views.xml',
         'views/payroll_menu_views.xml',
         'views/payroll_dashboard_views.xml',
-        'views/res_config_settings_views.xml',
         'wizard/tds_financial_year_wizard_views.xml',
         'views/tds_configuration_views.xml',
         'views/tds_section_declaration_views.xml',
         'views/tds_declaration_views.xml',
         'views/tds_lta_previous_employer_views.xml',
         'views/tds_house_property_loss_carryforward_views.xml',
-        'reports/report_statutory_tax_calculation_templates.xml',
-        'reports/report_payslip_custom_template.xml',
-        'reports/report_salary_reports_templates.xml',
-        'data/payroll_spreadsheet_dashboard_data.xml',
-
-
-
-
         'views/lwf_state_rate_views.xml',
         'views/pt_state_slab_views.xml',
         'views/pt_period_schedule_views.xml',
@@ -80,6 +71,11 @@
         'wizard/hds_in_bonus_import_wizard_views.xml',
         'views/hds_in_bonus_views.xml',
         'views/hr_leave_type_views.xml',
+        'views/res_config_settings_views.xml',
+        'reports/report_statutory_tax_calculation_templates.xml',
+        'reports/report_payslip_custom_template.xml',
+        'reports/report_salary_reports_templates.xml',
+        'data/payroll_spreadsheet_dashboard_data.xml',
     ],
 
 

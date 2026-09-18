@@ -528,6 +528,7 @@ class HrEmployee(models.Model):
             'performance_bonus', 'retention_bonus', 'lta_allowance',
             'hds_in_pf_contribution_basis', 'hds_in_pf_employer_basis',
             'hds_in_epf_applicable', 'hds_in_eps_applicable', 'hds_in_esic_applicable', 'hds_in_lwf_applicable',
+            'hds_in_pt_applicable',
             'private_state_id', 'work_location_id', 'address_id', 'company_id',
             'hds_in_is_pwd', 'hds_in_is_international_worker'
         )):
@@ -540,6 +541,7 @@ class HrEmployee(models.Model):
         'performance_bonus', 'retention_bonus', 'lta_allowance',
         'hds_in_pf_contribution_basis', 'hds_in_pf_employer_basis',
         'hds_in_epf_applicable', 'hds_in_eps_applicable', 'hds_in_esic_applicable', 'hds_in_lwf_applicable',
+        'hds_in_pt_applicable',
         'private_state_id', 'work_location_id', 'address_id', 'company_id',
         'hds_in_is_pwd', 'hds_in_is_international_worker'
     )

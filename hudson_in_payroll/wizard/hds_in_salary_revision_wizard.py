@@ -1,6 +1,8 @@
 # -*- coding: utf-8 -*-
+# pyrefly: ignore [missing-import]
 from odoo import api, fields, models, _
-from odoo.exceptions import UserError, ValidationError
+# pyrefly: ignore [missing-import]
+from odoo.exceptions import ValidationError
 from ..services.revision.salary_preview_service import SalaryPreviewService
 from ..services.revision.salary_revision_service import SalaryRevisionService
 
@@ -373,7 +375,7 @@ class HdsInSalaryRevisionWizard(models.TransientModel):
                 manual_dict=manual_dict
             )
 
-            wizard.preview_show_pt = bool(preview['pt_amount'] > 0.0)
+            wizard.preview_show_pt = bool(preview.get('pt_applicable', False) or preview.get('pt_amount', 0.0) > 0.0)
             wizard.preview_show_lwf = bool(preview['lwf_amount'] > 0.0)
 
             wizard.preview_old_ctc = preview['old_ctc']

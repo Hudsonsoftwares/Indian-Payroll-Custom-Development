@@ -1,4 +1,5 @@
 # -*- coding: utf-8 -*-
+# pyrefly: ignore [missing-import]
 from odoo import fields
 from ..base import BaseStatutoryService
 from ..epf.epf_service import EPFService
@@ -17,7 +18,7 @@ class SimulationPayslip:
         self.env = env
         self.employee_id = employee
         self.company_id = employee.company_id or env.company
-        self.date_to = eval_date or fields.Date.today()
+        self.date_to = fields.Date.from_string(eval_date) if isinstance(eval_date, str) else (eval_date or fields.Date.today())
         self.id = False
         self.eval_ctx = eval_ctx
 
@@ -102,7 +103,35 @@ class SalaryPreviewService(BaseStatutoryService):
         new_er_esic = new_esic_service.compute_esic_employer(new_sim_payslip) if new_esic_app else 0.0
 
         # 4. Professional Tax & LWF Simulation
-        pt_amount = 200.0 if revised_wage > 15000.0 else 0.0
+        company_pt_enabled = getattr(company, 'hds_in_enable_professional_tax', True)
+        emp_pt_applicable = getattr(employee, 'hds_in_pt_applicable', False)
+        pt_applicable = False
+
+        old_pt_amount = 0.0
+        new_pt_amount = 0.0
+        if company_pt_enabled and emp_pt_applicable:
+            from ..professional_tax.professional_tax_service import ProfessionalTaxService
+            pt_service = ProfessionalTaxService(self.env)
+            old_res = pt_service.compute_pt(
+                employee=employee,
+                salary=current_wage,
+                eval_date=effective_date,
+                company=company,
+                is_simulation=True
+            )
+            old_pt_amount = float(old_res.amount or old_res.period_liability or 0.0) if old_res and old_res.is_valid else 0.0
+
+            new_res = pt_service.compute_pt(
+                employee=employee,
+                salary=revised_wage,
+                eval_date=effective_date,
+                company=company,
+                is_simulation=True
+            )
+            new_pt_amount = float(new_res.amount or new_res.period_liability or 0.0) if new_res and new_res.is_valid else 0.0
+            pt_applicable = bool((new_res and new_res.is_valid) or (old_res and old_res.is_valid) or new_pt_amount > 0.0 or old_pt_amount > 0.0)
+
+        pt_amount = new_pt_amount
         lwf_amount = 0.0
         er_lwf_amount = 0.0
         if getattr(company, 'hds_in_enable_lwf', False) and getattr(employee, 'hds_in_lwf_applicable', False):
@@ -164,6 +193,9 @@ class SalaryPreviewService(BaseStatutoryService):
             'esic_next_period_label': esic_next_period_label,
             'esic_next_period_status': esic_next_period_status,
             'esic_next_period_reason': esic_next_period_reason,
+            'pt_applicable': pt_applicable,
+            'old_pt_amount': old_pt_amount,
+            'new_pt_amount': new_pt_amount,
             'pt_amount': pt_amount,
             'lwf_amount': lwf_amount,
         }

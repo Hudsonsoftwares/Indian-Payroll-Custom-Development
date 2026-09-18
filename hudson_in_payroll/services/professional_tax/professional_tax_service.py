@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 import logging
+# pyrefly: ignore [missing-import]
 from odoo import fields
 from ..base import BaseStatutoryService
 from ..audit.audit_service import StatutoryAuditSession
@@ -30,9 +31,11 @@ class ProfessionalTaxResult:
         override_amount=None,
         is_valid=True,
         validation_status="VALID",
-        failure_reason=""
+        failure_reason="",
+        period_liability=0.0
     ):
         self.amount = amount
+        self.period_liability = period_liability if period_liability is not None else amount
         self.state = state
         self.company = company
         self.slab = slab
@@ -50,6 +53,7 @@ class ProfessionalTaxResult:
         """Returns a structured dictionary representation of the orchestrated result."""
         return {
             'amount': self.amount,
+            'period_liability': self.period_liability,
             'state_id': self.state.id if self.state else False,
             'state_name': self.state.name if self.state else False,
             'company_id': self.company.id if self.company else False,
@@ -202,7 +206,7 @@ class ProfessionalTaxService(BaseStatutoryService):
 
         return slip, target_emp, target_salary, target_date, target_company, target_gender
 
-    def compute_pt(self, payslip=None, employee=None, salary=0.0, eval_date=None, company=None, gender=None, localdict=None, state=None):
+    def compute_pt(self, payslip=None, employee=None, salary=0.0, eval_date=None, company=None, gender=None, localdict=None, state=None, is_simulation=False):
         """
         Orchestrates end-to-end Professional Tax computation via SOA components and periodicity strategies.
 
@@ -214,6 +218,7 @@ class ProfessionalTaxService(BaseStatutoryService):
         :param gender: str or None
         :param localdict: dict or None (payslip execution context)
         :param state: res.country.state recordset or None (optional override)
+        :param is_simulation: bool (True when simulating for salary revision/preview without deducting prior payslips)
         :return: ProfessionalTaxResult instance
         """
         slip, emp, sal, date_eval, comp, gdr = self._extract_context(
@@ -294,7 +299,8 @@ class ProfessionalTaxService(BaseStatutoryService):
                 period_liability=period_liability,
                 eval_date=date_eval,
                 current_slip=slip,
-                period_schedule=period_sched
+                period_schedule=period_sched,
+                is_simulation=is_simulation
             )
             _logger.warning("Statutory PT Liability: %s | Current Payroll Deduction: %s", period_liability, final_deduction)
 
@@ -315,7 +321,8 @@ class ProfessionalTaxService(BaseStatutoryService):
                 override_amount=calc_result.override_amount,
                 is_valid=True,
                 validation_status='VALID',
-                failure_reason="Professional Tax deduction calculated successfully."
+                failure_reason="Professional Tax deduction calculated successfully.",
+                period_liability=period_liability
             )
 
     def compute_pt_amount(self, payslip=None, employee=None, salary=0.0, eval_date=None, company=None, gender=None, localdict=None):

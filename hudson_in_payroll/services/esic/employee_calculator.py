@@ -1,5 +1,7 @@
 # -*- coding: utf-8 -*-
 import math
+# pyrefly: ignore [missing-import]
+from odoo import fields
 from ..base import BaseStatutoryService
 
 
@@ -50,6 +52,10 @@ class ESICEmployeeCalculator(BaseStatutoryService):
         # Case 2: Derive from date range, clamping to active employment dates
         date_from = getattr(payslip, 'date_from', False) or fields.Date.today()
         date_to = getattr(payslip, 'date_to', False) or fields.Date.today()
+        if isinstance(date_from, str):
+            date_from = fields.Date.from_string(date_from)
+        if isinstance(date_to, str):
+            date_to = fields.Date.from_string(date_to)
 
         contract = getattr(payslip, 'contract_id', None) or getattr(payslip, 'contract', None)
         emp = getattr(payslip, 'employee_id', None)

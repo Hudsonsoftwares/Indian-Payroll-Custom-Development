@@ -2,6 +2,7 @@
 import logging
 from abc import ABC, abstractmethod
 from datetime import date
+# pyrefly: ignore [missing-import]
 from odoo import fields
 from ..payroll.payroll_wage_aggregation_service import PayrollWageAggregationService
 
@@ -68,7 +69,8 @@ class AbstractPTPeriodicityStrategy(ABC):
         period_liability: float,
         eval_date: date,
         current_slip=None,
-        period_schedule=None
+        period_schedule=None,
+        is_simulation=False
     ) -> float:
         """
         Generic, configuration-driven algorithm calculating exact PT deduction for current payroll.
@@ -78,7 +80,13 @@ class AbstractPTPeriodicityStrategy(ABC):
         3. if Every Payroll -> deduct remaining_liability / remaining_eligible_payrolls (with exact residual rounding reconciliation)
         """
         from .pt_period_config_service import PTPeriodScheduleService
+        # pyrefly: ignore [missing-import]
         from odoo.tools import float_round
+
+        if is_simulation:
+            # In simulation mode (e.g. Salary Revision preview), return standard statutory slab liability
+            # without deducting prior actual payslips from the database
+            return float_round(period_liability or 0.0, precision_digits=2)
 
         sched_service = PTPeriodScheduleService(env)
 

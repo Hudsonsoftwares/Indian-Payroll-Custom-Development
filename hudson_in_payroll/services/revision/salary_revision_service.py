@@ -1,5 +1,7 @@
 # -*- coding: utf-8 -*-
+from dataclasses import fields
 import logging
+# pyrefly: ignore [missing-import]
 from odoo.exceptions import UserError, ValidationError
 from ..base import BaseStatutoryService
 from .salary_preview_service import SalaryPreviewService
@@ -83,10 +85,10 @@ class SalaryRevisionService(BaseStatutoryService):
             'new_employee_esic': preview['new_ee_esic'],
             'old_employer_esic': preview['old_er_esic'],
             'new_employer_esic': preview['new_er_esic'],
-            'old_pt_amount': 0.0,
-            'new_pt_amount': preview['pt_amount'],
-            'old_lwf_amount': 0.0,
-            'new_lwf_amount': preview['lwf_amount'],
+            'old_pt_amount': preview.get('old_pt_amount', 0.0),
+            'new_pt_amount': preview.get('new_pt_amount', preview.get('pt_amount', 0.0)),
+            'old_lwf_amount': preview.get('old_lwf_amount', 0.0),
+            'new_lwf_amount': preview.get('new_lwf_amount', preview.get('lwf_amount', 0.0)),
             'reason': wizard.reason,
             'notes': wizard.notes,
             'state': 'approved',
