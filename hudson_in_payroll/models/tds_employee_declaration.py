@@ -1,7 +1,9 @@
 import logging
 import math
 import re
+# pyrefly: ignore [missing-import]
 from odoo import api, fields, models, _
+# pyrefly: ignore [missing-import]
 from odoo.exceptions import UserError, ValidationError
 from ..services.tds.other_income_aggregation_service import OtherIncomeAggregationService
 
@@ -3853,7 +3855,7 @@ is_within_8_years=%s""",
             decl_80ccd2_val = rec.decl_80ccd2_employer_nps or (sum(float(l.usable_amount if l.usable_amount is not None else (l.declared_amount or 0.0)) for l in rec.declaration_line_ids if l.category == '80ccd2' and getattr(l, 'active', True)))
             if rec.decl_80ccd2_employer_nps > 0 or has_80ccd2_line:
                 emp = rec.employee_id
-                emp_type = kwargs.get('employer_type') if 'kwargs' in locals() else (getattr(emp, 'hds_in_employer_category', getattr(emp, 'employer_type', 'private')) if emp else 'private') or 'private'
+                emp_type = (getattr(emp, 'hds_in_employer_category', getattr(emp, 'employer_type', 'private')) if emp else 'private') or 'private'
                 nps_pct = tds_param_svc.get_employer_nps_limit(regime=rec.regime_code, employer_type=emp_type, eval_date=eval_date) or 10.0
                 nps_param_code = 'HDS_IN_TDS_NPS_LIMIT_NEW' if rec.regime_code == 'new' else ('HDS_IN_TDS_NPS_LIMIT_OLD_GOVT' if 'govt' in str(emp_type).lower() else 'HDS_IN_TDS_NPS_LIMIT_OLD_PRIVATE')
                 

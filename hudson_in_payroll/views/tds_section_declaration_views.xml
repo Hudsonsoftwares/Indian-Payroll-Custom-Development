@@ -16,7 +16,6 @@
                     <button name="action_submit_proofs" string="Submit Proof Documents" type="object" class="btn-primary" invisible="state not in ['declared', 'submitted']"/>
                     <button name="action_start_review" string="Start HR Verification" type="object" class="btn-info" groups="hudson_payroll_base.group_payroll_user,hudson_payroll_base.group_payroll_manager" invisible="state not in ['declared', 'submitted', 'proof_submitted']"/>
                     <button name="action_verify_proofs" string="Verify &amp; Approve Proofs" type="object" class="btn-success" groups="hudson_payroll_base.group_payroll_user,hudson_payroll_base.group_payroll_manager" invisible="state not in ['declared', 'submitted', 'proof_submitted', 'proof_under_review']"/>
-                    <button name="action_reject" string="Reject" type="object" class="btn-danger" groups="hudson_payroll_base.group_payroll_user,hudson_payroll_base.group_payroll_manager" invisible="state not in ['declared', 'submitted', 'proof_submitted', 'proof_under_review']"/>
                     <button name="action_reset_to_draft" string="Reset to Draft" type="object" class="btn-secondary" groups="hudson_payroll_base.group_payroll_user,hudson_payroll_base.group_payroll_manager" invisible="state == 'draft'"/>
                     <field name="state" widget="statusbar" statusbar_visible="draft,declared,proof_submitted,proof_under_review,proof_verified"/>
                 </header>
@@ -118,7 +117,6 @@
                     <button name="action_submit_proofs" string="Submit Proof Documents" type="object" class="btn-primary" invisible="state not in ['declared', 'submitted']"/>
                     <button name="action_start_review" string="Start HR Verification" type="object" class="btn-info" groups="hudson_payroll_base.group_payroll_user,hudson_payroll_base.group_payroll_manager" invisible="state not in ['declared', 'submitted', 'proof_submitted']"/>
                     <button name="action_verify_proofs" string="Verify &amp; Approve Proofs" type="object" class="btn-success" groups="hudson_payroll_base.group_payroll_user,hudson_payroll_base.group_payroll_manager" invisible="state not in ['declared', 'submitted', 'proof_submitted', 'proof_under_review']"/>
-                    <button name="action_reject" string="Reject" type="object" class="btn-danger" groups="hudson_payroll_base.group_payroll_user,hudson_payroll_base.group_payroll_manager" invisible="state not in ['declared', 'submitted', 'proof_submitted', 'proof_under_review']"/>
                     <button name="action_reset_to_draft" string="Reset to Draft" type="object" class="btn-secondary" groups="hudson_payroll_base.group_payroll_user,hudson_payroll_base.group_payroll_manager" invisible="state == 'draft'"/>
                     <field name="state" widget="statusbar" statusbar_visible="draft,declared,proof_submitted,proof_under_review,proof_verified"/>
                 </header>
@@ -207,7 +205,6 @@
                     <button name="action_submit_proofs" string="Submit Proof Documents" type="object" class="btn-primary" invisible="state not in ['declared', 'submitted']"/>
                     <button name="action_start_review" string="Start HR Verification" type="object" class="btn-info" groups="hudson_payroll_base.group_payroll_user,hudson_payroll_base.group_payroll_manager" invisible="state not in ['declared', 'submitted', 'proof_submitted']"/>
                     <button name="action_verify_proofs" string="Verify &amp; Approve Proofs" type="object" class="btn-success" groups="hudson_payroll_base.group_payroll_user,hudson_payroll_base.group_payroll_manager" invisible="state not in ['declared', 'submitted', 'proof_submitted', 'proof_under_review']"/>
-                    <button name="action_reject" string="Reject" type="object" class="btn-danger" groups="hudson_payroll_base.group_payroll_user,hudson_payroll_base.group_payroll_manager" invisible="state not in ['declared', 'submitted', 'proof_submitted', 'proof_under_review']"/>
                     <button name="action_reset_to_draft" string="Reset to Draft" type="object" class="btn-secondary" groups="hudson_payroll_base.group_payroll_user,hudson_payroll_base.group_payroll_manager" invisible="state == 'draft'"/>
                     <field name="state" widget="statusbar" statusbar_visible="draft,declared,proof_submitted,proof_under_review,proof_verified"/>
                 </header>

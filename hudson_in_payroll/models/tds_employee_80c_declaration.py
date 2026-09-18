@@ -1,6 +1,8 @@
 # -*- coding: utf-8 -*-
 import logging
+# pyrefly: ignore [missing-import]
 from odoo import api, fields, models, _
+# pyrefly: ignore [missing-import]
 from odoo.exceptions import ValidationError
 
 _logger = logging.getLogger(__name__)
