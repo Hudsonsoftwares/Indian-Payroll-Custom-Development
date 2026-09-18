@@ -1,6 +1,8 @@
 # -*- coding: utf-8 -*-
 import re
+# pyrefly: ignore [missing-import]
 from odoo import api, fields, models, _
+# pyrefly: ignore [missing-import]
 from odoo.exceptions import ValidationError
 
 
@@ -1176,7 +1178,7 @@ class HrEmployee(models.Model):
         if valid_emp_ids:
             for emp in self:
                 company = emp.company_id or self.env.company
-                fy_map[emp.id] = company.hds_in_default_tax_year or default_fy_fallback
+                fy_map[emp.id] = emp.hds_in_current_fy_id or company.hds_in_default_tax_year or default_fy_fallback
 
             all_fys = list(set(f.id for f in fy_map.values() if f))
             if all_fys:
@@ -1236,15 +1238,12 @@ class HrEmployee(models.Model):
 
     def _inverse_current_income_decl(self):
         today = fields.Date.today()
-        fy = self.env['tds.financial.year'].sudo().search([
+        default_fy_fallback = self.env['tds.financial.year'].sudo().search([
             ('start_date', '<=', today),
             ('end_date', '>=', today),
             ('active', '=', True),
             ('is_closed', '=', False)
         ], limit=1)
-
-        if not fy:
-            return
 
         income_fields_map = {
             'hds_in_savings_bank_interest': 'savings_bank_interest',
@@ -1261,28 +1260,32 @@ class HrEmployee(models.Model):
         }
 
         for emp in self:
-            if emp.id:
-                decl = self.env['tds.employee.income.declaration'].sudo().search([
-                    ('employee_id', '=', emp.id),
-                    ('financial_year_id', '=', fy.id)
-                ], limit=1)
-                if not decl:
-                    # Create empty income declaration shell if absent
-                    decl = self.env['tds.employee.income.declaration'].sudo().create({
-                        'employee_id': emp.id,
-                        'financial_year_id': fy.id,
-                    })
+            if not emp.id:
+                continue
+            company = emp.company_id or self.env.company
+            fy = emp.hds_in_current_fy_id or company.hds_in_default_tax_year or default_fy_fallback
+            if not fy:
+                continue
 
-                vals = {}
-                for emp_f, decl_f in income_fields_map.items():
-                    val = getattr(emp, emp_f, None)
-                    decl_val = float(getattr(decl, decl_f, 0.0) or 0.0)
-                    if val is not False and val is not None:
-                        float_val = float(val or 0.0)
-                        if float_val > 0.0 and abs(float_val - decl_val) > 0.001:
-                            vals[decl_f] = float_val
-                if vals:
-                    decl.sudo().write(vals)
+            decl = self.env['tds.employee.income.declaration'].sudo().search([
+                ('employee_id', '=', emp.id),
+                ('financial_year_id', '=', fy.id)
+            ], limit=1)
+            if not decl:
+                decl = self.env['tds.employee.income.declaration'].sudo().create({
+                    'employee_id': emp.id,
+                    'financial_year_id': fy.id,
+                })
+
+            vals = {}
+            for emp_f, decl_f in income_fields_map.items():
+                val = getattr(emp, emp_f, None)
+                decl_val = float(getattr(decl, decl_f, 0.0) or 0.0)
+                float_val = float(val or 0.0) if (val is not False and val is not None) else 0.0
+                if abs(float_val - decl_val) > 0.001:
+                    vals[decl_f] = float_val
+            if vals:
+                decl.sudo().write(vals)
 
     # -------------------------------------------------------------------------
     # SECTION 4: DEDUCTION DECLARATION HELPER FIELDS (Old Regime Only)
@@ -1374,12 +1377,30 @@ class HrEmployee(models.Model):
 
     def _compute_current_deduction_decl(self):
         today = fields.Date.today()
-        fy = self.env['tds.financial.year'].search([
+        default_fy_fallback = self.env['tds.financial.year'].sudo().search([
             ('start_date', '<=', today),
             ('end_date', '>=', today),
             ('active', '=', True),
             ('is_closed', '=', False)
         ], limit=1)
+
+        valid_emp_ids = [e.id for e in self if e.id]
+        fy_map = {}
+        decl_map = {}
+
+        if valid_emp_ids:
+            for emp in self:
+                company = emp.company_id or self.env.company
+                fy_map[emp.id] = emp.hds_in_current_fy_id or company.hds_in_default_tax_year or default_fy_fallback
+
+            all_fys = list(set(f.id for f in fy_map.values() if f))
+            if all_fys:
+                all_decls = self.env['tds.employee.declaration'].sudo().search([
+                    ('employee_id', 'in', valid_emp_ids),
+                    ('financial_year_id', 'in', all_fys)
+                ])
+                for d in all_decls:
+                    decl_map[(d.employee_id.id, d.financial_year_id.id)] = d
 
         for emp in self:
             # Default zero values
@@ -1404,6 +1425,9 @@ class HrEmployee(models.Model):
             emp.hds_in_decl_hra_landlord_name = False
             emp.hds_in_decl_hra_landlord_pan = False
             emp.hds_in_decl_hra_is_metro = False
+            emp.hds_in_decl_hra_own_residential_property_at_workplace = False
+            emp.hds_in_decl_hra_rent_period_from = False
+            emp.hds_in_decl_hra_rent_period_to = False
             emp.hds_in_decl_24b_self_interest = 0.0
             emp.hds_in_decl_80tta_interest = 0.0
             emp.hds_in_decl_80ttb_interest = 0.0
@@ -1415,11 +1439,9 @@ class HrEmployee(models.Model):
             emp.hds_in_decl_57iia_family_pension = 0.0
             emp.hds_in_decl_80cch_agniveer = 0.0
 
+            fy = fy_map.get(emp.id) if emp.id else False
             if fy and emp.id:
-                decl = self.env['tds.employee.declaration'].search([
-                    ('employee_id', '=', emp.id),
-                    ('financial_year_id', '=', fy.id)
-                ], limit=1)
+                decl = decl_map.get((emp.id, fy.id))
                 if decl:
                     for line in decl.declaration_line_ids:
                         cat = line.category
@@ -1445,7 +1467,6 @@ class HrEmployee(models.Model):
                             emp.hds_in_decl_80d_parents += amt
                             if line.is_senior_citizen:
                                 emp.hds_in_decl_80d_parents_is_senior = True
-
                         elif cat == '80d_preventive': emp.hds_in_decl_80d_preventive += amt
                         elif cat == 'hra':
                             emp.hds_in_decl_hra_annual_rent += amt
@@ -1468,22 +1489,41 @@ class HrEmployee(models.Model):
                             emp.hds_in_decl_80dd_amount += amt
                             if line.is_severe_disability:
                                 emp.hds_in_decl_80dd_is_severe = True
-
                         elif cat == 'other': emp.hds_in_decl_other_amount += amt
                         elif cat == '80ccd2': emp.hds_in_decl_80ccd2_employer_nps += amt
                         elif cat == '57iia': emp.hds_in_decl_57iia_family_pension += amt
                         elif cat == '80cch': emp.hds_in_decl_80cch_agniveer += amt
 
-                # Also check direct declaration fields if present
-                if decl:
-                    if not emp.hds_in_decl_hra_annual_rent and decl.decl_hra_annual_rent:
-                        emp.hds_in_decl_hra_annual_rent = decl.decl_hra_annual_rent
-                    if decl.decl_hra_landlord_name: emp.hds_in_decl_hra_landlord_name = decl.decl_hra_landlord_name
-                    if decl.decl_hra_landlord_pan: emp.hds_in_decl_hra_landlord_pan = decl.decl_hra_landlord_pan
-                    emp.hds_in_decl_hra_is_metro = bool(decl.decl_hra_is_metro)
-                    emp.hds_in_decl_hra_own_residential_property_at_workplace = bool(decl.decl_hra_own_residential_property_at_workplace)
-                    emp.hds_in_decl_hra_rent_period_from = decl.decl_hra_rent_period_from
-                    emp.hds_in_decl_hra_rent_period_to = decl.decl_hra_rent_period_to
+                    # Fallback to direct header fields if line was not found
+                    if not emp.hds_in_decl_80ccd2_employer_nps and decl.decl_80ccd2_employer_nps:
+                        emp.hds_in_decl_80ccd2_employer_nps = decl.decl_80ccd2_employer_nps
+                    if not emp.hds_in_decl_57iia_family_pension and decl.decl_57iia_family_pension:
+                        emp.hds_in_decl_57iia_family_pension = decl.decl_57iia_family_pension
+                    if not emp.hds_in_decl_80cch_agniveer and decl.decl_80cch_agniveer:
+                        emp.hds_in_decl_80cch_agniveer = decl.decl_80cch_agniveer
+
+                    if not (decl.regime_code == 'new' or emp.hds_in_is_new_tax_regime):
+                        if not emp.hds_in_decl_hra_annual_rent and decl.decl_hra_annual_rent:
+                            emp.hds_in_decl_hra_annual_rent = decl.decl_hra_annual_rent
+                        if decl.decl_hra_landlord_name and not emp.hds_in_decl_hra_landlord_name: emp.hds_in_decl_hra_landlord_name = decl.decl_hra_landlord_name
+                        if decl.decl_hra_landlord_pan and not emp.hds_in_decl_hra_landlord_pan: emp.hds_in_decl_hra_landlord_pan = decl.decl_hra_landlord_pan
+                        if decl.decl_hra_is_metro: emp.hds_in_decl_hra_is_metro = bool(decl.decl_hra_is_metro)
+                        if decl.decl_hra_own_residential_property_at_workplace: emp.hds_in_decl_hra_own_residential_property_at_workplace = bool(decl.decl_hra_own_residential_property_at_workplace)
+                        if decl.decl_hra_rent_period_from: emp.hds_in_decl_hra_rent_period_from = decl.decl_hra_rent_period_from
+                        if decl.decl_hra_rent_period_to: emp.hds_in_decl_hra_rent_period_to = decl.decl_hra_rent_period_to
+
+                        if not emp.hds_in_decl_24b_self_interest and decl.decl_24b_self_interest:
+                            emp.hds_in_decl_24b_self_interest = decl.decl_24b_self_interest
+                        if not emp.hds_in_decl_80tta_interest and decl.decl_80tta_interest:
+                            emp.hds_in_decl_80tta_interest = decl.decl_80tta_interest
+                        if not emp.hds_in_decl_80ttb_interest and decl.decl_80ttb_interest:
+                            emp.hds_in_decl_80ttb_interest = decl.decl_80ttb_interest
+                        if not emp.hds_in_decl_80dd_amount and (decl.decl_80dd_amount or decl.decl_80dd_expenditure_amount):
+                            emp.hds_in_decl_80dd_amount = decl.decl_80dd_amount or decl.decl_80dd_expenditure_amount
+                        if decl.decl_80dd_is_severe_disability:
+                            emp.hds_in_decl_80dd_is_severe = True
+                        if decl.decl_80d_parents_is_senior:
+                            emp.hds_in_decl_80d_parents_is_senior = True
 
             emp.hds_in_decl_80c_total = (
                 emp.hds_in_decl_80c_ppf + emp.hds_in_decl_80c_elss + emp.hds_in_decl_80c_epf +
@@ -1494,20 +1534,21 @@ class HrEmployee(models.Model):
 
     def _inverse_current_deduction_decl(self):
         today = fields.Date.today()
-        fy = self.env['tds.financial.year'].search([
+        default_fy_fallback = self.env['tds.financial.year'].sudo().search([
             ('start_date', '<=', today),
             ('end_date', '>=', today),
             ('active', '=', True),
             ('is_closed', '=', False)
         ], limit=1)
 
-        if not fy:
-            return
-
-
         for emp in self:
             if not emp.id:
                 continue
+            company = emp.company_id or self.env.company
+            fy = emp.hds_in_current_fy_id or company.hds_in_default_tax_year or default_fy_fallback
+            if not fy:
+                continue
+
             decl = self.env['tds.employee.declaration'].sudo().search([
                 ('employee_id', '=', emp.id),
                 ('financial_year_id', '=', fy.id)
@@ -1518,80 +1559,78 @@ class HrEmployee(models.Model):
                     'financial_year_id': fy.id,
                 })
 
-            lines_data = []
+            is_new = (decl.regime_code == 'new' or emp.hds_in_is_new_tax_regime)
 
-            # Category C items (Available under BOTH Regimes)
-            if emp.hds_in_decl_80ccd2_employer_nps > 0:
-                lines_data.append((0, 0, {'category': '80ccd2', 'description': 'Employer NPS Contribution 80CCD(2)', 'declared_amount': emp.hds_in_decl_80ccd2_employer_nps}))
-            if emp.hds_in_decl_57iia_family_pension > 0:
-                lines_data.append((0, 0, {'category': '57iia', 'description': 'Family Pension Deduction 57(iia)', 'declared_amount': emp.hds_in_decl_57iia_family_pension}))
-            if emp.hds_in_decl_80cch_agniveer > 0:
-                lines_data.append((0, 0, {'category': '80cch', 'description': 'Agniveer Corpus Fund 80CCH', 'declared_amount': emp.hds_in_decl_80cch_agniveer}))
+            # Category C items (Allowed under BOTH Regimes)
+            decl_vals = {
+                'decl_80ccd2_employer_nps': float(emp.hds_in_decl_80ccd2_employer_nps or 0.0),
+                'decl_57iia_family_pension': float(emp.hds_in_decl_57iia_family_pension or 0.0),
+                'decl_80cch_agniveer': float(emp.hds_in_decl_80cch_agniveer or 0.0),
+            }
 
-            # If Old Tax Regime, append Category B Old Regime items
-            if decl.regime_code != 'new' and not emp.hds_in_is_new_tax_regime:
-                c_items = [
-                    ('PPF Contribution', emp.hds_in_decl_80c_ppf),
-                    ('ELSS Mutual Funds', emp.hds_in_decl_80c_elss),
-                    ('Voluntary EPF (VPF)', emp.hds_in_decl_80c_epf),
-                    ('LIC Premium', emp.hds_in_decl_80c_lic),
-                    ('NSC Certificate', emp.hds_in_decl_80c_nsc),
-                    ('Sukanya Samriddhi Yojana', emp.hds_in_decl_80c_ssy),
-                    ('Tax Saving FD', emp.hds_in_decl_80c_fd),
-                    ('Children Tuition Fees', emp.hds_in_decl_80c_tuition),
-                    ('Housing Loan Principal Repayment', emp.hds_in_decl_80c_housing_principal),
-                    ('Other 80C Investments', emp.hds_in_decl_80c_other),
-                ]
-                for desc, val in c_items:
-                    if val > 0:
-                        lines_data.append((0, 0, {'category': '80c', 'description': desc, 'declared_amount': val}))
+            if not is_new:
+                decl_vals.update({
+                    'decl_80c_ppf': float(emp.hds_in_decl_80c_ppf or 0.0),
+                    'decl_80c_elss': float(emp.hds_in_decl_80c_elss or 0.0),
+                    'decl_80c_epf': float(emp.hds_in_decl_80c_epf or 0.0),
+                    'decl_80c_lic': float(emp.hds_in_decl_80c_lic or 0.0),
+                    'decl_80c_nsc': float(emp.hds_in_decl_80c_nsc or 0.0),
+                    'decl_80c_ssy': float(emp.hds_in_decl_80c_ssy or 0.0),
+                    'decl_80c_fd': float(emp.hds_in_decl_80c_fd or 0.0),
+                    'decl_80c_tuition': float(emp.hds_in_decl_80c_tuition or 0.0),
+                    'decl_80c_housing_principal': float(emp.hds_in_decl_80c_housing_principal or 0.0),
+                    'decl_80c_other': float(emp.hds_in_decl_80c_other or 0.0),
+                    'decl_80ccd1b_nps': float(emp.hds_in_decl_80ccd1b_nps or 0.0),
+                    'decl_80d_self': float(emp.hds_in_decl_80d_self or 0.0),
+                    'decl_80d_parents': float(emp.hds_in_decl_80d_parents or 0.0),
+                    'decl_80d_parents_is_senior': bool(emp.hds_in_decl_80d_parents_is_senior),
+                    'decl_80d_preventive': float(emp.hds_in_decl_80d_preventive or 0.0),
+                    'decl_hra_annual_rent': float(emp.hds_in_decl_hra_annual_rent or 0.0),
+                    'decl_hra_landlord_name': emp.hds_in_decl_hra_landlord_name or False,
+                    'decl_hra_landlord_pan': emp.hds_in_decl_hra_landlord_pan or False,
+                    'decl_hra_is_metro': bool(emp.hds_in_decl_hra_is_metro),
+                    'decl_hra_own_residential_property_at_workplace': bool(emp.hds_in_decl_hra_own_residential_property_at_workplace),
+                    'decl_hra_rent_period_from': emp.hds_in_decl_hra_rent_period_from or False,
+                    'decl_hra_rent_period_to': emp.hds_in_decl_hra_rent_period_to or False,
+                    'decl_24b_self_interest': float(emp.hds_in_decl_24b_self_interest or 0.0),
+                    'decl_80tta_interest': float(emp.hds_in_decl_80tta_interest or 0.0),
+                    'decl_80ttb_interest': float(emp.hds_in_decl_80ttb_interest or 0.0),
+                    'decl_80dd_amount': float(emp.hds_in_decl_80dd_amount or 0.0),
+                    'decl_80dd_expenditure_amount': float(emp.hds_in_decl_80dd_amount or 0.0),
+                    'decl_80dd_is_severe_disability': bool(emp.hds_in_decl_80dd_is_severe),
+                })
+            else:
+                decl_vals.update({
+                    'decl_80c_ppf': 0.0, 'decl_80c_elss': 0.0, 'decl_80c_epf': 0.0, 'decl_80c_lic': 0.0,
+                    'decl_80c_nsc': 0.0, 'decl_80c_ssy': 0.0, 'decl_80c_fd': 0.0, 'decl_80c_tuition': 0.0,
+                    'decl_80c_housing_principal': 0.0, 'decl_80c_other': 0.0, 'decl_80ccd1b_nps': 0.0,
+                    'decl_80d_self': 0.0, 'decl_80d_parents': 0.0, 'decl_80d_parents_is_senior': False,
+                    'decl_80d_preventive': 0.0, 'decl_hra_annual_rent': 0.0, 'decl_hra_landlord_name': False,
+                    'decl_hra_landlord_pan': False, 'decl_hra_is_metro': False,
+                    'decl_hra_own_residential_property_at_workplace': False,
+                    'decl_hra_rent_period_from': False, 'decl_hra_rent_period_to': False,
+                    'decl_24b_self_interest': 0.0, 'decl_80tta_interest': 0.0, 'decl_80ttb_interest': 0.0,
+                    'decl_80dd_amount': 0.0, 'decl_80dd_expenditure_amount': 0.0, 'decl_80dd_is_severe_disability': False,
+                })
 
-                if emp.hds_in_decl_80ccd1b_nps > 0:
-                    lines_data.append((0, 0, {'category': '80ccd1b', 'description': 'Employee Voluntary NPS 80CCD(1B)', 'declared_amount': emp.hds_in_decl_80ccd1b_nps}))
-                if emp.hds_in_decl_80d_self > 0:
-                    lines_data.append((0, 0, {'category': '80d_self', 'description': 'Medical Insurance Self/Family', 'declared_amount': emp.hds_in_decl_80d_self}))
-                if emp.hds_in_decl_80d_parents > 0:
-                    lines_data.append((0, 0, {
-                        'category': '80d_parents',
-                        'description': 'Medical Insurance Parents',
-                        'declared_amount': emp.hds_in_decl_80d_parents,
-                        'is_senior_citizen': emp.hds_in_decl_80d_parents_is_senior,
-                    }))
+            decl.sudo().write(decl_vals)
 
-                if emp.hds_in_decl_80d_preventive > 0:
-                    lines_data.append((0, 0, {'category': '80d_preventive', 'description': 'Preventive Health Checkup', 'declared_amount': emp.hds_in_decl_80d_preventive}))
+            # Handle 'other' statutory deduction line
+            other_amt = float(emp.hds_in_decl_other_amount or 0.0) if not is_new else 0.0
+            other_line = decl.declaration_line_ids.filtered(lambda l: l.category == 'other' and getattr(l, 'active', True))
+            if other_amt > 0:
+                if other_line:
+                    other_line[:1].sudo().write({'declared_amount': other_amt})
+                else:
+                    self.env['tds.employee.declaration.line'].sudo().create({
+                        'declaration_id': decl.id,
+                        'category': 'other',
+                        'description': 'Other Statutory Deduction',
+                        'declared_amount': other_amt,
+                    })
+            elif other_line:
+                other_line.unlink()
 
-                if emp.hds_in_decl_hra_annual_rent > 0:
-                    lines_data.append((0, 0, {
-                        'category': 'hra',
-                        'description': 'House Rent Allowance Claim',
-                        'declared_amount': emp.hds_in_decl_hra_annual_rent,
-                        'landlord_name': emp.hds_in_decl_hra_landlord_name,
-                        'landlord_pan': emp.hds_in_decl_hra_landlord_pan,
-                        'is_metro': emp.hds_in_decl_hra_is_metro,
-                    }))
-
-                if emp.hds_in_decl_24b_self_interest > 0:
-                    lines_data.append((0, 0, {'category': '24b', 'description': 'Self-Occupied Housing Loan Interest 24(b)', 'declared_amount': emp.hds_in_decl_24b_self_interest}))
-                if emp.hds_in_decl_80tta_interest > 0:
-                    lines_data.append((0, 0, {'category': '80tta', 'description': 'Savings Interest Deduction 80TTA', 'declared_amount': emp.hds_in_decl_80tta_interest}))
-                if emp.hds_in_decl_80ttb_interest > 0:
-                    lines_data.append((0, 0, {'category': '80ttb', 'description': 'Senior Citizen Deposit Interest 80TTB', 'declared_amount': emp.hds_in_decl_80ttb_interest}))
-                if emp.hds_in_decl_80dd_amount > 0:
-                    lines_data.append((0, 0, {
-                        'category': '80dd',
-                        'description': 'Dependent Disability 80DD',
-                        'declared_amount': emp.hds_in_decl_80dd_amount,
-                        'is_severe_disability': emp.hds_in_decl_80dd_is_severe,
-                    }))
-
-                if emp.hds_in_decl_other_amount > 0:
-                    lines_data.append((0, 0, {'category': 'other', 'description': 'Other Statutory Deduction', 'declared_amount': emp.hds_in_decl_other_amount}))
-
-            # Reset old lines and update declaration
-            decl.declaration_line_ids.unlink()
-            if lines_data:
-                decl.write({'declaration_line_ids': lines_data})
             decl.action_validate_declaration_rules()
 
 
