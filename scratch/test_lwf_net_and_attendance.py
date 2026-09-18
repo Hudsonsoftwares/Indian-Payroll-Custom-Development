@@ -78,5 +78,6 @@ with registry.cursor() as cr:
     slip_lop.company_id.hds_in_enable_lwf = orig_company_lwf
     rate_kl.deduction_frequency = orig_freq
     rate_kl.min_employee_count = orig_min_emp
+    cr.rollback()
     
     print("\nALL LWF ATTENDANCE & NET / EARNED SALARY TESTS PASSED PERFECTLY!")

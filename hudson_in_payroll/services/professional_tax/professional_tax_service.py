@@ -130,14 +130,59 @@ class ProfessionalTaxService(BaseStatutoryService):
         target_salary = salary
         if not target_salary and dict_ctx:
             categories = dict_ctx.get('categories')
+            gross_val = 0.0
             if categories:
-                target_salary = (
+                gross_val = (
                     getattr(categories, 'GROSS_PT', 0.0) or
                     getattr(categories, 'PT_BASE', 0.0) or
                     getattr(categories, 'GROSS', 0.0) or 0.0
                 )
-            if not target_salary:
-                target_salary = dict_ctx.get('gross_salary') or dict_ctx.get('salary') or 0.0
+            if not gross_val:
+                gross_val = dict_ctx.get('gross_salary') or dict_ctx.get('salary') or 0.0
+            if not gross_val and target_emp and getattr(target_emp, 'contract_id', False):
+                gross_val = getattr(target_emp.contract_id, 'wage', 0.0) or 0.0
+
+            # Deduct attendance shortage (SHORT) and unpaid leave (UNPAID) to obtain attendance-earned wages
+            short_ded = abs(float(dict_ctx.get('SHORT') or 0.0))
+            unpaid_ded = abs(float(dict_ctx.get('UNPAID') or 0.0))
+
+            if short_ded <= 0.0:
+                worked_days = dict_ctx.get('worked_days')
+                contract = dict_ctx.get('contract') or (slip.contract_id if slip else False)
+                if worked_days and contract and hasattr(worked_days, 'SHORTAGE') and worked_days.SHORTAGE and getattr(contract, 'pay_by_attendance', False):
+                    short_hrs = float(getattr(worked_days.SHORTAGE, 'number_of_hours', 0.0) or 0.0)
+                    if short_hrs > 0.0 and hasattr(contract, 'get_period_shortage_rate'):
+                        rate = abs(contract.get_period_shortage_rate(slip.date_from if slip else False, slip.date_to if slip else False))
+                        short_ded = min(short_hrs * rate, gross_val)
+
+            if unpaid_ded <= 0.0:
+                worked_days = dict_ctx.get('worked_days')
+                contract = dict_ctx.get('contract') or (slip.contract_id if slip else False)
+                if worked_days and contract and hasattr(worked_days, 'UNPAID') and worked_days.UNPAID:
+                    unpaid_hrs = float(getattr(worked_days.UNPAID, 'number_of_hours', 0.0) or 0.0)
+                    unpaid_days = float(getattr(worked_days.UNPAID, 'number_of_days', 0.0) or 0.0)
+                    if unpaid_hrs > 0.0 and hasattr(contract, 'get_period_shortage_rate'):
+                        rate = abs(contract.get_period_shortage_rate(slip.date_from if slip else False, slip.date_to if slip else False))
+                        unpaid_ded = min(unpaid_hrs * rate, gross_val)
+                    elif unpaid_days > 0.0 and hasattr(contract, 'get_period_day_rate'):
+                        rate = abs(contract.get_period_day_rate(slip.date_from if slip else False, slip.date_to if slip else False))
+                        unpaid_ded = min(unpaid_days * rate, gross_val)
+
+            if short_ded <= 0.0 and slip and slip.line_ids:
+                s_lines = slip.line_ids.filtered(lambda l: l.code == 'SHORT')
+                if s_lines:
+                    short_ded = abs(sum(s_lines.mapped('total')))
+            if unpaid_ded <= 0.0 and slip and slip.line_ids:
+                u_lines = slip.line_ids.filtered(lambda l: l.code == 'UNPAID')
+                if u_lines:
+                    unpaid_ded = abs(sum(u_lines.mapped('total')))
+
+            total_loss = short_ded + unpaid_ded
+            if gross_val > 0.0 and total_loss > 0.0:
+                target_salary = max(0.0, round(gross_val - total_loss, 2))
+            else:
+                target_salary = gross_val
+
         if not target_salary and target_emp and getattr(target_emp, 'contract_id', False):
             target_salary = getattr(target_emp.contract_id, 'wage', 0.0) or 0.0
 
@@ -146,9 +191,10 @@ class ProfessionalTaxService(BaseStatutoryService):
         except (TypeError, ValueError):
             target_salary = 0.0
 
-        if slip and hasattr(slip, '_get_earned_wage_ratio'):
+        if slip and hasattr(slip, '_get_earned_wage_ratio') and target_salary > 0.0:
             ratio = slip._get_earned_wage_ratio(localdict=dict_ctx)
-            target_salary = round(target_salary * ratio, 2)
+            if ratio <= 0.0:
+                target_salary = 0.0
 
         target_gender = gender
         if not target_gender and target_emp:
@@ -156,7 +202,7 @@ class ProfessionalTaxService(BaseStatutoryService):
 
         return slip, target_emp, target_salary, target_date, target_company, target_gender
 
-    def compute_pt(self, payslip=None, employee=None, salary=0.0, eval_date=None, company=None, gender=None, localdict=None):
+    def compute_pt(self, payslip=None, employee=None, salary=0.0, eval_date=None, company=None, gender=None, localdict=None, state=None):
         """
         Orchestrates end-to-end Professional Tax computation via SOA components and periodicity strategies.
 
@@ -167,12 +213,25 @@ class ProfessionalTaxService(BaseStatutoryService):
         :param company: res.company recordset or None
         :param gender: str or None
         :param localdict: dict or None (payslip execution context)
+        :param state: res.country.state recordset or None (optional override)
         :return: ProfessionalTaxResult instance
         """
         slip, emp, sal, date_eval, comp, gdr = self._extract_context(
             payslip=payslip, employee=employee, salary=salary,
             eval_date=eval_date, company=company, gender=gender, localdict=localdict
         )
+
+        # 0. Employee PT Applicability Check
+        if emp and hasattr(emp, 'hds_in_pt_applicable') and not emp.hds_in_pt_applicable:
+            _logger.info("Professional Tax (PT) is disabled for employee '%s'", emp.name)
+            return ProfessionalTaxResult(
+                amount=0.0,
+                state=state,
+                company=comp,
+                is_valid=False,
+                validation_status='DISABLED_EMPLOYEE',
+                failure_reason=f"Professional Tax (PT) is disabled for employee '{emp.name}'."
+            )
 
         with StatutoryAuditSession(self.env, slip, statutory_module="pt", rule_code="PT", calculation_type="employee_deduction") as audit:
             audit.attach_input("employee_id", emp.id if emp else False)
@@ -182,7 +241,7 @@ class ProfessionalTaxService(BaseStatutoryService):
             audit.attach_input("company_id", comp.id if comp else False)
 
             # 1. Location Service State Resolution
-            state = self.location_service.get_work_state(emp)
+            state = state or self.location_service.get_work_state(emp)
             audit.attach_parameter("resolved_state", state.name if state else False)
 
             # 2. Period Schedule & Strategy Resolution (Decoupled from slabs)

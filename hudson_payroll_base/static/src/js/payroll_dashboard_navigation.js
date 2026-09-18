@@ -27,12 +27,21 @@ registry.category("services").add("hds_dashboard_nav_service", hdsDashboardNavSe
     function getActionService() {
         if (window.__hds_action) return window.__hds_action;
         if (globalActionService) return globalActionService;
-        const owlEl = document.querySelector(".o_web_client, .o_action_manager, .o_form_view, .o_content, [class*='o_']");
-        if (owlEl && owlEl.__owl__ && owlEl.__owl__.component && owlEl.__owl__.component.env) {
-            const act = owlEl.__owl__.component.env.services?.action;
-            if (act) return act;
+        const selectors = [".o_web_client", ".o_action_manager", ".o_main_navbar", ".o_content", "[class*='o_']"];
+        for (const sel of selectors) {
+            const el = document.querySelector(sel);
+            if (el && el.__owl__?.component?.env?.services?.action) {
+                globalActionService = el.__owl__.component.env.services.action;
+                window.__hds_action = globalActionService;
+                return globalActionService;
+            }
         }
-        return window.odoo?.__WOWL_DEBUG__?.root?.env?.services?.action;
+        if (window.odoo?.__WOWL_DEBUG__?.root?.env?.services?.action) {
+            globalActionService = window.odoo.__WOWL_DEBUG__.root.env.services.action;
+            window.__hds_action = globalActionService;
+            return globalActionService;
+        }
+        return null;
     }
 
     const ACTION_URL_MAP = {
@@ -232,9 +241,8 @@ registry.category("services").add("hds_dashboard_nav_service", hdsDashboardNavSe
             cardEl.classList.add("hds-card-active");
         }
 
-        const actionService = getActionService();
-
         const executeAction = (actionDef) => {
+            const actionService = getActionService();
             if (actionService && actionService.doAction) {
                 actionService.doAction({
                     type: "ir.actions.act_window",
@@ -245,8 +253,20 @@ registry.category("services").add("hds_dashboard_nav_service", hdsDashboardNavSe
                     target: actionDef.target || "current",
                 }, { clearBreadcrumbs: false });
             } else {
-                const fallbackUrl = ACTION_URL_MAP[cardType] || "/odoo/action-197";
-                window.location.href = fallbackUrl;
+                console.warn("[HDS Dashboard] ActionService not available yet for card click, retrying...");
+                setTimeout(() => {
+                    const retryService = getActionService();
+                    if (retryService && retryService.doAction) {
+                        retryService.doAction({
+                            type: "ir.actions.act_window",
+                            name: actionDef.name,
+                            res_model: actionDef.res_model,
+                            views: actionDef.views || [[false, "list"], [false, "form"]],
+                            domain: actionDef.domain || [],
+                            target: actionDef.target || "current",
+                        }, { clearBreadcrumbs: false });
+                    }
+                }, 100);
             }
         };
 
@@ -276,6 +296,7 @@ registry.category("services").add("hds_dashboard_nav_service", hdsDashboardNavSe
             });
         }
 
+        const actionService = getActionService();
         if (rpc && actionService) {
             rpc("/web/dataset/call_kw/hds.payroll.dashboard/get_card_action", {
                 model: "hds.payroll.dashboard",
@@ -302,22 +323,42 @@ registry.category("services").add("hds_dashboard_nav_service", hdsDashboardNavSe
     // Single record view (e.g. employee click)
     window.hdsRecordClick = function (el, recordId, model) {
         if (!recordId || !model) return;
-        const actionService = getActionService();
-        if (actionService && actionService.doAction) {
-            actionService.doAction({
-                type: "ir.actions.act_window",
-                res_model: model,
-                res_id: parseInt(recordId, 10),
-                views: [[false, "form"]],
-                target: "current",
-            }, { clearBreadcrumbs: false });
-        } else {
-            window.location.href = `/odoo/${model}/${recordId}`;
-        }
+        const executeRecordAction = () => {
+            const actionService = getActionService();
+            if (actionService && actionService.doAction) {
+                actionService.doAction({
+                    type: "ir.actions.act_window",
+                    res_model: model,
+                    res_id: parseInt(recordId, 10),
+                    views: [[false, "form"]],
+                    target: "current",
+                }, { clearBreadcrumbs: false });
+            } else {
+                console.warn("[HDS Dashboard] ActionService not available yet for record click, retrying...");
+                setTimeout(() => {
+                    const retryService = getActionService();
+                    if (retryService && retryService.doAction) {
+                        retryService.doAction({
+                            type: "ir.actions.act_window",
+                            res_model: model,
+                            res_id: parseInt(recordId, 10),
+                            views: [[false, "form"]],
+                            target: "current",
+                        }, { clearBreadcrumbs: false });
+                    }
+                }, 100);
+            }
+        };
+        executeRecordAction();
     };
 
-    // Delegated click listener to catch card and record clicks
+    // Delegated click listener to catch card and record clicks exclusively inside dashboard containers
     document.addEventListener("click", function (ev) {
+        const dashboardRoot = ev.target.closest(".o_hds_dashboard_root, [data-hds-dashboard-root], .hds-dashboard-container");
+        if (!dashboardRoot) {
+            return;
+        }
+
         const recBtn = ev.target.closest("[data-record-id]");
         if (recBtn) {
             const rid = recBtn.getAttribute("data-record-id");

@@ -98,10 +98,10 @@ class AbstractPTPeriodicityStrategy(ABC):
 
         # Resolve strategy and distribution method
         strategy = (period_schedule.deduction_strategy if period_schedule else 'every_payroll') or 'every_payroll'
-        dist_method = (period_schedule.distribution_method if period_schedule else False) or ('full_amount' if strategy == 'end_of_period' else 'equal_distribution')
+        dist_method = (period_schedule.distribution_method if period_schedule else False) or ('full_amount' if strategy in ('end_of_period', 'specific_month', 'beginning_of_period') else 'equal_distribution')
 
-        # Strategy 1: End of Period / Full Amount
-        if strategy == 'end_of_period' or dist_method == 'full_amount':
+        # Strategy 1: End of Period / Specific Month / Beginning of Period / Full Amount
+        if strategy in ('end_of_period', 'specific_month', 'beginning_of_period') or dist_method == 'full_amount':
             if sched_service.should_deduct(period_schedule, eval_date=eval_date, employee=employee):
                 return float_round(remaining_liability, precision_digits=2)
             return 0.0

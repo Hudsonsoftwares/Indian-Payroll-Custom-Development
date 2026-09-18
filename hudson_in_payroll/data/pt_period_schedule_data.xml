@@ -7,9 +7,8 @@
         <record id="pt_sched_mh_monthly" model="pt.period.schedule">
             <field name="state_id" ref="base.state_in_mh"/>
             <field name="periodicity">monthly</field>
-            <field name="window_start_month">4</field>
-            <field name="window_end_month">3</field>
             <field name="deduction_strategy">every_payroll</field>
+            <field name="distribution_method">full_amount</field>
             <field name="active" eval="True"/>
         </record>
 
@@ -17,9 +16,8 @@
         <record id="pt_sched_ka_monthly" model="pt.period.schedule">
             <field name="state_id" ref="base.state_in_ka"/>
             <field name="periodicity">monthly</field>
-            <field name="window_start_month">4</field>
-            <field name="window_end_month">3</field>
             <field name="deduction_strategy">every_payroll</field>
+            <field name="distribution_method">full_amount</field>
             <field name="active" eval="True"/>
         </record>
 
@@ -27,9 +25,8 @@
         <record id="pt_sched_gj_monthly" model="pt.period.schedule">
             <field name="state_id" ref="base.state_in_gj"/>
             <field name="periodicity">monthly</field>
-            <field name="window_start_month">4</field>
-            <field name="window_end_month">3</field>
             <field name="deduction_strategy">every_payroll</field>
+            <field name="distribution_method">full_amount</field>
             <field name="active" eval="True"/>
         </record>
 
@@ -37,9 +34,8 @@
         <record id="pt_sched_ap_monthly" model="pt.period.schedule">
             <field name="state_id" ref="base.state_in_ap"/>
             <field name="periodicity">monthly</field>
-            <field name="window_start_month">4</field>
-            <field name="window_end_month">3</field>
             <field name="deduction_strategy">every_payroll</field>
+            <field name="distribution_method">full_amount</field>
             <field name="active" eval="True"/>
         </record>
 
@@ -47,9 +43,8 @@
         <record id="pt_sched_ts_monthly" model="pt.period.schedule">
             <field name="state_id" ref="base.state_in_ts"/>
             <field name="periodicity">monthly</field>
-            <field name="window_start_month">4</field>
-            <field name="window_end_month">3</field>
             <field name="deduction_strategy">every_payroll</field>
+            <field name="distribution_method">full_amount</field>
             <field name="active" eval="True"/>
         </record>
 

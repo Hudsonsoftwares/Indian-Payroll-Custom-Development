@@ -91,6 +91,16 @@ class PTValidator:
                 failure_reason=reason
             )
 
+        # 1b. Validate Employee PT Applicability
+        if employee and hasattr(employee, 'hds_in_pt_applicable') and not employee.hds_in_pt_applicable:
+            reason = f"Professional Tax (PT) is disabled for employee '{employee.name}'."
+            _logger.info("PTValidator: %s", reason)
+            return PTValidationResult(
+                is_valid=False,
+                validation_status='DISABLED_EMPLOYEE',
+                failure_reason=reason
+            )
+
         # 2. Resolve Statutory Work State
         target_state = state
         if not target_state and employee:

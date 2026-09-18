@@ -48,9 +48,9 @@
                     </group>
                     <group>
                         <group string="Deduction Strategy">
-                            <field name="deduction_strategy"/>
-                            <field name="distribution_method"/>
-                            <field name="deduction_month" invisible="periodicity == 'monthly' or deduction_strategy == 'every_payroll'" required="periodicity == 'half_yearly' and deduction_strategy == 'specific_month'"/>
+                            <field name="deduction_strategy" readonly="periodicity == 'monthly'"/>
+                            <field name="distribution_method" readonly="1" force_save="1"/>
+                            <field name="deduction_month" invisible="periodicity == 'monthly' or deduction_strategy == 'every_payroll'" readonly="deduction_strategy in ('end_of_period', 'beginning_of_period')" force_save="1" required="deduction_strategy == 'specific_month'"/>
                         </group>
                         <group string="Effective Validity">
                             <field name="date_from"/>

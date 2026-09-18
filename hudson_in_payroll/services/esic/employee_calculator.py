@@ -37,7 +37,11 @@ class ESICEmployeeCalculator(BaseStatutoryService):
             paid_days = sum(float(l.number_of_days or 0.0) for l in paid_lines)
             unpaid_lines = worked_lines.filtered(lambda l: (l.code or '').upper() in unpaid_codes)
             lop_days = sum(float(l.number_of_days or 0.0) for l in unpaid_lines)
-            net_paid = max(0.0, paid_days - lop_days)
+            cal_days = (payslip.date_to - payslip.date_from).days + 1 if (getattr(payslip, 'date_from', False) and getattr(payslip, 'date_to', False)) else 30
+            if (paid_days + lop_days) > cal_days:
+                net_paid = max(0.0, paid_days - lop_days)
+            else:
+                net_paid = paid_days
             if net_paid > 0.0:
                 return round(net_paid, 2)
             if lop_days > 0.0 and net_paid <= 0.0:

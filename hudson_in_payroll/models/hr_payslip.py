@@ -1280,6 +1280,8 @@ else:
         Delegates computation to ProfessionalTaxService via _delegate_statutory_service DRY helper.
         Thin orchestration layer containing zero business logic.
         """
+        if self.employee_id and hasattr(self.employee_id, 'hds_in_pt_applicable') and not self.employee_id.hds_in_pt_applicable:
+            return 0.0
         self._validate_company_state_statutory()
         import logging
         _logger = logging.getLogger(__name__)
@@ -1314,31 +1316,46 @@ else:
         self.ensure_one()
         ld = localdict or {}
         categories = ld.get('categories')
-        rules = ld.get('rules') if isinstance(ld.get('rules'), dict) else {}
         worked_days = ld.get('worked_days')
         contract = ld.get('contract') or self.contract_id
 
         # 1. Total earnings from categories or contract
         total_earnings = 0.0
         if categories:
-            total_earnings = float(getattr(categories, 'BASIC', 0.0) or 0.0) + float(getattr(categories, 'ALW', 0.0) or 0.0)
+            total_earnings = float(getattr(categories, 'GROSS', 0.0) or 0.0)
+            if total_earnings <= 0.0:
+                total_earnings = float(getattr(categories, 'BASIC', 0.0) or 0.0) + float(getattr(categories, 'ALW', 0.0) or 0.0)
         if total_earnings <= 0.0 and contract:
             total_earnings = float(getattr(contract, 'wage', 0.0) or 0.0)
 
-        # 2. Check shortage & unpaid deductions from evaluated rules
-        short_ded = 0.0
-        unpaid_ded = 0.0
-        if 'SHORT' in rules:
-            r = rules['SHORT']
-            short_ded = abs(float(getattr(r, 'total', 0.0) if hasattr(r, 'total') else (r.get('total', 0.0) if isinstance(r, dict) else 0.0)))
-        elif 'SHORT' in ld:
-            short_ded = abs(float(ld['SHORT'] or 0.0))
+        # 2. Check shortage & unpaid deductions from evaluated rules, localdict, worked_days, or line_ids
+        short_ded = abs(float(ld.get('SHORT') or 0.0))
+        unpaid_ded = abs(float(ld.get('UNPAID') or 0.0))
 
-        if 'UNPAID' in rules:
-            r = rules['UNPAID']
-            unpaid_ded = abs(float(getattr(r, 'total', 0.0) if hasattr(r, 'total') else (r.get('total', 0.0) if isinstance(r, dict) else 0.0)))
-        elif 'UNPAID' in ld:
-            unpaid_ded = abs(float(ld['UNPAID'] or 0.0))
+        if short_ded <= 0.0 and worked_days and contract and hasattr(worked_days, 'SHORTAGE') and worked_days.SHORTAGE and getattr(contract, 'pay_by_attendance', False):
+            short_hrs = float(getattr(worked_days.SHORTAGE, 'number_of_hours', 0.0) or 0.0)
+            if short_hrs > 0.0 and hasattr(contract, 'get_period_shortage_rate'):
+                rate = abs(contract.get_period_shortage_rate(self.date_from, self.date_to))
+                short_ded = min(short_hrs * rate, total_earnings)
+
+        if unpaid_ded <= 0.0 and worked_days and contract and hasattr(worked_days, 'UNPAID') and worked_days.UNPAID:
+            unpaid_hrs = float(getattr(worked_days.UNPAID, 'number_of_hours', 0.0) or 0.0)
+            unpaid_days = float(getattr(worked_days.UNPAID, 'number_of_days', 0.0) or 0.0)
+            if unpaid_hrs > 0.0 and hasattr(contract, 'get_period_shortage_rate'):
+                rate = abs(contract.get_period_shortage_rate(self.date_from, self.date_to))
+                unpaid_ded = min(unpaid_hrs * rate, total_earnings)
+            elif unpaid_days > 0.0 and hasattr(contract, 'get_period_day_rate'):
+                rate = abs(contract.get_period_day_rate(self.date_from, self.date_to))
+                unpaid_ded = min(unpaid_days * rate, total_earnings)
+
+        if short_ded <= 0.0 and self.line_ids:
+            s_line = self.line_ids.filtered(lambda l: l.code == 'SHORT')
+            if s_line:
+                short_ded = abs(sum(s_line.mapped('total')))
+        if unpaid_ded <= 0.0 and self.line_ids:
+            u_line = self.line_ids.filtered(lambda l: l.code == 'UNPAID')
+            if u_line:
+                unpaid_ded = abs(sum(u_line.mapped('total')))
 
         total_ded = short_ded + unpaid_ded
         if total_earnings > 0.0 and total_ded > 0.0:

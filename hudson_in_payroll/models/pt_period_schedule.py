@@ -118,7 +118,7 @@ class PtPeriodSchedule(models.Model):
             self.window_end_month = False
             self.deduction_month = False
             self.deduction_strategy = 'every_payroll'
-            self.distribution_method = 'equal_distribution'
+            self.distribution_method = 'full_amount'
         elif self.periodicity == 'half_yearly':
             if not self.window_start_month:
                 self.window_start_month = '4'
@@ -135,15 +135,78 @@ class PtPeriodSchedule(models.Model):
             if not self.window_end_month:
                 self.window_end_month = '3'
 
-    @api.onchange('deduction_strategy')
+    @api.onchange('window_end_month', 'window_start_month', 'deduction_strategy')
     def _onchange_deduction_strategy(self):
+        if self.periodicity == 'monthly':
+            self.window_start_month = False
+            self.window_end_month = False
+            self.deduction_month = False
+            self.deduction_strategy = 'every_payroll'
+            self.distribution_method = 'full_amount'
+            return
         if self.deduction_strategy == 'end_of_period':
             self.distribution_method = 'full_amount'
-            if self.window_end_month and not self.deduction_month:
+            if self.window_end_month:
+                self.deduction_month = self.window_end_month
+        elif self.deduction_strategy == 'beginning_of_period':
+            self.distribution_method = 'full_amount'
+            if self.window_start_month:
+                self.deduction_month = self.window_start_month
+        elif self.deduction_strategy == 'specific_month':
+            self.distribution_method = 'full_amount'
+            if not self.deduction_month and self.window_end_month:
                 self.deduction_month = self.window_end_month
         elif self.deduction_strategy == 'every_payroll':
             self.distribution_method = 'equal_distribution'
             self.deduction_month = False
+
+    @api.model_create_multi
+    def create(self, vals_list):
+        for vals in vals_list:
+            periodicity = vals.get('periodicity')
+            strat = vals.get('deduction_strategy')
+            if periodicity == 'monthly':
+                vals['distribution_method'] = 'full_amount'
+                vals['window_start_month'] = False
+                vals['window_end_month'] = False
+                vals['deduction_month'] = False
+                vals['deduction_strategy'] = 'every_payroll'
+            elif strat in ('end_of_period', 'beginning_of_period', 'specific_month'):
+                vals['distribution_method'] = 'full_amount'
+                if strat == 'end_of_period' and vals.get('window_end_month'):
+                    vals['deduction_month'] = vals['window_end_month']
+                elif strat == 'beginning_of_period' and vals.get('window_start_month'):
+                    vals['deduction_month'] = vals['window_start_month']
+            elif strat == 'every_payroll':
+                vals['deduction_month'] = False
+                vals['distribution_method'] = 'equal_distribution'
+        return super().create(vals_list)
+
+    def write(self, vals):
+        if 'window_end_month' in vals or 'deduction_strategy' in vals or 'window_start_month' in vals or 'periodicity' in vals:
+            for rec in self:
+                periodicity = vals.get('periodicity', rec.periodicity)
+                strat = vals.get('deduction_strategy', rec.deduction_strategy)
+                if periodicity == 'monthly':
+                    vals['distribution_method'] = 'full_amount'
+                    vals['window_start_month'] = False
+                    vals['window_end_month'] = False
+                    vals['deduction_month'] = False
+                    vals['deduction_strategy'] = 'every_payroll'
+                elif strat in ('end_of_period', 'beginning_of_period', 'specific_month'):
+                    vals['distribution_method'] = 'full_amount'
+                    if strat == 'end_of_period':
+                        w_end = vals.get('window_end_month', rec.window_end_month)
+                        if w_end:
+                            vals['deduction_month'] = w_end
+                    elif strat == 'beginning_of_period':
+                        w_start = vals.get('window_start_month', rec.window_start_month)
+                        if w_start:
+                            vals['deduction_month'] = w_start
+                elif strat == 'every_payroll':
+                    vals['deduction_month'] = False
+                    vals['distribution_method'] = 'equal_distribution'
+        return super().write(vals)
 
     @api.depends('state_id', 'periodicity', 'window_start_month', 'window_end_month', 'deduction_strategy', 'deduction_month')
     def _compute_name(self):
@@ -159,7 +222,12 @@ class PtPeriodSchedule(models.Model):
             per_name = (rec.periodicity or 'monthly').replace('_', '-').title()
             start_m = month_dict.get(rec.window_start_month, '')
             end_m = month_dict.get(rec.window_end_month, '')
-            strat = strat_dict.get(rec.deduction_strategy, '')
+            ded_m = month_dict.get(rec.deduction_month, '')
+            if rec.deduction_strategy == 'specific_month' and ded_m:
+                strat = f"Specific Month ({ded_m})"
+            else:
+                strat = strat_dict.get(rec.deduction_strategy, '')
+
             if rec.periodicity == 'monthly':
                 rec.name = f"{st_name} Monthly - {strat}"
             elif start_m and end_m:
@@ -170,14 +238,16 @@ class PtPeriodSchedule(models.Model):
     @api.constrains('periodicity', 'window_start_month', 'window_end_month', 'deduction_strategy', 'deduction_month')
     def _check_periodicity_configuration(self):
         for rec in self:
+            if rec.periodicity == 'monthly':
+                continue
             if rec.periodicity == 'half_yearly':
                 if not rec.window_start_month or not rec.window_end_month:
                     raise ValidationError(_("Window Start Month and Window End Month are required for Half-Yearly periodicity."))
-                if rec.deduction_strategy == 'specific_month' and not rec.deduction_month:
-                    raise ValidationError(_("Deduction Month is required when Deduction Strategy is set to Specific Month for Half-Yearly schedules."))
             elif rec.periodicity in ('quarterly', 'annual'):
                 if not rec.window_start_month or not rec.window_end_month:
                     raise ValidationError(_("Window Start Month and Window End Month are required for %s periodicity.") % rec.periodicity.title())
+            if rec.deduction_strategy == 'specific_month' and not rec.deduction_month:
+                raise ValidationError(_("Deduction Month is required when Deduction Strategy is set to Specific Month."))
 
     @api.constrains('date_from', 'date_to')
     def _check_effective_dates(self):

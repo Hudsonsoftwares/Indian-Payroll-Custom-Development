@@ -29,6 +29,22 @@ class HrAttendance(models.Model):
             self._validate_check_out_location(vals)
         return result
 
+    def _is_gps_validation_exempt(self):
+        """Determine if GPS validation can be bypassed (e.g. backend HR/Admin manual entry, crons, biometric sync)."""
+        ctx = self.env.context
+        if ctx.get('disable_gps_validation') or ctx.get('biometric_punch_processing'):
+            return True
+        if self.env.su or self.env.is_admin():
+            return True
+        user = self.env.user
+        if user.id == 1:
+            return True
+        if user.has_group('base.group_system') or user.has_group('base.group_erp_manager'):
+            return True
+        if user.has_group('hr_attendance.group_hr_attendance_user') or user.has_group('hr_attendance.group_hr_attendance_officer'):
+            return True
+        return False
+
     def _validate_check_in_location(self, vals):
         for record in self:
             if record.employee_id.allow_remote_checkin:
@@ -38,6 +54,8 @@ class HrAttendance(models.Model):
             in_lon = vals.get('in_longitude', record.in_longitude)
 
             if not in_lat or not in_lon:
+                if self._is_gps_validation_exempt():
+                    continue
                 raise ValidationError(
                     _("Location permission is required to perform check-in. "
                       "Please enable location services in your browser.")
@@ -76,6 +94,10 @@ class HrAttendance(models.Model):
             if not record.check_out:
                 continue
 
+            # Auto check-out by cron/system is always exempt
+            if vals.get('out_mode') == 'auto_check_out' or record.out_mode == 'auto_check_out':
+                continue
+
             if record.employee_id.allow_remote_checkin:
                 continue
 
@@ -83,6 +105,8 @@ class HrAttendance(models.Model):
             out_lon = vals.get('out_longitude', record.out_longitude)
 
             if not out_lat or not out_lon:
+                if self._is_gps_validation_exempt():
+                    continue
                 raise ValidationError(
                     _("Location permission is required to perform check-out. "
                       "Please enable location services in your browser.")

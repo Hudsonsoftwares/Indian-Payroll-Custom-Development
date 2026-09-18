@@ -44,9 +44,11 @@ class TestPTConfigurableEngine(TransactionCase):
             'state_id': self.state_mh.id,
             'periodicity': 'monthly',
             'deduction_strategy': 'every_payroll',
-            'distribution_method': 'equal_distribution',
             'active': True,
         })
+        self.assertEqual(sched.distribution_method, 'full_amount')
+        self.assertFalse(sched.window_start_month)
+        self.assertFalse(sched.window_end_month)
         start_d, end_d = self.sched_service.resolve_period_window(sched, eval_date='2026-05-31')
         self.assertEqual(start_d, date(2026, 5, 1))
         self.assertEqual(end_d, date(2026, 5, 31))

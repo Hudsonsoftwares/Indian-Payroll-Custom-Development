@@ -75,15 +75,41 @@ class PayrollWageAggregationService:
 
         # Query payslip lines for category or rule codes
         if historical_slips:
-            line_domain = [('slip_id', 'in', historical_slips.ids)]
-            if rule_codes:
-                line_domain.append(('code', 'in', rule_codes))
-            elif category_code:
-                line_domain.append(('category_id.code', '=', category_code))
+            if category_code == 'GROSS' and not rule_codes:
+                # Attendance-earned wage calculation for historical payslips:
+                # Contractual Gross minus shortage (SHORT) and unpaid leave (UNPAID) deductions
+                line_domain = [
+                    ('slip_id', 'in', historical_slips.ids),
+                    '|', '|',
+                    ('category_id.code', '=', 'GROSS'),
+                    ('code', '=', 'GROSS'),
+                    ('code', 'in', ['SHORT', 'UNPAID'])
+                ]
+                lines = self.env['hr.payslip.line'].search(line_domain)
+                slip_gross_map = {s_id: 0.0 for s_id in historical_slips.ids}
+                slip_ded_map = {s_id: 0.0 for s_id in historical_slips.ids}
+                gross_seen_lines = set()
+                for line in lines:
+                    if line.category_id.code == 'GROSS' or line.code == 'GROSS':
+                        if line.id not in gross_seen_lines:
+                            gross_seen_lines.add(line.id)
+                            slip_gross_map[line.slip_id.id] += line.total
+                    elif line.code in ('SHORT', 'UNPAID'):
+                        slip_ded_map[line.slip_id.id] += abs(line.total)
 
-            lines = self.env['hr.payslip.line'].search(line_domain)
-            for line in lines:
-                total_wage += line.total
+                for s_id in historical_slips.ids:
+                    earned = max(0.0, slip_gross_map[s_id] - slip_ded_map[s_id])
+                    total_wage += earned
+            else:
+                line_domain = [('slip_id', 'in', historical_slips.ids)]
+                if rule_codes:
+                    line_domain.append(('code', 'in', rule_codes))
+                elif category_code:
+                    line_domain.append(('category_id.code', '=', category_code))
+
+                lines = self.env['hr.payslip.line'].search(line_domain)
+                for line in lines:
+                    total_wage += line.total
 
         # Add current slip's gross if provided
         if current_slip_gross:

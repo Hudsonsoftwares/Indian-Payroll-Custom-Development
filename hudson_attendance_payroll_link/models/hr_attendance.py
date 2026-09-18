@@ -1,6 +1,5 @@
-# -*- coding: utf-8 -*-
 import pytz
-from datetime import datetime, time
+from datetime import datetime, time, timedelta
 from odoo import api, fields, models, _
 
 class HrAttendance(models.Model):
@@ -27,7 +26,52 @@ class HrAttendance(models.Model):
                 super(HrAttendance, rec).write({'validated_overtime_hours': 0.0})
             elif ot > 0.0 and val > ot:
                 super(HrAttendance, rec).write({'validated_overtime_hours': ot})
+
+            # When attendance is auto-checked out (either via native _cron_auto_check_out or custom cron)
+            if vals.get('out_mode') == 'auto_check_out' or (vals.get('check_out') and rec.out_mode == 'auto_check_out'):
+                rec._handle_auto_checkout_missing_punch()
         return res
+
+    def _handle_auto_checkout_missing_punch(self):
+        """
+        When an employee is automatically checked out due to missing punch at shift end,
+        automatically generate a Missing Punch anomaly and a Draft Regularization Request.
+        """
+        for att in self:
+            if not att.check_in or not att.check_out:
+                continue
+            existing = self.env['hudson.attendance.anomaly'].search([
+                ('attendance_id', '=', att.id),
+                ('anomaly_type', '=', 'missing_punch')
+            ], limit=1)
+            if not existing:
+                calendar = att.employee_id.resource_calendar_id
+                tz = pytz.timezone(calendar.tz or 'UTC') if calendar else pytz.UTC
+                local_check_in = pytz.utc.localize(att.check_in).astimezone(tz) if att.check_in.tzinfo is None else att.check_in.astimezone(tz)
+                local_check_out = pytz.utc.localize(att.check_out).astimezone(tz) if att.check_out.tzinfo is None else att.check_out.astimezone(tz)
+
+                anomaly = self.env['hudson.attendance.anomaly'].create({
+                    'name': 'Missing Punch',
+                    'anomaly_type': 'missing_punch',
+                    'employee_id': att.employee_id.id,
+                    'attendance_id': att.id,
+                    'description': (
+                        f"Employee checked in at {local_check_in.strftime('%Y-%m-%d %H:%M:%S')} "
+                        f"but missed check-out. Automatically checked out at {local_check_out.strftime('%H:%M:%S')} "
+                        f"based on scheduled shift."
+                    )
+                })
+                self.env['hudson.attendance.regularization'].create({
+                    'employee_id': att.employee_id.id,
+                    'anomaly_id': anomaly.id,
+                    'attendance_id': att.id,
+                    'orig_check_in': att.check_in,
+                    'orig_check_out': False,
+                    'corrected_check_in': att.check_in,
+                    'corrected_check_out': att.check_out,
+                    'reason': 'Auto-generated for Missing Punch. Auto-closed at scheduled shift end with tolerance.',
+                    'state': 'draft'
+                })
 
     def _check_anomalies(self):
         if hasattr(super(HrAttendance, self), '_check_anomalies'):
@@ -78,38 +122,12 @@ class HrAttendance(models.Model):
                                 'state': 'draft'
                             })
 
-            # Missing Punch / Missing Check-out Anomaly & Regularization Check
-            if att.check_in and not att.check_out:
-                existing = self.env['hudson.attendance.anomaly'].search([
-                    ('attendance_id', '=', att.id),
-                    ('anomaly_type', '=', 'missing_punch')
-                ])
-                if not existing:
-                    calendar = att.employee_id.resource_calendar_id
-                    tz = pytz.timezone(calendar.tz or 'UTC') if calendar else pytz.UTC
-                    local_check_in = pytz.utc.localize(att.check_in).astimezone(tz)
-                    
-                    anomaly = self.env['hudson.attendance.anomaly'].create({
-                        'name': 'Missing Punch',
-                        'anomaly_type': 'missing_punch',
-                        'employee_id': att.employee_id.id,
-                        'attendance_id': att.id,
-                        'description': f"Employee checked in at {local_check_in.strftime('%Y-%m-%d %H:%M:%S')} but has no check-out."
-                    })
-                    self.env['hudson.attendance.regularization'].create({
-                        'employee_id': att.employee_id.id,
-                        'anomaly_id': anomaly.id,
-                        'attendance_id': att.id,
-                        'orig_check_in': att.check_in,
-                        'orig_check_out': False,
-                        'reason': 'Auto-generated for Missing Punch.',
-                        'state': 'draft'
-                    })
-
     @api.model
     def _cron_check_attendance_anomalies(self):
         """
         Daily cron to detect missing check-outs (Missing Punch) for past days.
+        Automatically closes the open attendance at scheduled shift end so the employee
+        is not locked out of check-in the next day, and generates a draft regularization.
         """
         # Find all open attendances (no check-out)
         open_attendances = self.search([('check_out', '=', False)])
@@ -120,7 +138,7 @@ class HrAttendance(models.Model):
             tz = pytz.timezone(calendar.tz or 'UTC') if calendar else pytz.UTC
             
             # Localize check-in and current time
-            local_check_in = pytz.utc.localize(att.check_in).astimezone(tz)
+            local_check_in = pytz.utc.localize(att.check_in).astimezone(tz) if att.check_in.tzinfo is None else att.check_in.astimezone(tz)
             local_now = datetime.now(tz)
             
             # Calculate check-in age to avoid flagging active night shifts
@@ -128,25 +146,24 @@ class HrAttendance(models.Model):
             
             # If the check_in is older than 14 hours and its localized date is strictly before today
             if age_seconds > 14 * 3600 and local_check_in.date() < local_now.date():
-                existing = self.env['hudson.attendance.anomaly'].search([
-                    ('attendance_id', '=', att.id),
-                    ('anomaly_type', '=', 'missing_punch')
-                ])
-                if not existing:
-                    anomaly = self.env['hudson.attendance.anomaly'].create({
-                        'name': 'Missing Punch',
-                        'anomaly_type': 'missing_punch',
-                        'employee_id': att.employee_id.id,
-                        'attendance_id': att.id,
-                        'description': f"Employee checked in at {local_check_in.strftime('%Y-%m-%d %H:%M:%S')} but has no check-out."
-                    })
-                    # Auto-create draft regularization request
-                    self.env['hudson.attendance.regularization'].create({
-                        'employee_id': att.employee_id.id,
-                        'anomaly_id': anomaly.id,
-                        'attendance_id': att.id,
-                        'orig_check_in': att.check_in,
-                        'orig_check_out': False,
-                        'reason': 'Auto-generated for Missing Punch.',
-                        'state': 'draft'
-                    })
+                # Compute scheduled shift end from calendar or fallback
+                auto_checkout_dt = None
+                if calendar:
+                    day_start = tz.localize(datetime.combine(local_check_in.date(), time.min))
+                    day_end = tz.localize(datetime.combine(local_check_in.date(), time.max))
+                    intervals = calendar._work_intervals_batch(day_start, day_end).get(calendar.id, [])
+                    if intervals:
+                        last_interval = list(intervals)[-1]
+                        auto_checkout_dt = last_interval[1].astimezone(pytz.UTC).replace(tzinfo=None)
+                
+                if not auto_checkout_dt:
+                    end_local = tz.localize(datetime.combine(local_check_in.date(), time(18, 0, 0)))
+                    auto_checkout_dt = end_local.astimezone(pytz.UTC).replace(tzinfo=None)
+                    if auto_checkout_dt <= att.check_in:
+                        auto_checkout_dt = att.check_in + timedelta(hours=8)
+
+                # Close the attendance record safely with GPS validation bypassed
+                att.with_context(disable_gps_validation=True, biometric_punch_processing=True).write({
+                    'check_out': auto_checkout_dt,
+                    'out_mode': 'auto_check_out',
+                })

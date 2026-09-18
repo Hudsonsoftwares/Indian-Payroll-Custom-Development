@@ -102,6 +102,11 @@ class PTPeriodScheduleService:
 
         code = (schedule.periodicity if schedule else periodicity) or 'monthly'
 
+        # Monthly periodicity is always strictly the evaluation calendar month
+        if code == 'monthly':
+            last_day = calendar.monthrange(year, month)[1]
+            return (date(year, month, 1), date(year, month, last_day))
+
         if schedule and schedule.window_start_month and schedule.window_end_month:
             start_m = int(schedule.window_start_month)
             end_m = int(schedule.window_end_month)
