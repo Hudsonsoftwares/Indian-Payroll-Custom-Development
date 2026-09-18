@@ -3,7 +3,7 @@
     <data noupdate="0">
         <!-- TDS Tax Regime Master Seed Data -->
         <record id="hds_in_tds_regime_new" model="tds.tax.regime">
-            <field name="name">New Tax Regime (Section 115BAC)</field>
+            <field name="name">New Tax Regime Income-tax Act, 2025 — Section 202(1)</field>
             <field name="code">new</field>
             <field name="sequence">1</field>
             <field name="is_default">True</field>

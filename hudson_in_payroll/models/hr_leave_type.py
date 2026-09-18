@@ -1,4 +1,5 @@
 # -*- coding: utf-8 -*-
+# pyrefly: ignore [missing-import]
 from odoo import fields, models
 
 class HrLeaveType(models.Model):

@@ -62,14 +62,14 @@
                         <page string="New Tax Regime Slabs (Default)" name="new_tax_slabs">
                             <div class="alert alert-info py-2 px-3 mb-3 d-flex align-items-center">
                                 <i class="fa fa-star fa-lg me-2 text-primary"/>
-                                <div><strong>New Tax Regime (Section 115BAC — Default):</strong> Standard statutory regime automatically applied to all employees unless opted out.</div>
+                                <div><strong>New Tax Regime Income-tax Act, 2025 — Section 202(1) (Default):</strong> Standard statutory regime automatically applied to all employees unless opted out.</div>
                             </div>
                             <field name="new_regime_tax_slab_ids" context="{'default_financial_year_id': id, 'default_regime_code': 'new'}">
                                 <list editable="bottom" string="New Regime Slabs">
                                     <field name="sequence" widget="handle"/>
                                     <field name="income_from" string="Income From (₹)"/>
                                     <field name="income_to" column_invisible="True"/>
-                                    <field name="display_income_to" string="Income To (₹)" decoration-bf="income_to == 0" decoration-warning="income_to == 0"/>
+                                    <field name="display_income_to" string="Income To (₹)" decoration-bf="income_to == 0" decoration-info="income_to == 0"/>
                                     <field name="rate" string="Tax Rate (%)"/>
                                     <field name="date_from" optional="show" string="Effective From"/>
                                     <field name="active" optional="hide"/>
@@ -77,16 +77,16 @@
                             </field>
                         </page>
                         <page string="Old Tax Regime Slabs (Optional)" name="old_tax_slabs">
-                            <div class="alert alert-warning py-2 px-3 mb-3 d-flex align-items-center">
-                                <i class="fa fa-history fa-lg me-2 text-warning"/>
-                                <div><strong>Old Tax Regime (Regular Provisions — Optional):</strong> Available for employees claiming Chapter VI-A deductions (80C, 80D, HRA, etc.) who opt out of 115BAC.</div>
+                            <div class="alert alert-secondary py-2 px-3 mb-3 d-flex align-items-center" style="border-left: 4px solid #38bdf8 !important;">
+                                <i class="fa fa-history fa-lg me-2 text-info" style="color: #38bdf8 !important;"/>
+                                <div class="text-body"><strong style="color: #38bdf8;">Old Tax Regime (Regular Provisions — Optional):</strong> Available for employees claiming Chapter VI-A deductions (80C, 80D, HRA, etc.) who opt out of Section 202(1).</div>
                             </div>
                             <field name="old_regime_tax_slab_ids" context="{'default_financial_year_id': id, 'default_regime_code': 'old'}">
                                 <list editable="bottom" string="Old Regime Slabs">
                                     <field name="sequence" widget="handle"/>
                                     <field name="income_from" string="Income From (₹)"/>
                                     <field name="income_to" column_invisible="True"/>
-                                    <field name="display_income_to" string="Income To (₹)" decoration-bf="income_to == 0" decoration-warning="income_to == 0"/>
+                                    <field name="display_income_to" string="Income To (₹)" decoration-bf="income_to == 0" decoration-muted="income_to == 0"/>
                                     <field name="rate" string="Tax Rate (%)"/>
                                     <field name="date_from" optional="show" string="Effective From"/>
                                     <field name="active" optional="hide"/>
@@ -97,14 +97,14 @@
                             <div class="mb-4">
                                 <div class="d-flex align-items-center mb-2 pb-1 border-bottom border-primary">
                                     <span class="badge text-bg-primary me-2 px-2 py-1"><i class="fa fa-star me-1"/> NEW REGIME</span>
-                                    <h5 class="text-primary fw-bold mb-0">New Tax Regime Surcharges (Section 115BAC)</h5>
+                                    <h5 class="text-primary fw-bold mb-0">New Tax Regime Surcharges (Income-tax Act, 2025 — Section 202(1))</h5>
                                 </div>
                                 <field name="new_regime_surcharge_ids" context="{'default_financial_year_id': id, 'default_regime_code': 'new'}">
                                     <list editable="bottom" string="New Regime Surcharges">
                                         <field name="sequence" widget="handle"/>
                                         <field name="income_from" string="Income From (₹)"/>
                                         <field name="income_to" column_invisible="True"/>
-                                        <field name="display_income_to" string="Income To (₹)" decoration-bf="income_to == 0" decoration-warning="income_to == 0"/>
+                                        <field name="display_income_to" string="Income To (₹)" decoration-bf="income_to == 0" decoration-info="income_to == 0"/>
                                         <field name="surcharge_rate" string="Surcharge Rate (%)"/>
                                         <field name="date_from" optional="show" string="Effective From"/>
                                         <field name="active" optional="hide"/>
@@ -112,16 +112,16 @@
                                 </field>
                             </div>
                             <div class="mt-4">
-                                <div class="d-flex align-items-center mb-2 pb-1 border-bottom border-warning">
-                                    <span class="badge text-bg-warning text-dark me-2 px-2 py-1"><i class="fa fa-history me-1"/> OLD REGIME</span>
-                                    <h5 class="text-warning fw-bold mb-0">Old Tax Regime Surcharges (Regular / Old Provisions)</h5>
+                                <div class="d-flex align-items-center mb-2 pb-1 border-bottom border-info">
+                                    <span class="badge text-bg-info text-dark me-2 px-2 py-1" style="background-color: #38bdf8 !important; color: #0f172a !important; font-weight: 600;"><i class="fa fa-history me-1"/> OLD REGIME</span>
+                                    <h5 class="fw-bold mb-0 text-info" style="color: #38bdf8 !important;">Old Tax Regime Surcharges (Regular / Old Provisions)</h5>
                                 </div>
                                 <field name="old_regime_surcharge_ids" context="{'default_financial_year_id': id, 'default_regime_code': 'old'}">
                                     <list editable="bottom" string="Old Regime Surcharges">
                                         <field name="sequence" widget="handle"/>
                                         <field name="income_from" string="Income From (₹)"/>
                                         <field name="income_to" column_invisible="True"/>
-                                        <field name="display_income_to" string="Income To (₹)" decoration-bf="income_to == 0" decoration-warning="income_to == 0"/>
+                                        <field name="display_income_to" string="Income To (₹)" decoration-bf="income_to == 0" decoration-muted="income_to == 0"/>
                                         <field name="surcharge_rate" string="Surcharge Rate (%)"/>
                                         <field name="date_from" optional="show" string="Effective From"/>
                                         <field name="active" optional="hide"/>
@@ -203,7 +203,7 @@
                 <sheet>
                     <group>
                         <group>
-                            <field name="name" placeholder="e.g. New Tax Regime (Section 115BAC)"/>
+                            <field name="name" placeholder="e.g. New Tax Regime Income-tax Act, 2025 — Section 202(1)"/>
                             <field name="code"/>
                             <field name="sequence"/>
                         </group>
@@ -250,7 +250,7 @@
                 <field name="regime_code"/>
                 <field name="income_from" optional="show" string="Income From (₹)"/>
                 <field name="income_to" column_invisible="True"/>
-                <field name="display_income_to" string="Income To (₹)" optional="show" decoration-bf="income_to == 0" decoration-warning="income_to == 0"/>
+                <field name="display_income_to" string="Income To (₹)" optional="show" decoration-bf="income_to == 0" decoration-info="income_to == 0"/>
                 <field name="rate"/>
                 <field name="date_from" optional="show"/>
                 <field name="active" optional="hide"/>
@@ -301,7 +301,7 @@
                 <field name="regime_code"/>
                 <field name="income_from" optional="show" string="Income From (₹)"/>
                 <field name="income_to" column_invisible="True"/>
-                <field name="display_income_to" string="Income To (₹)" optional="show" decoration-bf="income_to == 0" decoration-warning="income_to == 0"/>
+                <field name="display_income_to" string="Income To (₹)" optional="show" decoration-bf="income_to == 0" decoration-info="income_to == 0"/>
                 <field name="surcharge_rate"/>
                 <field name="date_from" optional="show"/>
                 <field name="active" optional="hide"/>
