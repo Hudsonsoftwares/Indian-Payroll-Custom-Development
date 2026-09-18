@@ -1,4 +1,6 @@
 id,name,model_id:id,group_id:id,perm_read,perm_write,perm_create,perm_unlink
+access_hds_payment_mode_user,access.hds.payment.mode.user,model_hds_payment_mode,hudson_payroll_base.group_payroll_user,1,0,0,0
+access_hds_payment_mode_manager,access.hds.payment.mode.manager,model_hds_payment_mode,hudson_payroll_base.group_payroll_manager,1,1,1,1
 access_hds_in_payroll_audit_user,access.hds.in.payroll.audit.user,model_hds_in_payroll_audit,hudson_payroll_base.group_payroll_user,1,0,0,0
 access_hds_in_payroll_audit_manager,access.hds.in.payroll.audit.manager,model_hds_in_payroll_audit,hudson_payroll_base.group_payroll_manager,1,1,1,1
 access_hds_in_salary_revision_user,access.hds.in.salary.revision.user,model_hds_in_salary_revision,hudson_payroll_base.group_payroll_user,1,0,0,0

@@ -5,6 +5,7 @@ from . import hds_in_payroll_audit
 from . import hr_rule_parameter
 from . import tds_lta_previous_employer
 from . import tds_house_property_loss_carryforward
+from . import hds_payment_mode
 from . import hr_employee
 from . import hr_salary_rule
 from . import hr_contract

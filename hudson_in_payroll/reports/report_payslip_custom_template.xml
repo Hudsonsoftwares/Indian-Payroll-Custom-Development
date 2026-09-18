@@ -22,6 +22,7 @@
                             <div style="font-size: 8.5px; color: #333333; margin-top: 2px;">
                                 <t t-esc="o.company_id.street"/><t t-if="o.company_id.street2">, <t t-esc="o.company_id.street2"/></t>
                                 <t t-if="o.company_id.city">, <t t-esc="o.company_id.city"/></t>
+                                <t t-if="o.company_id.partner_id and o.company_id.partner_id.state_id">, <t t-esc="o.company_id.partner_id.state_id.name"/></t>
                                 <t t-if="o.company_id.zip"> - <t t-esc="o.company_id.zip"/></t>
                             </div>
                             <div style="font-size: 11px; font-weight: bold; color: #003366; margin-top: 4px; text-transform: uppercase;">
@@ -135,8 +136,12 @@
                     <td style="padding: 4px 8px; text-align: center; font-size: 9px;">
                         <strong>STD DAYS : </strong> <t t-esc="pdata['std_days']"/> &#160;&#160;|&#160;&#160;
                         <strong>DAYS WORKED : </strong> <t t-esc="pdata['days_worked']"/> &#160;&#160;|&#160;&#160;
-                        <strong>LOP DAYS : </strong> <t t-esc="pdata['lop_days']"/> &#160;&#160;|&#160;&#160;
-                        <strong>LOP REV DAYS : </strong> <t t-esc="pdata['lop_rev_days']"/> &#160;&#160;|&#160;&#160;
+                        <strong>LOP DAYS : </strong> <t t-esc="pdata['lop_days']"/>
+                        <t t-if="pdata['lop_rev_days'] &gt; 0">
+                            &#160;&#160;|&#160;&#160;
+                            <strong>LOP REV DAYS : </strong> <t t-esc="pdata['lop_rev_days']"/>
+                        </t>
+                        &#160;&#160;|&#160;&#160;
                         <strong>PF WAGE (CALC BASE) : </strong> ₹ <t t-esc="'{:,.2f}'.format(pdata['pf_wage'])"/>
                     </td>
                 </tr>
@@ -272,10 +277,17 @@
         </div>
     </template>
 
-    <!-- Override report_payslip_document in hudson_payroll_base without outer layout duplication -->
+    <!-- Full replacement of report_payslip_document to bypass web.external_layout.
+         The web.external_layout renders the top-left company header box using
+         company.state_id from the Odoo standard layout, which may show a stale state
+         (e.g. Chhattisgarh even though the company is in Kerala).
+         Our report_payslip_page_content has its own complete header with logo,
+         company name, and correct address (including state from partner_id.state_id).
+         We use web.report_layout for proper paper sizing without the address header. -->
     <template id="report_payslip_custom" inherit_id="hudson_payroll_base.report_payslip_document" priority="99">
         <xpath expr="//div[hasclass('page')]" position="replace">
             <t t-call="hudson_in_payroll.report_payslip_page_content"/>
         </xpath>
     </template>
 </odoo>
+

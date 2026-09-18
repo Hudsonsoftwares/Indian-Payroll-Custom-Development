@@ -1,6 +1,9 @@
 import logging
+# pyrefly: ignore [missing-import]
 from odoo import api, fields, models, _
+# pyrefly: ignore [missing-import]
 from odoo.exceptions import ValidationError
+# pyrefly: ignore [missing-import]
 from odoo.exceptions import UserError
 from ..services.epf.epf_service import EPFService
 from ..services.esic.esic_service import ESICService
@@ -43,22 +46,27 @@ class HrPayslip(models.Model):
         readonly=True,
         help="Number of payable/worked days in the wage period (after deducting LOP/unpaid leave)."
     )
-    hds_in_payment_mode = fields.Selection([
-        ('bank_transfer', 'Bank Transfer'),
-        ('neft_rtgs', 'NEFT / RTGS'),
-        ('cheque', 'Cheque'),
-        ('cash', 'Cash'),
-        ('upi', 'UPI'),
-    ], string="Payment Mode", compute='_compute_hds_in_payment_mode', store=True, readonly=False,
-       help="Mode of salary disbursement for this payslip.")
+    hds_in_payment_mode = fields.Many2one(
+        'hds.payment.mode',
+        string="Payment Mode",
+        compute='_compute_hds_in_payment_mode',
+        store=True,
+        readonly=False,
+        help="Mode of salary disbursement for this payslip. Auto-populated from employee profile."
+    )
 
     @api.depends('employee_id', 'employee_id.hds_in_payment_mode')
     def _compute_hds_in_payment_mode(self):
         for slip in self:
-            if slip.employee_id and getattr(slip.employee_id, 'hds_in_payment_mode', False):
-                slip.hds_in_payment_mode = slip.employee_id.hds_in_payment_mode
+            emp_mode = slip.employee_id.hds_in_payment_mode if slip.employee_id else False
+            if emp_mode:
+                slip.hds_in_payment_mode = emp_mode
             elif not slip.hds_in_payment_mode:
-                slip.hds_in_payment_mode = 'bank_transfer'
+                # Default to first active Bank Transfer mode if available
+                default_mode = self.env['hds.payment.mode'].search(
+                    [('code', '=', 'bank_transfer'), ('active', '=', True)], limit=1
+                )
+                slip.hds_in_payment_mode = default_mode or False
 
     # Transient in-memory dictionary cache for active payslip evaluation contexts
     _eval_contexts = {}
@@ -1231,6 +1239,7 @@ else:
         company = self.company_id or (emp.company_id if emp else self.env.company)
         if company and company.partner_id and company.partner_id.state_id:
             return
+        # pyrefly: ignore [missing-import]
         from odoo.exceptions import ValidationError
         raise ValidationError(_(
             "Company State is not configured! Please configure the State in Company Address "
@@ -1585,11 +1594,35 @@ else:
         # Employee Identification / Statutory Numbers
         emp_no = getattr(emp, 'registration_number', False) or getattr(emp, 'barcode', False) or f"EMP{emp.id:04d}"
         location = getattr(emp.work_location_id, 'name', False) or company.city or 'Main Office'
-        joining_date = getattr(emp, 'hds_in_doj', False) or (self.contract_id.date_start if self.contract_id else False)
-        dob = emp.birthday
-        gender_val = getattr(emp, 'gender', False)
-        gender = gender_val.title() if isinstance(gender_val, str) else 'N/A'
-        
+
+        # Joining Date: prefer employee's date_of_joining / date_start; fallback to contract
+        joining_date = (
+            getattr(emp, 'date_of_joining', False)
+            or getattr(emp, 'joining_date', False)
+            or getattr(emp, 'hds_in_doj', False)
+            or (self.contract_id.date_start if self.contract_id else False)
+        )
+
+        # Date of Birth — uses sudo() to bypass hr.group_hr_user restriction
+        dob = emp.sudo().birthday
+
+        # Gender — In Odoo 19, gender moved from hr.employee to hr.version as field 'sex'
+        # (displayed as "Gender" in UI). Use sudo() to bypass hr.group_hr_user restriction.
+        _gender_map = {'male': 'Male', 'female': 'Female', 'other': 'Other'}
+        gender_val = ''
+        try:
+            # Odoo 19: field is 'sex' on hr.version (the active contract version)
+            version = getattr(emp, 'version_id', False)
+            if version:
+                gender_val = version.sudo().sex or ''
+            # Fallback: older field 'gender' directly on hr.employee (Odoo 16/17)
+            if not gender_val:
+                gender_val = emp.sudo().gender or ''
+        except Exception:
+            gender_val = ''
+        gender = _gender_map.get(gender_val, gender_val.title()) if gender_val else 'N/A'
+
+        # Statutory Numbers — fetched from employee; fallback gracefully to '-'
         pan = getattr(emp, 'hds_in_pan', False) or getattr(emp, 'pan_no', False) or emp.identification_id or '-'
         aadhaar = getattr(emp, 'hds_in_aadhaar', False) or getattr(emp, 'aadhaar_no', False) or '-'
         epf_no = getattr(emp, 'hds_in_pf_member_id', False) or getattr(emp, 'hds_in_epf_number', False) or getattr(emp, 'pf_number', False) or '-'
@@ -1602,29 +1635,37 @@ else:
         lop_days = sum(w.number_of_days for w in self.worked_days_line_ids if (w.code or '').upper() in ('UNPAID', 'ABSENT')) if self.worked_days_line_ids else 0.0
         lop_rev_days = sum(w.number_of_days for w in self.worked_days_line_ids if 'REV' in (w.code or '').upper()) if self.worked_days_line_ids else 0.0
 
-        # Payment Mode & Bank Details
-        mode_key = self.hds_in_payment_mode or (getattr(emp, 'hds_in_payment_mode', False) if emp else False) or 'bank_transfer'
-        mode_labels = {
-            'bank_transfer': 'BANK TRANSFER',
-            'neft_rtgs': 'NEFT / RTGS',
-            'cheque': 'CHEQUE',
-            'cash': 'CASH',
-            'upi': 'UPI',
-        }
-        payment_mode = mode_labels.get(mode_key, mode_key.upper().replace('_', ' '))
+        # Payment Mode — fetched from payslip Many2one (populated from employee)
+        mode_rec = self.hds_in_payment_mode or (emp.hds_in_payment_mode if emp else False)
+        payment_mode = (mode_rec.name.upper() if mode_rec else 'BANK TRANSFER')
+        is_cash_mode = mode_rec.is_cash if mode_rec else False
 
-        if mode_key == 'cash':
+        # Bank Details — masked account number (show **** + last 4 digits only)
+        if is_cash_mode:
             bank_name = 'N/A'
             acc_no = 'N/A'
         else:
-            bank_acc = getattr(emp, 'bank_account_id', False) or getattr(emp, 'primary_bank_account_id', False) or (emp.bank_account_ids[0] if getattr(emp, 'bank_account_ids', False) else False)
+            bank_acc = (
+                getattr(emp, 'bank_account_id', False)
+                or getattr(emp, 'primary_bank_account_id', False)
+                or (emp.bank_account_ids[0] if getattr(emp, 'bank_account_ids', False) else False)
+            )
             if not bank_acc:
-                partner = getattr(emp, 'work_contact_id', False) or (emp.user_id.partner_id if getattr(emp, 'user_id', False) else None)
+                partner = getattr(emp, 'work_contact_id', False) or (
+                    emp.user_id.partner_id if getattr(emp, 'user_id', False) else None
+                )
                 if partner and getattr(partner, 'bank_ids', False):
                     bank_acc = partner.bank_ids[0]
 
             bank_name = bank_acc.bank_id.name if bank_acc and bank_acc.bank_id else '-'
-            acc_no = bank_acc.acc_number if bank_acc else '-'
+            raw_acc = bank_acc.acc_number if bank_acc and bank_acc.acc_number else ''
+            # Mask: show only last 4 digits, rest replaced with asterisks
+            if raw_acc and raw_acc != '-' and len(raw_acc) > 4:
+                acc_no = '*' * (len(raw_acc) - 4) + raw_acc[-4:]
+            elif raw_acc:
+                acc_no = raw_acc
+            else:
+                acc_no = '-'
 
         # Earnings lines vs Deductions lines
         earnings_lines = []

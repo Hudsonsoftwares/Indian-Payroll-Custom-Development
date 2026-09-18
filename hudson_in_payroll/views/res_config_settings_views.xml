@@ -240,7 +240,27 @@
                             </div>
                         </div>
 
+                        <!-- Payment Modes Configuration -->
+                        <div class="col-12 col-lg-6 o_setting_box" id="hds_in_payment_mode_setting">
+                            <div class="o_setting_right_pane">
+                                <span class="o_form_label fw-bold">Payment Modes</span>
+                                <div class="text-muted">
+                                    Configure the salary disbursement methods available in your organization
+                                    (e.g. Bank Transfer, NEFT/RTGS, Cash, UPI). These modes appear on
+                                    employee profiles and payslips.
+                                </div>
+                                <div class="mt8">
+                                    <button name="%(hudson_in_payroll.action_hds_payment_mode)d"
+                                            icon="fa-arrow-right"
+                                            type="action"
+                                            string="Configure Payment Modes"
+                                            class="btn-link"/>
+                                </div>
+                            </div>
+                        </div>
+
                         <!-- Payroll Structures Configuration -->
+
                         <div class="col-12 col-lg-6 o_setting_box" id="hds_in_payroll_structures_setting">
                             <div class="o_setting_right_pane">
                                 <span class="o_form_label fw-bold">Payroll Structure Configuration</span>

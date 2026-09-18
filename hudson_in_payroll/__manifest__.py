@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 {
     'name': 'Hudson Indian Payroll',
-    'version': '19.0.1.0.5',
+    'version': '19.0.1.0.7',
     'category': 'Human Resources/Payroll',
     'summary': 'Indian Statutory Payroll Localization for Hudson HRMS',
     'author': 'Hudson Software Solutions',
@@ -41,6 +41,8 @@
         'data/tds_rule_parameters.xml',
         'data/tds_section_config_data.xml',
         'data/hr_payroll_benefit_india_data.xml',
+        'data/hds_payment_mode_data.xml',
+        'views/hds_payment_mode_views.xml',
         'views/hds_in_statutory_report_views.xml',
         'views/hds_pt_report_wizard_views.xml',
         'views/hds_pt_report_tile_views.xml',

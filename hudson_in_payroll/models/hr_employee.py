@@ -269,14 +269,14 @@ class HrEmployee(models.Model):
         compute='_compute_hds_in_statutory_audit_count'
     )
 
-    hds_in_payment_mode = fields.Selection([
-        ('bank_transfer', 'Bank Transfer'),
-        ('neft_rtgs', 'NEFT / RTGS'),
-        ('cheque', 'Cheque'),
-        ('cash', 'Cash'),
-        ('upi', 'UPI'),
-    ], string="Payment Mode", default='bank_transfer', tracking=True,
-       help="Preferred mode of salary payment for this employee.")
+    hds_in_payment_mode = fields.Many2one(
+        'hds.payment.mode',
+        string="Payment Mode",
+        tracking=True,
+        help="Preferred mode of salary payment for this employee. "
+             "Configured in Payroll Settings → Payment Modes.",
+    )
+
 
     @api.depends(
         'hds_in_esic_applicable', 'hds_in_is_pwd', 'wage', 'basic_salary',
