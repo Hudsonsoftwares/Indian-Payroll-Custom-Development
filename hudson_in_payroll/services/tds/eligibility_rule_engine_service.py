@@ -189,7 +189,10 @@ class EligibilityRuleEngineService(BaseStatutoryService):
         elif category == '57iia':
             param_code = 'HDS_IN_TDS_FAMILY_PENSION_LIMIT_NEW' if regime_code == 'new' else 'HDS_IN_TDS_FAMILY_PENSION_LIMIT_OLD'
             configured_limit = tds_param_svc.get_family_pension_limit(regime=regime_code, eval_date=eval_date)
-            gross_family_pension = declared_val if declared_val > 0.0 else source_amount
+            if declaration_state in ('proof_verified', 'approved') and approved_val > 0.0:
+                gross_family_pension = approved_val
+            else:
+                gross_family_pension = declared_val if declared_val > 0.0 else source_amount
             one_third_amount = round(gross_family_pension / 3.0, 2)
             limit = min(one_third_amount, configured_limit)
 

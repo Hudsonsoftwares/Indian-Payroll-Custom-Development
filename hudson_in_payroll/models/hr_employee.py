@@ -1096,6 +1096,135 @@ class HrEmployee(models.Model):
                 if decl:
                     decl.sudo().write({'tax_regime_id': emp.hds_in_current_tax_regime_id.id})
 
+    # -------------------------------------------------------------------------
+    # ACTIVE TAX DECLARATION LIVE SUMMARY & KPI FIELDS
+    # -------------------------------------------------------------------------
+    hds_in_current_declaration_id = fields.Many2one(
+        'tds.employee.declaration',
+        string="Active Tax Declaration",
+        compute='_compute_current_tax_declaration_summary',
+        store=False,
+        help="Active TDS Employee Declaration for the current active Financial Year."
+    )
+    hds_in_decl_status = fields.Selection(
+        selection=[
+            ('draft', 'Draft'),
+            ('declared', 'Declared'),
+            ('submitted', 'Submitted'),
+            ('proof_submitted', 'Proof Submitted'),
+            ('proof_under_review', 'Proof Under Review'),
+            ('proof_verified', 'Proof Verified'),
+            ('approved', 'Approved'),
+            ('rejected', 'Rejected'),
+        ],
+        string="Declaration Status",
+        compute='_compute_current_tax_declaration_summary',
+        store=False,
+    )
+    hds_in_decl_total_declared = fields.Monetary(
+        string="Total Declared Deductions",
+        currency_field='currency_id',
+        compute='_compute_current_tax_declaration_summary',
+        store=False,
+    )
+    hds_in_decl_total_approved = fields.Monetary(
+        string="Total Approved Deductions",
+        currency_field='currency_id',
+        compute='_compute_current_tax_declaration_summary',
+        store=False,
+    )
+    hds_in_decl_net_estimated_tax = fields.Monetary(
+        string="Net Estimated Annual TDS",
+        currency_field='currency_id',
+        compute='_compute_current_tax_declaration_summary',
+        store=False,
+    )
+    hds_in_decl_summary_html = fields.Html(
+        string="Live Tax Summary Card",
+        compute='_compute_current_tax_declaration_summary',
+        store=False,
+    )
+
+    def _compute_current_tax_declaration_summary(self):
+        for emp in self:
+            fy = emp.hds_in_current_fy_id
+            decl = False
+            if fy and emp.id:
+                decl = self.env['tds.employee.declaration'].sudo().search([
+                    ('employee_id', '=', emp.id),
+                    ('financial_year_id', '=', fy.id)
+                ], limit=1)
+
+            emp.hds_in_current_declaration_id = decl
+            if decl:
+                emp.hds_in_decl_status = decl.state
+                emp.hds_in_decl_total_declared = decl.total_declared_amount
+                emp.hds_in_decl_total_approved = decl.total_approved_amount
+            else:
+                emp.hds_in_decl_status = 'draft'
+                emp.hds_in_decl_total_declared = 0.0
+                emp.hds_in_decl_total_approved = 0.0
+
+            # Compute Net Estimated Annual TDS
+            est_tax = 0.0
+            if emp.id and emp.hds_in_tds_applicable:
+                try:
+                    from ..services.tds.tds_orchestration_engine import TdsOrchestrationEngine
+                    engine = TdsOrchestrationEngine(self.env)
+                    tds_res = engine.hds_in_compute_tds(emp, eval_date=fields.Date.today())
+                    est_tax = float(getattr(tds_res, 'total_annual_tax_liability', 0.0) or 0.0)
+                except Exception:
+                    est_tax = 0.0
+            emp.hds_in_decl_net_estimated_tax = est_tax
+
+            # Generate modern, responsive HTML Live Tax Card
+            fy_name = fy.name if fy else "N/A"
+            regime_name = emp.hds_in_current_tax_regime_id.name if emp.hds_in_current_tax_regime_id else ("New Tax Regime" if emp.hds_in_is_new_tax_regime else "Old Tax Regime")
+            status_val = dict(self._fields['hds_in_decl_status'].selection).get(emp.hds_in_decl_status, 'Draft')
+
+            badge_bg = '#64748b'  # slate
+            if emp.hds_in_decl_status == 'approved':
+                badge_bg = '#10b981'  # emerald
+            elif emp.hds_in_decl_status in ['declared', 'submitted']:
+                badge_bg = '#3b82f6'  # blue
+            elif emp.hds_in_decl_status in ['proof_submitted', 'proof_under_review', 'proof_verified']:
+                badge_bg = '#f59e0b'  # amber
+            elif emp.hds_in_decl_status == 'rejected':
+                badge_bg = '#ef4444'  # red
+
+            curr = emp.currency_id.symbol or '₹'
+            emp.hds_in_decl_summary_html = f"""
+            <div style="background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%); border: 1px solid #cbd5e1; border-radius: 12px; padding: 20px; margin-bottom: 20px; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05);">
+                <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #e2e8f0; padding-bottom: 14px; margin-bottom: 16px;">
+                    <div>
+                        <span style="font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em; font-weight: 700; color: #64748b;">Statutory Tax Overview</span>
+                        <h4 style="margin: 2px 0 0 0; color: #0f172a; font-weight: 700;">{fy_name}</h4>
+                    </div>
+                    <div style="display: flex; gap: 8px; align-items: center;">
+                        <span style="background: #e0e7ff; color: #3730a3; font-size: 12px; font-weight: 600; padding: 4px 10px; border-radius: 20px;">
+                            {regime_name}
+                        </span>
+                        <span style="background: {badge_bg}; color: #ffffff; font-size: 12px; font-weight: 600; padding: 4px 10px; border-radius: 20px;">
+                            Status: {status_val}
+                        </span>
+                    </div>
+                </div>
+                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 16px;">
+                    <div style="background: #ffffff; padding: 14px; border-radius: 8px; border: 1px solid #e2e8f0;">
+                        <div style="font-size: 12px; color: #64748b; font-weight: 600;">Total Declared Deductions</div>
+                        <div style="font-size: 20px; font-weight: 700; color: #1e293b; margin-top: 4px;">{curr} {emp.hds_in_decl_total_declared:,.2f}</div>
+                    </div>
+                    <div style="background: #ffffff; padding: 14px; border-radius: 8px; border: 1px solid #e2e8f0;">
+                        <div style="font-size: 12px; color: #64748b; font-weight: 600;">Total Approved Deductions</div>
+                        <div style="font-size: 20px; font-weight: 700; color: #059669; margin-top: 4px;">{curr} {emp.hds_in_decl_total_approved:,.2f}</div>
+                    </div>
+                    <div style="background: #ffffff; padding: 14px; border-radius: 8px; border: 1px solid #e2e8f0;">
+                        <div style="font-size: 12px; color: #64748b; font-weight: 600;">Net Estimated Annual TDS</div>
+                        <div style="font-size: 20px; font-weight: 700; color: #dc2626; margin-top: 4px;">{curr} {emp.hds_in_decl_net_estimated_tax:,.2f}</div>
+                    </div>
+                </div>
+            </div>
+            """
 
     # Section 3: Income Declaration Helper Fields (Mapped to tds.employee.income.declaration)
     hds_in_savings_bank_interest = fields.Monetary(
@@ -1343,12 +1472,12 @@ class HrEmployee(models.Model):
     # CATEGORY C: NEW REGIME & BOTH REGIMES SUPPORTED DEDUCTIONS
     # -------------------------------------------------------------------------
     hds_in_decl_80ccd2_employer_nps = fields.Monetary(
-        string="Employer NPS Contribution 80CCD(2) (₹)",
+        string="Employer NPS Contribution — Section 124 (₹)",
         currency_field='currency_id',
         compute='_compute_current_deduction_decl',
         inverse='_inverse_current_deduction_decl',
         store=False,
-        help="Employer contribution under Section 80CCD(2) (up to 14%/10% of Basic + DA, permitted under BOTH Old and New Regimes)."
+        help="Employer contribution under Section 124 (formerly Section 80CCD(2)) (up to 14%/10% of Basic + DA, permitted under BOTH Old and New Regimes)."
     )
     hds_in_decl_57iia_family_pension = fields.Monetary(
         string="Family Pension Deduction 57(iia) (₹)",

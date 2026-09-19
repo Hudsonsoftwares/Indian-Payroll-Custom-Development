@@ -434,7 +434,7 @@ class HdsPayrollDashboard(models.Model):
             rec._compute_dashboard_metrics()
             currency_symbol = rec.currency_id.symbol or '₹'
             month_name = dict(rec._fields['payroll_month_num'].selection).get(rec.payroll_month_num, 'August')
-            fy_name = rec.financial_year_id.name if rec.financial_year_id else 'FY 2026-27'
+            fy_name = rec.financial_year_id.name if rec.financial_year_id else 'Tax Year: 2026-27'
 
             # Fetch New Joiners for selected month
             today = fields.Date.today()
@@ -808,23 +808,7 @@ class HdsPayrollDashboard(models.Model):
                         </div>
                     </div>
 
-                    <!-- Card 5: Pending Actions (Payrun Anomaly / Shortage - Amber) -->
-                    <div role="button" tabindex="0" onclick="window.hdsCardClick &amp;&amp; window.hdsCardClick(this, 'pending_actions')" data-card-type="pending_actions" class="hds-dash-card o_hds_dashboard_card_clickable" style="text-decoration: none; display: block; padding: 18px; border-top: 4px solid #fbbf24 !important; cursor: pointer;">
-                        <div style="display: flex; justify-content: space-between; align-items: center;">
-                            <span class="small fw-semibold text-uppercase" style="color: #fbbf24 !important; font-size: 11px; letter-spacing: 0.5px;">
-                                <i class="fa fa-exclamation-circle me-1"/> Pending Actions
-                            </span>
-                            <span style="font-size: 11px; color: #fbbf24; font-weight: 600;">View Issues &darr;</span>
-                        </div>
-                        <div style="font-size: 24px; font-weight: 800; margin: 8px 0; color: #fbbf24; letter-spacing: -0.5px;">
-                            {rec.pending_actions_count}
-                        </div>
-                        <div style="font-size: 11px; color: #fbbf24; font-weight: 600;">
-                            Requires HR Attention
-                        </div>
-                    </div>
-
-                    <!-- Card 6: Final Settlements Due (Payrun Danger / Settlements - Rose) -->
+                    <!-- Card 5: Final Settlements Due (Payrun Danger / Settlements - Rose) -->
                     <div role="button" tabindex="0" onclick="window.hdsCardClick &amp;&amp; window.hdsCardClick(this, 'final_settlements_due')" data-card-type="final_settlements_due" class="hds-dash-card o_hds_dashboard_card_clickable" style="text-decoration: none; display: block; padding: 18px; border-top: 4px solid #f87171 !important; cursor: pointer;">
                         <div style="display: flex; justify-content: space-between; align-items: center;">
                             <span class="small fw-semibold text-uppercase" style="color: #f87171 !important; font-size: 11px; letter-spacing: 0.5px;">

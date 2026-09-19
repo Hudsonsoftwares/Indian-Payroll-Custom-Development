@@ -401,7 +401,7 @@
 
         <!-- 8. BOTH REGIME SECTIONS (80CCD(2), 57(iia), 80CCH) -->
         <record id="hds_in_tds_section_both_regimes" model="tds.tax.section.config">
-            <field name="name">Deductions Allowed Under Both Regimes</field>
+            <field name="name">Other Tax-Eligible Adjustments</field>
             <field name="code">BOTH_REGIMES</field>
             <field name="old_regime_allowed">1</field>
             <field name="new_regime_allowed">1</field>
@@ -410,7 +410,7 @@
         </record>
         <record id="hds_in_tds_comp_80ccd2" model="tds.tax.component.config">
             <field name="section_id" ref="hds_in_tds_section_both_regimes"/>
-            <field name="name">Employer NPS Contribution (Section 80CCD(2))</field>
+            <field name="name">Employer NPS Contribution — Section 124</field>
             <field name="code">80ccd2</field>
             <field name="python_field_name">decl_80ccd2_employer_nps</field>
             <field name="old_regime_allowed">1</field>
@@ -420,7 +420,7 @@
         </record>
         <record id="hds_in_tds_comp_57iia" model="tds.tax.component.config">
             <field name="section_id" ref="hds_in_tds_section_both_regimes"/>
-            <field name="name">Family Pension Deduction (Section 57(iia))</field>
+            <field name="name">Family Pension Received (annual)</field>
             <field name="code">57iia</field>
             <field name="python_field_name">decl_57iia_family_pension</field>
             <field name="old_regime_allowed">1</field>

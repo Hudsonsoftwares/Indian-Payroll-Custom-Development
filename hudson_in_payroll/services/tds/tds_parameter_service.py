@@ -160,7 +160,8 @@ class TdsParameterService(BaseStatutoryService):
 
     def get_family_pension_limit(self, regime='new', eval_date=None):
         """Resolves Section 57(iia) Family Pension deduction statutory ceiling based on tax regime."""
-        return self.get_parameter('FAMILY_PENSION_LIMIT', eval_date=eval_date, regime=regime)
+        def_val = 25000.0 if (regime or 'new').lower() == 'new' else 15000.0
+        return self.get_parameter('FAMILY_PENSION_LIMIT', eval_date=eval_date, regime=regime, default_val=def_val)
 
     def get_employer_nps_limit(self, regime='new', employer_type='private', eval_date=None, as_decimal=False):
         """

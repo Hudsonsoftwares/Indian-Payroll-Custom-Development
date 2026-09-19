@@ -78,8 +78,8 @@ DECLARATION_UI_REGISTRY = {
     'decl_80g_donation': {'label': 'Charitable Donations (80G)', 'display_order': 210},
     'decl_80gg_rent': {'label': 'Rent Paid without HRA (80GG)', 'display_order': 220},
     'decl_80dd_expenditure_amount': {'label': 'Dependent Disability Deduction (80DD)', 'display_order': 230},
-    'decl_80ccd2_employer_nps': {'label': 'Employer NPS Contribution (80CCD(2))', 'display_order': 240},
-    'decl_57iia_family_pension': {'label': 'Family Pension Deduction (57(iia))', 'display_order': 250},
+    'decl_80ccd2_employer_nps': {'label': 'Employer NPS Contribution — Section 124', 'display_order': 240},
+    'decl_57iia_family_pension': {'label': 'Family Pension Received (annual)', 'display_order': 250},
     'decl_80cch_agniveer': {'label': 'Agniveer Corpus Fund Contribution (80CCH)', 'display_order': 260},
 }
 
@@ -393,7 +393,8 @@ class TdsEmployeeDeclaration(models.Model):
             lines_eligible = sum(rec.declaration_line_ids.mapped('eligible_amount'))
             lines_excess = sum(rec.declaration_line_ids.mapped('excess_amount'))
             
-            rec.total_declared_amount = sum_80c_scalars + sum_80d + sum_other_ded + lines_declared
+            scalars_total = sum_80c_scalars + sum_80d + sum_other_ded
+            rec.total_declared_amount = max(scalars_total, lines_declared)
             
             approved_80c = min(sum_80c_scalars, 150000.0) if rec.regime_code == 'old' else 0.0
             approved_80d_self = min((rec.decl_80d_self or 0.0) + min(rec.decl_80d_preventive or 0.0, 5000.0), 50000.0 if rec.decl_80d_self_is_senior else 25000.0)
@@ -738,6 +739,12 @@ class TdsEmployeeDeclaration(models.Model):
         'tds.house.property.loss.carryforward',
         related='employee_id.house_property_loss_ids',
         string="House Property Loss Carry-Forward (71B)",
+        readonly=False
+    )
+    previous_lta_history_ids = fields.One2many(
+        'tds.lta.previous.employer',
+        related='employee_id.previous_lta_history_ids',
+        string="Previous Employer LTA History",
         readonly=False
     )
 
@@ -2703,20 +2710,20 @@ is_within_8_years=%s""",
                     </div>
                 </div>
                 """
-    # Deductions Allowed Under BOTH Regimes
+    # Other Tax-Eligible Adjustments (80CCD(2), 57(iia), 80CCH)
     decl_80ccd2_employer_nps = fields.Monetary(
-        string="Employer NPS Contribution (80CCD(2)) (₹)",
+        string="Employer NPS Contribution — Section 124 (₹)",
         currency_field='currency_id',
         default=0.0,
         store=True,
-        help="Section 80CCD(2) - Employer NPS Contribution"
+        help="Employer NPS Contribution under Section 124 (formerly Section 80CCD(2))"
     )
     decl_57iia_family_pension = fields.Monetary(
-        string="Family Pension Deduction (57(iia)) (₹)",
+        string="Family Pension Received (annual) (₹)",
         currency_field='currency_id',
         default=0.0,
         store=True,
-        help="Section 57(iia) - Standard Deduction on Family Pension"
+        help="Annual gross family pension received by legal heirs (Income from Other Sources). Standard deduction under Section 57(iia) / Section 93(1)(d) (1/3rd or ₹25,000 New / ₹15,000 Old) is netted directly to determine taxable income."
     )
     decl_80cch_agniveer = fields.Monetary(
         string="Agniveer Corpus Fund Contribution (80CCH) (₹)",
@@ -3044,6 +3051,32 @@ is_within_8_years=%s""",
             method_name
         )
 
+    @api.model
+    def _resolve_declaration_field_for_line(self, category, description):
+        """
+        Maps a declaration line's category and description to its exact scalar field_name.
+        Guarantees 1-to-1 isolation so changes to one line never leak into other fields.
+        """
+        if not category:
+            return None
+        if category == '80c':
+            d = (description or '').lower().strip()
+            if 'ppf' in d or 'public provident' in d: return 'decl_80c_ppf'
+            if 'elss' in d or 'mutual fund' in d: return 'decl_80c_elss'
+            if 'vpf' in d or 'voluntary epf' in d or 'voluntary pf' in d or ('epf' in d and 'ppf' not in d): return 'decl_80c_epf'
+            if 'lic' in d or 'life insurance' in d or 'life premium' in d: return 'decl_80c_lic'
+            if 'nsc' in d or 'national savings' in d: return 'decl_80c_nsc'
+            if 'ssy' in d or 'sukanya' in d: return 'decl_80c_ssy'
+            if 'fixed deposit' in d or 'tax saving fd' in d or ' 5 year' in d or ' 5-year' in d or d == 'fd' or d.endswith(' fd'): return 'decl_80c_fd'
+            if 'tuition' in d or 'school fee' in d or 'children tuition' in d: return 'decl_80c_tuition'
+            if 'housing' in d or 'principal' in d or 'home loan principal' in d: return 'decl_80c_housing_principal'
+            return 'decl_80c_other'
+
+        for item in DECLARATION_BUSINESS_REGISTRY:
+            if item['category'] == category:
+                return item['field_name']
+        return None
+
     def _sync_all_declaration_lines(self, method_name='write', write_vals=None):
         """
         Metadata-driven intent-aware synchronization of header decl_* fields and child declaration_line_ids.
@@ -3058,12 +3091,11 @@ is_within_8_years=%s""",
         # Parse explicit user intent from write_vals payload
         header_cleared_fields = set()
         header_updated_fields = {}
-        line_cleared_categories = set()
-        line_added_categories = {}
+        line_cleared_fields = set()
+        line_added_fields = {}
 
         if write_vals and isinstance(write_vals, dict):
             for item in DECLARATION_BUSINESS_REGISTRY:
-                cat = item['category']
                 fname = item['field_name']
                 alt_fname = item.get('alt_field_name')
                 if fname in write_vals:
@@ -3086,24 +3118,29 @@ is_within_8_years=%s""",
                         c_type = cmd[0]
                         if c_type == 5:
                             for item in DECLARATION_BUSINESS_REGISTRY:
-                                line_cleared_categories.add(item['category'])
+                                line_cleared_fields.add(item['field_name'])
                         elif c_type in (2, 3):
                             l_rec = self.env['tds.employee.declaration.line'].browse(cmd[1])
-                            if l_rec and l_rec.category:
-                                line_cleared_categories.add(l_rec.category)
+                            if l_rec:
+                                target_f = self._resolve_declaration_field_for_line(l_rec.category, l_rec.description)
+                                if target_f:
+                                    line_cleared_fields.add(target_f)
                         elif c_type in (0, 1) and len(cmd) >= 3 and isinstance(cmd[2], dict):
                             c_dict = cmd[2]
                             cmd_cat = c_dict.get('category')
+                            cmd_desc = c_dict.get('description')
                             if not cmd_cat and c_type == 1 and cmd[1]:
                                 l_rec = self.env['tds.employee.declaration.line'].browse(cmd[1])
                                 cmd_cat = l_rec.category if l_rec else False
-                            if cmd_cat:
+                                cmd_desc = cmd_desc or (l_rec.description if l_rec else False)
+                            target_f = self._resolve_declaration_field_for_line(cmd_cat, cmd_desc)
+                            if target_f:
                                 if 'declared_amount' in c_dict:
                                     d_amt = float(c_dict.get('declared_amount') or 0.0)
                                     if d_amt == 0.0:
-                                        line_cleared_categories.add(cmd_cat)
+                                        line_cleared_fields.add(target_f)
                                     else:
-                                        line_added_categories[cmd_cat] = d_amt
+                                        line_added_fields[target_f] = d_amt
 
         for rec in self:
             header_updates = {}
@@ -3139,8 +3176,8 @@ is_within_8_years=%s""",
                 )
 
                 is_hdr_cleared = (field_name in header_cleared_fields)
-                is_line_cleared = (cat in line_cleared_categories)
-                explicit_line_added = line_added_categories.get(cat)
+                is_line_cleared = (field_name in line_cleared_fields)
+                explicit_line_added = line_added_fields.get(field_name)
                 explicit_hdr_updated = header_updated_fields.get(field_name)
 
                 # 3. Intent-aware resolution logic
@@ -3219,31 +3256,105 @@ is_within_8_years=%s""",
             if header_updates:
                 rec.with_context(no_line_sync=True).sudo().write(header_updates)
 
-    @api.model_create_multi
-    def create(self, vals_list):
-        records = super().create(vals_list)
-        for rec in records:
-            _logger.warning(
-                "[HR & ESS DECLARATION PERSISTENCE AUDIT] Created Declaration ID: %s | Employee: %s (ID: %s) | FY: %s | Total Declared: ₹%s | Line Items: %s",
-                rec.id, rec.employee_id.name if rec.employee_id else "None", rec.employee_id.id if rec.employee_id else "None",
-                rec.financial_year_id.name if rec.financial_year_id else "None", rec.total_declared_amount, len(rec.declaration_line_ids)
-            )
-        return records
-
-    def write(self, vals):
-        _logger.warning(
-            "[HR & ESS DECLARATION PERSISTENCE AUDIT] Write Called on Declaration IDs: %s | Payload Vals: %s",
-            self.ids, vals
-        )
-        res = super().write(vals)
+    @api.onchange(
+        'decl_80c_ppf', 'decl_80c_elss', 'decl_80c_epf', 'decl_80c_lic', 'decl_80c_nsc',
+        'decl_80c_ssy', 'decl_80c_fd', 'decl_80c_tuition', 'decl_80c_housing_principal', 'decl_80c_other',
+        'decl_80ccd1b_nps', 'decl_80d_self', 'decl_80d_parents', 'decl_80d_preventive',
+        'decl_24b_self_interest', 'decl_80eea_interest_amount', 'decl_80eea_interest',
+        'decl_hra_annual_rent', 'decl_lta_declared_fare', 'decl_80tta_interest', 'decl_80ttb_interest',
+        'decl_80e_interest', 'decl_80g_donation', 'decl_80gg_rent', 'decl_80dd_expenditure_amount',
+        'decl_80u_amount', 'decl_80ccd2_employer_nps', 'decl_57iia_family_pension', 'decl_80cch_agniveer',
+        'decl_80d_self_is_senior', 'decl_80d_parents_is_senior', 'decl_80dd_is_severe_disability',
+        'decl_80u_is_severe_disability', 'decl_80g_category', 'decl_hra_landlord_name', 'decl_hra_landlord_pan'
+    )
+    def _onchange_sync_declaration_lines_ui(self):
+        """
+        Live Real-Time Synchronization for UI Form View:
+        Immediately adds, updates, or cleans up declaration_line_ids in-memory as the user types
+        values into any deduction tab (80C, 80D, HRA, NPS, etc.) without requiring a manual save.
+        """
+        SINGLE_INSTANCE_CATEGORIES = {'57iia', '80ccd2', '80cch', '80ccd1b', 'hra', 'lta', '24b', '80dd', '80u', '80eea', '80g', '80e'}
+        
         for rec in self:
-            _logger.warning(
-                "[HR & ESS DECLARATION PERSISTENCE AUDIT] Post-Write Verified Declaration ID: %s | Employee: %s | FY: %s | Total Declared: ₹%s | Total Approved: ₹%s | Line Items Count: %s",
-                rec.id, rec.employee_id.name if rec.employee_id else "None",
-                rec.financial_year_id.name if rec.financial_year_id else "None",
-                rec.total_declared_amount, rec.total_approved_amount, len(rec.declaration_line_ids)
-            )
-        return res
+            existing_lines = list(rec.declaration_line_ids)
+            matched_line_set = set()
+            new_lines = []
+
+            for item in DECLARATION_BUSINESS_REGISTRY:
+                cat = item['category']
+                field_name = item['field_name']
+                alt_field = item.get('alt_field_name')
+
+                hdr_val = float(getattr(rec, field_name, 0.0) or 0.0)
+                if hdr_val == 0.0 and alt_field:
+                    hdr_val = float(getattr(rec, alt_field, 0.0) or 0.0)
+
+                ui_info = DECLARATION_UI_REGISTRY.get(field_name, {})
+                desc = ui_info.get('label', field_name)
+                if cat == 'hra' and (rec.decl_hra_landlord_name or rec.decl_hra_landlord_pan):
+                    desc += f" (Landlord: {rec.decl_hra_landlord_name or 'N/A'} (PAN: {rec.decl_hra_landlord_pan or 'N/A'}))"
+
+                is_senior = bool(getattr(rec, item['is_senior_field'], False)) if 'is_senior_field' in item else False
+                is_severe = bool(getattr(rec, item['is_severe_field'], False)) if 'is_severe_field' in item else False
+
+                # Find matching line
+                matched = None
+                for line in rec.declaration_line_ids:
+                    if line in matched_line_set:
+                        continue
+                    if cat in SINGLE_INSTANCE_CATEGORIES and line.category == cat:
+                        matched = line
+                        break
+                    elif cat == '80c' and line.category == '80c' and rec._match_80c_child_line(line, field_name):
+                        matched = line
+                        break
+                    elif line.category == cat and line.description and desc.split(' (')[0].strip() in line.description:
+                        matched = line
+                        break
+
+                if matched:
+                    matched_line_set.add(matched)
+                    if hdr_val > 0.0:
+                        matched.declared_amount = hdr_val
+                        matched.description = desc
+                        matched.is_senior_citizen = is_senior
+                        matched.is_severe_disability = is_severe
+                        if cat == '80g' and hasattr(rec, 'decl_80g_category') and rec.decl_80g_category:
+                            matched.decl_80g_category = rec.decl_80g_category
+                        new_lines.append(matched)
+                    else:
+                        has_proof = (
+                            float(getattr(matched, 'tax_firm_approved_amount', 0.0) or 0.0) > 0.0 or
+                            float(getattr(matched, 'approved_amount', 0.0) or 0.0) > 0.0 or
+                            float(getattr(matched, 'verified_amount', 0.0) or 0.0) > 0.0
+                        )
+                        if has_proof:
+                            new_lines.append(matched)
+                else:
+                    if hdr_val > 0.0:
+                        line_vals = {
+                            'declaration_id': rec._origin.id if rec._origin else False,
+                            'category': cat,
+                            'description': desc,
+                            'declared_amount': hdr_val,
+                            'is_senior_citizen': is_senior,
+                            'is_severe_disability': is_severe,
+                        }
+                        if cat == '80g' and hasattr(rec, 'decl_80g_category') and rec.decl_80g_category:
+                            line_vals['decl_80g_category'] = rec.decl_80g_category
+                        created_line = self.env['tds.employee.declaration.line'].new(line_vals)
+                        new_lines.append(created_line)
+
+            # Preserve non-registry custom lines
+            for line in rec.declaration_line_ids:
+                if line not in matched_line_set and line not in new_lines:
+                    new_lines.append(line)
+
+            # Reassign declaration_line_ids
+            rec.declaration_line_ids = [(6, 0, [])]
+            for nl in new_lines:
+                rec.declaration_line_ids += nl
+
 
     def action_validate_declaration_rules(self, raise_on_error=True):
         """
@@ -3521,7 +3632,7 @@ is_within_8_years=%s""",
         for rec in self:
             fy = rec.financial_year_id
             eval_date = (getattr(fy, 'start_date', False) or getattr(fy, 'date_from', False)) if fy else fields.Date.today()
-            fy_name = rec.financial_year_id.name if rec.financial_year_id else 'FY 2026-27'
+            fy_name = rec.financial_year_id.name if rec.financial_year_id else 'Tax Year: 2026-27'
             ay_name = rec.financial_year_id.assessment_year if rec.financial_year_id and hasattr(rec.financial_year_id, 'assessment_year') and rec.financial_year_id.assessment_year else 'AY 2027-28'
             regime_title = "Old Tax Regime (Section 115BAC Opted Out)" if rec.regime_code == 'old' else "New Tax Regime (Section 115BAC Default)"
 
@@ -3868,7 +3979,7 @@ is_within_8_years=%s""",
                 nps_excess = max(0.0, decl_80ccd2_val - nps_cap) if nps_cap is not None else 0.0
 
                 cards.append(self._build_card_html(
-                    section_code="Section 80CCD(2)", section_title="Employer Contribution to National Pension System (NPS)",
+                    section_code="Section 124", section_title="Employer Contribution to National Pension System (NPS) — Section 124",
                     fy_name=fy_name, ay_name=ay_name, regime_title=regime_title,
                     declared_amt=decl_80ccd2_val, eligible_amt=nps_elig, cap_amt=nps_cap, excess_amt=nps_excess,
                     param_code=nps_param_code, param_val=nps_pct, date_from=eval_date,
@@ -3888,19 +3999,22 @@ is_within_8_years=%s""",
             line_57iia = sum(float(l.usable_amount if l.usable_amount is not None else (l.declared_amount or 0.0)) for l in rec.declaration_line_ids if l.category == '57iia' and getattr(l, 'active', True))
             tot_57iia = max(d_57iia, line_57iia)
             if tot_57iia > 0:
-                cap_57iia = 25000.0 if rec.regime_code == 'new' else 15000.0
+                from ..services.tds.section_57iia_deduction_service import Section57IIADeductionService
+                sec_code_57 = Section57IIADeductionService.get_statutory_section_code(financial_year=rec.financial_year_id, eval_date=eval_date)
+                legal_label_57 = Section57IIADeductionService.get_legal_reference_label(financial_year=rec.financial_year_id, eval_date=eval_date)
+                cap_57iia = tds_param_svc.get_family_pension_limit(regime=rec.regime_code, eval_date=eval_date)
                 pcode_57iia = 'HDS_IN_TDS_FAMILY_PENSION_LIMIT_NEW' if rec.regime_code == 'new' else 'HDS_IN_TDS_FAMILY_PENSION_LIMIT_OLD'
                 elig_57iia = min(tot_57iia / 3.0, cap_57iia)
                 cards.append(self._build_card_html(
-                    section_code="Section 57(iia)", section_title="Standard Deduction on Family Pension Income",
+                    section_code=f"Section {sec_code_57}", section_title=f"Standard Deduction on Family Pension Income (Section {sec_code_57})",
                     fy_name=fy_name, ay_name=ay_name, regime_title=regime_title,
                     declared_amt=tot_57iia, eligible_amt=elig_57iia, cap_amt=cap_57iia, excess_amt=max(0.0, tot_57iia - elig_57iia),
                     param_code=pcode_57iia, param_val=cap_57iia, date_from=eval_date,
-                    statutory_rule=f"Statutory standard deduction allowed for family pension received by legal heirs. Calculated as minimum of 1/3rd of family pension income or INR {cap_57iia:,.0f}. Allowed under BOTH Old and New Tax Regimes.",
+                    statutory_rule=f"Statutory standard deduction allowed for family pension received by legal heirs under {legal_label_57}. Calculated as minimum of 1/3rd of family pension income or INR {cap_57iia:,.0f}. Netted directly under Income from Other Sources under BOTH Old and New Tax Regimes.",
                     conditions=[
                         "Deduction calculated as 1/3rd of gross family pension received.",
                         f"Statutory ceiling: INR {cap_57iia:,.0f} per financial year under {regime_title}.",
-                        "Allowed under BOTH Old Regime and New Tax Regime (Section 115BAC)."
+                        "Netted under Income from Other Sources under BOTH Old Regime and New Tax Regime (Section 115BAC)."
                     ],
                     typical_docs=[
                         "Pension Payment Order (PPO) Passbook / Credit Certificate",

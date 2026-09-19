@@ -332,7 +332,7 @@ remarks=%s""",
         else:
             total_allowable_deductions = (
                 standard_deduction + employer_nps_80ccd2 +
-                family_pension_57iia + other_approved_deductions
+                other_approved_deductions
             )
 
         _logger.info(
@@ -342,7 +342,7 @@ remarks=%s""",
             decl.state if decl else 'no_declaration'
         )
 
-        other_deductions_total = hra_exemption + lta_exemption + home_loan_24b + employer_nps_80ccd2 + family_pension_57iia + other_approved_deductions
+        other_deductions_total = hra_exemption + lta_exemption + home_loan_24b + employer_nps_80ccd2 + other_approved_deductions
 
         _logger.warning("""[TDS_DEBUG_TRACE] TOTAL_DEDUCTION_AGGREGATION
 standard_deduction=%s

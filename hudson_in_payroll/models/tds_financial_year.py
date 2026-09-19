@@ -22,7 +22,7 @@ class TdsFinancialYear(models.Model):
     name = fields.Char(
         string="Financial Year Name",
         required=True,
-        help="e.g. FY 2025-26 (AY 2026-27)"
+        help="e.g. Tax Year: 2026-27"
     )
     code = fields.Char(
         string="Financial Year Code",
@@ -164,7 +164,7 @@ class TdsFinancialYear(models.Model):
                 if 'assessment_year' in fields_list and not res.get('assessment_year'):
                     res['assessment_year'] = f"{end_yr}-{end_yr + 1}"
                 if 'name' in fields_list and not res.get('name'):
-                    res['name'] = f"FY {start_yr}-{str(end_yr)[-2:]} (AY {end_yr}-{str(end_yr + 1)[-2:]})"
+                    res['name'] = f"Tax Year: {start_yr}-{str(end_yr)[-2:]}"
             except Exception:
                 pass
 
@@ -213,7 +213,7 @@ class TdsFinancialYear(models.Model):
             if 'assessment_year' in fields_list and not res.get('assessment_year'):
                 res['assessment_year'] = "2027-2028"
             if 'name' in fields_list and not res.get('name'):
-                res['name'] = "FY 2026-27 (AY 2027-28)"
+                res['name'] = "Tax Year: 2026-27"
 
             regime_new = self.env.ref('hudson_in_payroll.hds_in_tds_regime_new', raise_if_not_found=False) or self.env['tds.tax.regime'].search([('code', '=', 'new')], limit=1)
             regime_old = self.env.ref('hudson_in_payroll.hds_in_tds_regime_old', raise_if_not_found=False) or self.env['tds.tax.regime'].search([('code', '=', 'old')], limit=1)

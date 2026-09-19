@@ -340,7 +340,7 @@ class ReportStatutoryTaxCalculation(models.AbstractModel):
                     deduction_breakdown.append((c6a_label, c6a_approved))
 
             if employer_nps_80ccd2 > 0:
-                deduction_breakdown.append(('Employer NPS Contribution [Sec 80CCD(2)]', employer_nps_80ccd2))
+                deduction_breakdown.append(('Employer NPS Contribution [Section 124]', employer_nps_80ccd2))
             if family_pension_57iia > 0:
                 deduction_breakdown.append(('Family Pension Deduction [Sec 57(iia)]', family_pension_57iia))
 
@@ -437,7 +437,7 @@ Actual Current Month TDS : ₹{current_month_tds:,.2f}
                     '80g': 'Section 80G — Charitable Donations',
                     '80gg': 'Section 80GG — Rent Paid (No HRA)',
                     'hra': 'Section 10(13A) — House Rent Exemption',
-                    '80ccd2': 'Section 80CCD(2) — Employer NPS',
+                    '80ccd2': 'Employer NPS Contribution — Section 124',
                     '57iia': 'Section 57(iia) — Family Pension Deduction',
                     '80cch': 'Section 80CCH — Agniveer Corpus Fund',
                 }
@@ -456,7 +456,7 @@ Actual Current Month TDS : ₹{current_month_tds:,.2f}
                     ('Section 80DD — Dependent Disability', float(getattr(decl, 'decl_80dd_disability', 0.0) or 0.0)),
                     ('Section 80U — Self Disability', float(getattr(decl, 'decl_80u_self_disability', 0.0) or 0.0)),
                     ('Section 80CCH — Agniveer Corpus Fund', float(getattr(decl, 'decl_80cch_agniveer', 0.0) or 0.0)),
-                    ('Section 80CCD(2) — Employer NPS', float(getattr(decl, 'decl_80ccd2_employer_nps', 0.0) or 0.0)),
+                    ('Employer NPS Contribution — Section 124', float(getattr(decl, 'decl_80ccd2_employer_nps', 0.0) or 0.0)),
                     ('Section 24(b) — Home Loan Interest (Self-Occupied)', float(getattr(decl, 'decl_24b_self_interest', 0.0) or 0.0)),
                     ('Section 10(13A) — House Rent Exemption', float(getattr(decl, 'decl_hra_annual_rent', 0.0) or 0.0)),
                 ]
@@ -1050,10 +1050,13 @@ Actual Current Month TDS : ₹{current_month_tds:,.2f}
         p_excess = max(0.0, p_amt - p_eligible)
         net_taxable_family_pension = max(0.0, p_amt - p_eligible)
 
+        fp_stat_label = Section57IIADeductionService.get_legal_reference_label(financial_year, eval_date=eval_date)
+        fp_sec_code = Section57IIADeductionService.get_statutory_section_code(financial_year, eval_date=eval_date)
+
         traces.append({
-            'code': '57(iia)',
-            'name': 'Section 57(iia) — Family Pension Statutory Trace & Tax Impact Audit',
-            'statutory_ref': 'Section 57(iia) of Income Tax Act',
+            'code': fp_sec_code,
+            'name': f'{fp_stat_label} — Family Pension Statutory Trace & Tax Impact Audit',
+            'statutory_ref': fp_stat_label,
             'source_type': 'Family Pension Declaration',
             'regime_applicability': 'Both Old & New Regime',
             'declared': p_amt,
@@ -1073,7 +1076,7 @@ Actual Current Month TDS : ₹{current_month_tds:,.2f}
             'inputs': [
                 ('Employee Context', f"{employee.name} (ID: {employee.barcode or employee.id})"),
                 ('Declaration & FY Context', f"{decl.name or decl.id} | FY: {financial_year.name if financial_year else 'N/A'} ({regime_code.upper()} Regime)"),
-                ('Statutory Rule Context', f"Section 57(iia) r/w Finance Act (Parameter: {'HDS_IN_TDS_FAMILY_PENSION_LIMIT_NEW' if regime_code == 'new' else 'HDS_IN_TDS_FAMILY_PENSION_LIMIT_OLD'})"),
+                ('Statutory Rule Context', f"{fp_stat_label} r/w Finance Act (Parameter: {'HDS_IN_TDS_FAMILY_PENSION_LIMIT_NEW' if regime_code == 'new' else 'HDS_IN_TDS_FAMILY_PENSION_LIMIT_OLD'})"),
                 ('Gross Family Pension Declared', fmt(p_amt)),
                 ('1/3rd of Family Pension', fmt(one_third_p)),
                 ('Configured Statutory Ceiling', fmt(p_max)),
@@ -1084,9 +1087,9 @@ Actual Current Month TDS : ₹{current_month_tds:,.2f}
             'formulas': [
                 ('Step 1 — Gross Family Pension Added to Other Income', fmt(p_amt)),
                 ('Step 2 — Calculate 1/3rd of Family Pension', fmt(one_third_p)),
-                ('Step 3 — Statutory Limit (Old: ₹15,000 / New: ₹25,000)', fmt(p_max)),
+                (f'Step 3 — Statutory Limit ({regime_code.capitalize()} Regime: ₹{p_max:,.0f})', fmt(p_max)),
                 ('Step 4 — Eligible Deduction = min(1/3rd, Statutory Limit)', fmt(p_eligible)),
-                ('Step 5 — Net Taxable Family Pension = Gross minus Eligible Deduction', fmt(net_taxable_family_pension)),
+                ('Step 5 — Net Taxable Family Pension in Other Sources = Gross minus Eligible Deduction', fmt(net_taxable_family_pension)),
             ],
         })
 
@@ -1111,9 +1114,9 @@ Actual Current Month TDS : ₹{current_month_tds:,.2f}
         approved_80ccd2 = elig_res.eligible_deduction
         excess_80ccd2 = float(getattr(elig_res, 'excess_amount', 0.0) or 0.0)
         traces.append({
-            'code': '80CCD(2)',
-            'name': 'Section 80CCD(2) — Employer NPS Contribution',
-            'statutory_ref': 'Section 80CCD(2) of Income Tax Act',
+            'code': '124',
+            'name': 'Employer NPS Contribution — Section 124',
+            'statutory_ref': 'Section 124 (formerly Section 80CCD(2)) of Income Tax Act',
             'source_type': 'Employer Payroll Data',
             'regime_applicability': 'Both Old & New Regime',
             'declared': nps2_amt,

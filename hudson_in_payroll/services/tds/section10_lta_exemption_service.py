@@ -236,7 +236,7 @@ class Section10LtaExemptionService(BaseStatutoryService):
             actual_lta_received = float(getattr(decl, 'decl_lta_amount_received', 0.0) or 0.0)
 
         fy_obj = kwargs.get('financial_year') or (decl.financial_year_id if decl else False)
-        fy_name = fy_obj.name if fy_obj else 'FY 2026-27'
+        fy_name = fy_obj.name if fy_obj else 'Tax Year: 2026-27'
         ay_name = getattr(fy_obj, 'assessment_year', False) or 'AY 2027-28'
 
         checks = []

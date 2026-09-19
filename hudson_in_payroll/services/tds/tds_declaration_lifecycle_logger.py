@@ -349,7 +349,7 @@ Reason:
 
         trace_log = f"""
 ============================================================
-SECTION 80CCD(2) EMPLOYER NPS STATUTORY TRACE
+SECTION 124 EMPLOYER NPS STATUTORY TRACE
 ============================================================
 
 EMPLOYEE CONTEXT
@@ -360,8 +360,8 @@ Financial Year           : {financial_year_name}
 Declaration ID           : {declaration_id}
 Declaration State        : {declaration_state}
 
-Section                  : Sec 80CCD(2)
-Statutory Reference      : Section 80CCD(2) - Employer NPS Contribution
+Section                  : Section 124
+Statutory Reference      : Section 124 (formerly Section 80CCD(2)) - Employer NPS Contribution
 Source Type              : {source_type}
 
 ------------------------------------------------------------

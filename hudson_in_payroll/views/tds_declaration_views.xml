@@ -333,6 +333,19 @@
                                         <field name="decl_lta_children_count" invisible="not decl_lta_has_children"/>
                                     </group>
                                     <field name="decl_lta_summary_html" widget="html" nolabel="1" colspan="2" readonly="1"/>
+                                    <separator string="Previous Employer LTA History (Section 10(5))"/>
+                                    <field name="previous_lta_history_ids" readonly="state in ['approved', 'rejected']" colspan="2">
+                                        <list decoration-success="verification_status == 'verified'" decoration-danger="verification_status == 'rejected'" decoration-warning="verification_status == 'pending'">
+                                            <field name="previous_employer_name"/>
+                                            <field name="employment_from" optional="show"/>
+                                            <field name="employment_to" optional="show"/>
+                                            <field name="previous_block_period" optional="show"/>
+                                            <field name="previous_lta_claims_used" optional="show"/>
+                                            <field name="carry_forward_requested" optional="show"/>
+                                            <field name="carry_forward_eligible" widget="badge" decoration-success="carry_forward_eligible == 'eligible'" decoration-danger="carry_forward_eligible == 'ineligible'" decoration-warning="carry_forward_eligible == 'pending'" optional="show"/>
+                                            <field name="verification_status" widget="badge" decoration-success="verification_status == 'verified'" decoration-danger="verification_status == 'rejected'" decoration-warning="verification_status == 'pending'"/>
+                                        </list>
+                                    </field>
                                 </group>
                                 <group string="Home Loan Interest Exemptions (Section 24(b))">
                                     <field name="decl_24b_self_interest" readonly="state in ['approved', 'rejected']"/>
@@ -372,13 +385,28 @@
                                     <field name="prev_employer_taxable_gross" readonly="state in ['approved', 'rejected']"/>
                                     <field name="prev_employer_tds" readonly="state in ['approved', 'rejected']"/>
                                     <field name="prev_employer_pt" readonly="state in ['approved', 'rejected']"/>
-                                    <field name="prev_employer_pf" readonly="state in ['approved', 'rejected']"/>
                                 </group>
                             </group>
+                            <separator string="House Property Loss Carry-Forward (Section 71B — Both Regimes)"/>
+                            <field name="house_property_loss_ids" readonly="state in ['approved', 'rejected']">
+                                <list decoration-success="verification_status == 'verified'" decoration-danger="verification_status == 'rejected'" decoration-warning="verification_status == 'pending'">
+                                    <field name="financial_year_id"/>
+                                    <field name="origin_assessment_year" optional="show"/>
+                                    <field name="expiry_assessment_year" optional="show"/>
+                                    <field name="unabsorbed_loss_amount"/>
+                                    <field name="utilized_amount" optional="show"/>
+                                    <field name="remaining_balance" optional="show"/>
+                                    <field name="status" widget="badge" decoration-success="status == 'active'" decoration-muted="status == 'fully_utilized'" decoration-danger="status == 'expired'"/>
+                                    <field name="verification_status" widget="badge" decoration-success="verification_status == 'verified'" decoration-danger="verification_status == 'rejected'" decoration-warning="verification_status == 'pending'"/>
+                                    <field name="verification_remarks" optional="hide"/>
+                                    <field name="verified_by" optional="hide"/>
+                                    <field name="verified_on" optional="hide"/>
+                                </list>
+                            </field>
                         </page>
 
-                        <!-- TAB 5: DEDUCTIONS ALLOWED UNDER BOTH REGIMES -->
-                        <page string="Deductions Allowed Under Both Regimes" name="both_regimes">
+                        <!-- TAB 5: OTHER TAX-ELIGIBLE ADJUSTMENTS -->
+                        <page string="Other Tax-Eligible Adjustments" name="both_regimes">
                             <group string="Statutory Deductions (New &amp; Old Regimes)">
                                 <group string="Employer NPS Contribution &amp; Pension">
                                     <field name="decl_80ccd2_employer_nps" readonly="state in ['approved', 'rejected']"/>
@@ -393,20 +421,24 @@
                         <page string="Investment Line Items (Audit Grid)" name="lines">
                             <field name="declaration_line_ids" readonly="state == 'rejected'">
                                 <list editable="bottom" decoration-danger="not is_regime_permitted" decoration-warning="validation_status == 'exceeds_limit'">
-                                    <field name="category"/>
-                                    <field name="section_code" readonly="1"/>
-                                    <field name="description"/>
-                                    <field name="decl_80g_category" optional="show"/>
-                                    <field name="declared_amount"/>
-                                    <field name="is_senior_citizen"/>
-                                    <field name="is_severe_disability"/>
-                                    <field name="verified_amount"/>
-                                    <field name="approved_amount"/>
+                                    <field name="category" string="Category"/>
+                                    <field name="section_code" string="Section" readonly="1"/>
+                                    <field name="description" string="Particulars / Description"/>
+                                    <field name="declared_amount" string="Declared (₹)" widget="monetary"/>
+                                    <field name="approved_amount" string="Approved (₹)" widget="monetary"/>
+                                    <field name="validation_status" string="Status" widget="badge"
+                                           decoration-success="validation_status == 'valid'"
+                                           decoration-warning="validation_status == 'exceeds_limit'"
+                                           decoration-danger="validation_status == 'disallowed'"/>
+                                    <!-- Secondary/Audit fields marked optional="hide" for clean spacing and readability -->
+                                    <field name="decl_80g_category" string="80G Category" optional="hide"/>
+                                    <field name="is_senior_citizen" string="Senior Citizen" optional="hide"/>
+                                    <field name="is_severe_disability" string="Severe Disability" optional="hide"/>
+                                    <field name="verified_amount" string="Verified (₹)" widget="monetary" optional="hide"/>
+                                    <field name="tax_firm_approved_amount" string="Tax Firm Approved (₹)" widget="monetary" optional="hide" invisible="declaration_state == 'draft'" readonly="declaration_state == 'rejected'"/>
+                                    <field name="is_regime_permitted" string="Regime Permitted" optional="hide"/>
+                                    <field name="validation_remarks" string="Remarks" optional="hide"/>
                                     <field name="declaration_state" column_invisible="True"/>
-                                    <field name="tax_firm_approved_amount" invisible="declaration_state == 'draft'" readonly="declaration_state == 'rejected'"/>
-                                    <field name="is_regime_permitted" readonly="1"/>
-                                    <field name="validation_status" readonly="1"/>
-                                    <field name="validation_remarks" readonly="1"/>
                                 </list>
                             </field>
                         </page>
@@ -632,6 +664,19 @@
                                         <field name="decl_lta_children_count" invisible="not decl_lta_has_children"/>
                                     </group>
                                     <field name="decl_lta_summary_html" widget="html" nolabel="1" colspan="2" readonly="1"/>
+                                    <separator string="Previous Employer LTA History (Section 10(5))"/>
+                                    <field name="previous_lta_history_ids" readonly="state != 'draft'" colspan="2">
+                                        <list decoration-success="verification_status == 'verified'" decoration-danger="verification_status == 'rejected'" decoration-warning="verification_status == 'pending'">
+                                            <field name="previous_employer_name"/>
+                                            <field name="employment_from" optional="show"/>
+                                            <field name="employment_to" optional="show"/>
+                                            <field name="previous_block_period" optional="show"/>
+                                            <field name="previous_lta_claims_used" optional="show"/>
+                                            <field name="carry_forward_requested" optional="show"/>
+                                            <field name="carry_forward_eligible" widget="badge" decoration-success="carry_forward_eligible == 'eligible'" decoration-danger="carry_forward_eligible == 'ineligible'" decoration-warning="carry_forward_eligible == 'pending'" optional="show"/>
+                                            <field name="verification_status" widget="badge" decoration-success="verification_status == 'verified'" decoration-danger="verification_status == 'rejected'" decoration-warning="verification_status == 'pending'"/>
+                                        </list>
+                                    </field>
                                 </group>
                                 <group string="Section 24(b) Home Loan Interest (Self-Occupied)">
                                     <field name="decl_24b_self_interest" readonly="state != 'draft'"/>
@@ -680,16 +725,31 @@
                                 </group>
                                 <group string="Previous Employer Statutory Deductions">
                                     <field name="prev_employer_pt" readonly="state != 'draft'"/>
-                                    <field name="prev_employer_pf" readonly="state != 'draft'"/>
                                 </group>
                             </group>
+                            <separator string="House Property Loss Carry-Forward (Section 71B — Both Regimes)"/>
+                            <field name="house_property_loss_ids" readonly="state != 'draft'">
+                                <list decoration-success="verification_status == 'verified'" decoration-danger="verification_status == 'rejected'" decoration-warning="verification_status == 'pending'">
+                                    <field name="financial_year_id"/>
+                                    <field name="origin_assessment_year" optional="show"/>
+                                    <field name="expiry_assessment_year" optional="show"/>
+                                    <field name="unabsorbed_loss_amount"/>
+                                    <field name="utilized_amount" optional="show"/>
+                                    <field name="remaining_balance" optional="show"/>
+                                    <field name="status" widget="badge" decoration-success="status == 'active'" decoration-muted="status == 'fully_utilized'" decoration-danger="status == 'expired'"/>
+                                    <field name="verification_status" widget="badge" decoration-success="verification_status == 'verified'" decoration-danger="verification_status == 'rejected'" decoration-warning="verification_status == 'pending'"/>
+                                    <field name="verification_remarks" optional="hide"/>
+                                    <field name="verified_by" optional="hide"/>
+                                    <field name="verified_on" optional="hide"/>
+                                </list>
+                            </field>
                         </page>
 
-                        <!-- TAB 5: DEDUCTIONS ALLOWED UNDER BOTH REGIMES -->
-                        <page string="Deductions Allowed Under BOTH Regimes" name="both_regimes">
+                        <!-- TAB 5: OTHER TAX-ELIGIBLE ADJUSTMENTS -->
+                        <page string="Other Tax-Eligible Adjustments" name="both_regimes">
                             <group string="Employer Pension &amp; Statutory Allocations">
                                 <group>
-                                    <field name="decl_80ccd2_employer_nps" readonly="state != 'draft'"/>
+                                    <field name="decl_80ccd2_employer_nps" string="Employer NPS Contribution — Section 124 (₹)" readonly="state != 'draft'"/>
                                     <field name="decl_57iia_family_pension" readonly="state != 'draft'"/>
                                 </group>
                             </group>
@@ -721,20 +781,24 @@
                         <page string="Investment Line Items &amp; Tax Firm Approval" name="line_items_audit">
                             <field name="declaration_line_ids" readonly="state == 'rejected'">
                                 <list editable="bottom" decoration-danger="not is_regime_permitted" decoration-warning="validation_status == 'exceeds_limit'">
-                                    <field name="category"/>
-                                    <field name="section_code" readonly="1"/>
-                                    <field name="description"/>
-                                    <field name="decl_80g_category" optional="show"/>
-                                    <field name="declared_amount"/>
-                                    <field name="is_senior_citizen"/>
-                                    <field name="is_severe_disability"/>
-                                    <field name="verified_amount"/>
-                                    <field name="approved_amount"/>
+                                    <field name="category" string="Category"/>
+                                    <field name="section_code" string="Section" readonly="1"/>
+                                    <field name="description" string="Particulars / Description"/>
+                                    <field name="declared_amount" string="Declared (₹)" widget="monetary"/>
+                                    <field name="approved_amount" string="Approved (₹)" widget="monetary"/>
+                                    <field name="validation_status" string="Status" widget="badge"
+                                           decoration-success="validation_status == 'valid'"
+                                           decoration-warning="validation_status == 'exceeds_limit'"
+                                           decoration-danger="validation_status == 'disallowed'"/>
+                                    <!-- Secondary/Audit fields marked optional="hide" for clean spacing and readability -->
+                                    <field name="decl_80g_category" string="80G Category" optional="hide"/>
+                                    <field name="is_senior_citizen" string="Senior Citizen" optional="hide"/>
+                                    <field name="is_severe_disability" string="Severe Disability" optional="hide"/>
+                                    <field name="verified_amount" string="Verified (₹)" widget="monetary" optional="hide"/>
+                                    <field name="tax_firm_approved_amount" string="Tax Firm Approved (₹)" widget="monetary" optional="hide" invisible="declaration_state == 'draft'" readonly="declaration_state == 'rejected'"/>
+                                    <field name="is_regime_permitted" string="Regime Permitted" optional="hide"/>
+                                    <field name="validation_remarks" string="Remarks" optional="hide"/>
                                     <field name="declaration_state" column_invisible="True"/>
-                                    <field name="tax_firm_approved_amount" invisible="declaration_state == 'draft'" readonly="declaration_state == 'rejected'"/>
-                                    <field name="is_regime_permitted" readonly="1"/>
-                                    <field name="validation_status" readonly="1"/>
-                                    <field name="validation_remarks" readonly="1"/>
                                 </list>
                             </field>
                         </page>
@@ -746,6 +810,47 @@
                             </group>
                         </page>
                     </notebook>
+                </sheet>
+            </form>
+        </field>
+    </record>
+
+    <!-- Tax Declaration Line Item Form View (Clean Detail Popup) -->
+    <record id="tds_employee_declaration_line_view_form" model="ir.ui.view">
+        <field name="name">tds.employee.declaration.line.form</field>
+        <field name="model">tds.employee.declaration.line</field>
+        <field name="arch" type="xml">
+            <form string="Tax Declaration Line Item">
+                <sheet>
+                    <group>
+                        <group string="Investment &amp; Claim Particulars">
+                            <field name="category"/>
+                            <field name="section_code" readonly="1"/>
+                            <field name="description" placeholder="e.g. PPF Account Deposit, LIC Policy #98765"/>
+                            <field name="declared_amount" widget="monetary"/>
+                        </group>
+                        <group string="Verification &amp; Statutory Approval">
+                            <field name="validation_status" widget="badge"
+                                   decoration-success="validation_status == 'valid'"
+                                   decoration-warning="validation_status == 'exceeds_limit'"
+                                   decoration-danger="validation_status == 'disallowed'"/>
+                            <field name="verified_amount" widget="monetary"/>
+                            <field name="approved_amount" widget="monetary"/>
+                            <field name="tax_firm_approved_amount" widget="monetary" invisible="declaration_state == 'draft'"/>
+                            <field name="is_regime_permitted" readonly="1"/>
+                            <field name="declaration_state" invisible="1"/>
+                        </group>
+                    </group>
+                    <group string="Special Statutory Eligibility &amp; Remarks">
+                        <group string="Eligibility Conditions">
+                            <field name="is_senior_citizen"/>
+                            <field name="is_severe_disability"/>
+                            <field name="decl_80g_category" invisible="category != '80g'"/>
+                        </group>
+                        <group string="Compliance &amp; Audit Remarks">
+                            <field name="validation_remarks" readonly="1"/>
+                        </group>
+                    </group>
                 </sheet>
             </form>
         </field>
@@ -882,7 +987,6 @@
                                 <field name="prev_employer_taxable_gross"/>
                                 <field name="prev_employer_tds"/>
                                 <field name="prev_employer_pt"/>
-                                <field name="prev_employer_pf"/>
                             </group>
                         </page>
                         <page string="Proof Documents" name="proofs">

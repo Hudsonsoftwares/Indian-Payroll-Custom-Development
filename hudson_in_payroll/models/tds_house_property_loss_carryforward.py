@@ -104,9 +104,43 @@ class TdsHousePropertyLossCarryforward(models.Model):
         store=True,
         default='active'
     )
+    # Statutory Verification Workflow (Matching LTA design)
+    verification_status = fields.Selection([
+        ('pending', 'Pending Verification'),
+        ('verified', 'Verified'),
+        ('rejected', 'Rejected')
+    ], string="Verification Status", default='pending', required=True)
+    verification_remarks = fields.Text(string="Verification Remarks")
+    verified_by = fields.Many2one('res.users', string="Verified By", readonly=True)
+    verified_on = fields.Datetime(string="Verified On", readonly=True)
+
     notes = fields.Text(
         string="Notes / Remarks"
     )
+
+    def action_verify(self):
+        for rec in self:
+            rec.write({
+                'verification_status': 'verified',
+                'verified_by': self.env.user.id,
+                'verified_on': fields.Datetime.now(),
+            })
+
+    def action_reject(self):
+        for rec in self:
+            rec.write({
+                'verification_status': 'rejected',
+                'verified_by': self.env.user.id,
+                'verified_on': fields.Datetime.now(),
+            })
+
+    def action_reset_pending(self):
+        for rec in self:
+            rec.write({
+                'verification_status': 'pending',
+                'verified_by': False,
+                'verified_on': False,
+            })
 
     @api.depends('employee_id.name', 'financial_year_id.name', 'unabsorbed_loss_amount')
     def _compute_name(self):

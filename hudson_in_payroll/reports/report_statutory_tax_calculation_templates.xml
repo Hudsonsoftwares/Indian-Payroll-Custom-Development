@@ -500,7 +500,7 @@
                                             <t t-if="trace.get('is_family_pension') and trace.get('tax_impact')">
                                                 <div style="padding: 8px 10px; background: #eef4fc; border-top: 1px dashed #0f3460; border-bottom: 1px solid #ced4da;">
                                                     <div style="font-size: 10px; font-weight: bold; color: #0f3460; margin-bottom: 6px; text-transform: uppercase; letter-spacing: 0.3px;">
-                                                        TAX IMPACT &amp; PIPELINE CONTRIBUTION BREAKDOWN [SECTION 57(iia)]
+                                                        TAX IMPACT &amp; PIPELINE CONTRIBUTION BREAKDOWN [<t t-esc="(trace.get('statutory_ref') or 'SECTION 57(iia)').upper()"/>]
                                                     </div>
                                                     <table style="width: 100%; border-collapse: collapse; background: #ffffff; border: 1px solid #b8daff; border-radius: 3px; margin-bottom: 6px;">
                                                         <tr>
@@ -516,13 +516,15 @@
                                                             </td>
                                                         </tr>
                                                         <tr>
-                                                            <td style="padding: 4px 8px; font-size: 10px; color: #28a745; border-bottom: 1px solid #e2e8f0;">57(iia) Eligible Deduction</td>
+                                                            <td style="padding: 4px 8px; font-size: 10px; color: #28a745; border-bottom: 1px solid #e2e8f0;">
+                                                                <t t-esc="trace.get('statutory_ref') or 'Section 57(iia)'"/> Eligible Deduction
+                                                            </td>
                                                             <td style="text-align: right; padding: 4px 8px; font-size: 10px; font-weight: bold; color: #28a745; border-bottom: 1px solid #e2e8f0;">
                                                                 − INR&#160;<t t-esc="'{:,.2f}'.format(trace['tax_impact']['eligible_deduction'])"/>
                                                             </td>
                                                         </tr>
                                                         <tr style="background: #d3f9d8; font-weight: bold;">
-                                                            <td style="padding: 5px 8px; font-size: 10px; color: #1e6b2e;">Net Taxable Family Pension Included in Taxable Income</td>
+                                                            <td style="padding: 5px 8px; font-size: 10px; color: #1e6b2e;">Net Taxable Family Pension in Other Sources</td>
                                                             <td style="text-align: right; padding: 5px 8px; font-size: 10px; color: #1e6b2e;">
                                                                 INR&#160;<t t-esc="'{:,.2f}'.format(trace['tax_impact']['net_taxable_family_pension'])"/>
                                                             </td>

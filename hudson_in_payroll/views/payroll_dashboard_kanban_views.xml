@@ -42,14 +42,6 @@
                                         <field name="financial_year_id"/> | Month: <field name="payroll_month_num"/>
                                     </span>
                                 </div>
-                                <span t-attf-class="badge #{record.pending_actions_count.raw_value > 0 ? 'bg-warning text-dark' : 'bg-success text-white'} rounded-pill px-3 py-1 shadow-xs font-monospace">
-                                    <t t-if="record.pending_actions_count.raw_value > 0">
-                                        <i class="fa fa-exclamation-triangle me-1"/> <t t-esc="record.pending_actions_count.value"/> Actions Due
-                                    </t>
-                                    <t t-else="">
-                                        <i class="fa fa-check-circle me-1"/> 100% Compliant
-                                    </t>
-                                </span>
                             </div>
 
                             <!-- Primary Financial KPI Grid (2x2) -->

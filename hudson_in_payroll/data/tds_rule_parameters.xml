@@ -14,9 +14,9 @@
         </record>
         <record id="hds_in_tds_std_deduction_new_val_1" model="hr.rule.parameter.value">
             <field name="parameter_id" ref="hds_in_tds_std_deduction_new"/>
-            <field name="date_from">2025-04-01</field>
+            <field name="date_from">2024-04-01</field>
             <field name="parameter_value">75000</field>
-            <field name="description">Finance Act 2024 w.e.f. 01-Apr-2025 (FY 2025-26 / AY 2026-27).</field>
+            <field name="description">Finance (No.2) Act 2024, FY 2024-25 onwards</field>
         </record>
 
         <!-- 2. Standard Deduction - Old Regime (₹50,000) -->
@@ -736,9 +736,9 @@
         </record>
         <record id="hds_in_tds_family_pension_limit_new_val_1" model="hr.rule.parameter.value">
             <field name="parameter_id" ref="hds_in_tds_family_pension_limit_new"/>
-            <field name="date_from">2025-04-01</field>
+            <field name="date_from">2024-04-01</field>
             <field name="parameter_value">25000</field>
-            <field name="description">Finance Act 2024 w.e.f. 01-Apr-2025 (FY 2025-26 / FY 2026-27).</field>
+            <field name="description">Finance (No.2) Act 2024, FY 2024-25 onwards</field>
         </record>
 
         <!-- 52. Section 57(iia) Family Pension Deduction Limit - Old Regime (₹15,000) -->

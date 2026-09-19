@@ -68,7 +68,7 @@ class TdsEmployeeDeclarationLine(models.Model):
         ('hostel', 'Section 10(14) Hostel Expenditure Allowance'),
         ('lta', 'Section 10(5) Leave Travel Assistance (LTA)'),
         ('nps_employee', 'Section 80CCD(1) Employee NPS Contribution'),
-        ('80ccd2', 'Section 80CCD(2) Employer NPS Contribution (Both Regimes)'),
+        ('80ccd2', 'Employer NPS Contribution — Section 124 (Both Regimes)'),
         ('57iia', 'Section 57(iia) Family Pension Deduction (Both Regimes)'),
         ('80cch', 'Section 80CCH Agniveer Corpus Fund Contribution (Both Regimes)'),
         ('leave_encashment', 'Section 10(10AA) Leave Encashment Exemption'),

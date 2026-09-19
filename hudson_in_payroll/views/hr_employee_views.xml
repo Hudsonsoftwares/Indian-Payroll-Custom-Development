@@ -243,203 +243,100 @@
                         </group>
                     </group>
 
-                    <!-- Section 2: Financial Year Tax Selection -->
-                    <separator string="Section 2: Financial Year Tax Selection"/>
+                    <!-- Section 2: Active Tax Year Configuration & Summary Figures -->
+                    <separator string="Section 2: Active Tax Year Configuration &amp; Summary Figures"/>
                     <group>
-                        <field name="hds_in_is_new_tax_regime" invisible="1"/>
-                        <field name="hds_in_current_fy_id" readonly="1" options="{'no_open': True}"/>
-                        <field name="hds_in_current_tax_regime_id" widget="radio" options="{'horizontal': true}"/>
-                    </group>
-
-                    <!-- Section 3: Income Declaration (Regime Neutral) -->
-                    <separator string="Section 3: Income Declaration (Regime Neutral)"/>
-                    <notebook name="income_declaration_subnotebook">
-                        <page string="Income from Other Sources" name="sec3_other_sources">
-                            <group>
-                                <group string="Interest &amp; Dividends">
-                                    <field name="hds_in_savings_bank_interest"/>
-                                    <field name="hds_in_fixed_deposit_interest"/>
-                                    <field name="hds_in_dividend_income"/>
-                                </group>
-                                <group string="Miscellaneous &amp; Summary">
-                                    <field name="hds_in_other_sources_income"/>
-                                    <field name="hds_in_total_other_sources_income" readonly="1"/>
-                                </group>
-                            </group>
-                        </page>
-                        <page string="Let-Out Property Income / Loss" name="sec3_let_out_property">
-                            <group>
-                                <group string="Rental Details &amp; Tax">
-                                    <field name="hds_in_annual_let_out_rent"/>
-                                    <field name="hds_in_municipal_taxes_paid"/>
-                                </group>
-                                <group string="Mortgage Interest &amp; Net Loss">
-                                    <field name="hds_in_let_out_interest_paid"/>
-                                    <field name="hds_in_net_house_property_income_loss" readonly="1"/>
-                                </group>
-                            </group>
-                        </page>
-                        <page string="Previous Employer Income &amp; Tax" name="sec3_prev_employer">
-                            <group>
-                                <group string="Previous Gross Salary &amp; TDS">
-                                    <field name="hds_in_prev_taxable_gross"/>
-                                    <field name="hds_in_prev_tds_deducted"/>
-                                </group>
-                                <group string="Previous Statutory Deductions">
-                                    <field name="hds_in_prev_pt_deducted"/>
-                                    <field name="hds_in_prev_employer_pf"/>
-                                    <field name="hds_in_prev_employer_nps"/>
-                                </group>
-                            </group>
-                        </page>
-                    </notebook>
-
-                    <!-- Section 4: Deduction Declaration -->
-                    <separator string="Section 4: Deduction Declaration"/>
-                    <notebook name="deduction_declaration_subnotebook">
-                        <page string="Deductions Allowed Under BOTH Regimes" name="sec4_both_regimes">
-                            <group>
-                                <group string="Employer Pension &amp; Special Statutory Deductions">
-                                    <field name="hds_in_decl_80ccd2_employer_nps"/>
-                                    <field name="hds_in_decl_57iia_family_pension"/>
-                                    <field name="hds_in_decl_80cch_agniveer"/>
-                                </group>
-                                <group string="Statutory Note">
-                                    <p class="text-muted">
-                                        These deductions are legally permitted under both Old and New Tax Regimes (Section 115BAC). Employer NPS (80CCD(2)) is separate from Employee Voluntary NPS (80CCD(1B)). Standard Deduction is calculated automatically by the TDS engine.
-                                    </p>
-                                </group>
-                            </group>
-                        </page>
-                        <page string="Investments (80C)" name="sec4_80c" invisible="hds_in_is_new_tax_regime">
-                            <group>
-                                <group string="Specified Investments &amp; Insurance">
-                                    <field name="hds_in_decl_80c_ppf"/>
-                                    <field name="hds_in_decl_80c_elss"/>
-                                    <field name="hds_in_decl_80c_epf"/>
-                                    <field name="hds_in_decl_80c_lic"/>
-                                    <field name="hds_in_decl_80c_nsc"/>
-                                </group>
-                                <group string="Deposits, Fees &amp; Housing Principal">
-                                    <field name="hds_in_decl_80c_ssy"/>
-                                    <field name="hds_in_decl_80c_fd"/>
-                                    <field name="hds_in_decl_80c_tuition"/>
-                                    <field name="hds_in_decl_80c_housing_principal"/>
-                                    <field name="hds_in_decl_80c_other"/>
-                                    <field name="hds_in_decl_80c_total" readonly="1"/>
-                                </group>
-                            </group>
-                        </page>
-                        <page string="Employee NPS (80CCD(1B))" name="sec4_80ccd1b" invisible="hds_in_is_new_tax_regime">
-                            <group string="National Pension Scheme (Employee Voluntary)">
-                                <field name="hds_in_decl_80ccd1b_nps"/>
-                            </group>
-                        </page>
-                        <page string="Medical Insurance (80D)" name="sec4_80d" invisible="hds_in_is_new_tax_regime">
-                            <group>
-                                <group string="Insurance Premiums">
-                                    <field name="hds_in_decl_80d_self"/>
-                                    <field name="hds_in_decl_80d_parents"/>
-                                    <field name="hds_in_decl_80d_parents_is_senior"/>
-                                </group>
-                                <group string="Preventive Health">
-                                    <field name="hds_in_decl_80d_preventive"/>
-                                </group>
-                            </group>
-                        </page>
-
-                        <page string="House Rent Allowance (HRA)" name="sec4_hra" invisible="hds_in_is_new_tax_regime">
-                            <group>
-                                <group string="Rent &amp; Accommodation">
-                                    <field name="hds_in_decl_hra_annual_rent"/>
-                                    <field name="hds_in_decl_hra_is_metro"/>
-                                    <field name="hds_in_decl_hra_own_residential_property_at_workplace"/>
-                                    <field name="hds_in_decl_hra_rent_period_from"/>
-                                    <field name="hds_in_decl_hra_rent_period_to"/>
-                                </group>
-                                <group string="Landlord Identity">
-                                    <field name="hds_in_decl_hra_landlord_name"/>
-                                    <field name="hds_in_decl_hra_landlord_pan"/>
-                                </group>
-                            </group>
-                        </page>
-                        <page string="Home Loan Interest (24b)" name="sec4_24b" invisible="hds_in_is_new_tax_regime">
-                            <group string="Mortgage Interest">
-                                <field name="hds_in_decl_24b_self_interest"/>
-                            </group>
-                        </page>
-                        <page string="Savings Interest (80TTA/80TTB)" name="sec4_savings" invisible="hds_in_is_new_tax_regime">
-                            <group>
-                                <field name="hds_in_decl_80tta_interest"/>
-                                <field name="hds_in_decl_80ttb_interest"/>
-                            </group>
-                        </page>
-                        <page string="Disability Deductions (80DD)" name="sec4_80dd" invisible="hds_in_is_new_tax_regime">
-                            <group string="Dependent Disability">
-                                <field name="hds_in_decl_80dd_amount"/>
-                                <field name="hds_in_decl_80dd_is_severe"/>
-                            </group>
-                        </page>
-
-                        <page string="Other Old Regime Deductions" name="sec4_other" invisible="hds_in_is_new_tax_regime">
-                            <group string="Statutory Deductions">
-                                <field name="hds_in_decl_other_amount"/>
-                            </group>
-                        </page>
-                    </notebook>
-
-
-                    <!-- Section 71B House Property Loss Carry-Forward Ledger -->
-                    <separator string="House Property Loss Carry-Forward (Section 71B)"/>
-                    <group string="Unabsorbed House Property Loss Ledger &amp; Inter-Year Set-Off">
-                        <field name="house_property_loss_ids" nolabel="1" colspan="2">
-                            <list editable="bottom">
-                                <field name="financial_year_id"/>
-                                <field name="origin_assessment_year" optional="show"/>
-                                <field name="expiry_assessment_year" optional="show"/>
-                                <field name="unabsorbed_loss_amount"/>
-                                <field name="utilized_amount" optional="show"/>
-                                <field name="remaining_balance" optional="show"/>
-                                <field name="status" widget="badge" decoration-success="status == 'active'" decoration-muted="status == 'fully_utilized'" decoration-danger="status == 'expired'"/>
-                            </list>
-                        </field>
-                    </group>
-
-                    <!-- Previous Employer LTA History Section -->
-                    <separator string="Previous Employer LTA History"/>
-                    <group string="Previous Employer LTA Usage &amp; Carry-Forward Verification">
-                        <field name="previous_lta_history_ids" nolabel="1" colspan="2">
-                            <list decoration-success="verification_status == 'verified'" decoration-danger="verification_status == 'rejected'" decoration-warning="verification_status == 'pending'">
-                                <field name="previous_employer_name"/>
-                                <field name="employment_from" optional="show"/>
-                                <field name="employment_to" optional="show"/>
-                                <field name="previous_block_period" optional="show"/>
-                                <field name="previous_lta_claims_used" optional="show"/>
-                                <field name="carry_forward_requested" optional="show"/>
-                                <field name="carry_forward_eligible" widget="badge" decoration-success="carry_forward_eligible == 'eligible'" decoration-danger="carry_forward_eligible == 'ineligible'" decoration-warning="carry_forward_eligible == 'pending'" optional="show"/>
-                                <field name="verification_status" widget="badge" decoration-success="verification_status == 'verified'" decoration-danger="verification_status == 'rejected'" decoration-warning="verification_status == 'pending'"/>
-                                <field name="verified_by" optional="hide"/>
-                                <field name="verified_on" optional="hide"/>
-                            </list>
-                        </field>
-                    </group>
-
-                    <!-- Section 5: Eligibility-Based Declaration (Old Regime Only) -->
-                    <separator string="Section 5: Eligibility-Based Declaration (Old Regime Only)" invisible="hds_in_is_new_tax_regime"/>
-                    <group invisible="hds_in_is_new_tax_regime">
-                        <group string="Housing Loan &amp; Section 80EEA">
-                            <p class="text-muted">
-                                Eligibility-based deductions (such as Section 80EEA first-time home buyer claims) require dedicated statutory eligibility validation.
-                            </p>
-                            <button name="action_view_home_loans" string="Manage Housing Loan &amp; 80EEA Eligibility" type="object" class="btn-outline-primary" icon="fa-home"/>
+                        <group string="Tax Period &amp; Regime">
+                            <field name="hds_in_is_new_tax_regime" invisible="1"/>
+                            <field name="hds_in_current_fy_id" readonly="1" options="{'no_open': True}"/>
+                            <field name="hds_in_current_tax_regime_id" widget="radio" options="{'horizontal': true}"/>
+                        </group>
+                        <group string="Tax Deductions &amp; Liability Summary">
+                            <field name="hds_in_decl_total_declared" widget="monetary"/>
+                            <field name="hds_in_decl_total_approved" widget="monetary"/>
+                            <field name="hds_in_decl_net_estimated_tax" widget="monetary" class="fw-bold text-danger"/>
                         </group>
                     </group>
 
-                    <!-- Section 6: Supporting Documents -->
-                    <separator string="Section 6: Supporting Documents"/>
-                    <group string="Upload Investment Receipts &amp; Statutory Proofs">
-                        <field name="hds_in_tax_attachment_ids" widget="many2many_binary"/>
-                    </group>
+                    <!-- 1-Click Complete Declaration & Approval Action Banner -->
+                    <div class="d-flex justify-content-between align-items-center p-3 mt-3 mb-4 bg-light rounded border shadow-sm">
+                        <div>
+                            <h5 class="mb-1 text-primary fw-bold">
+                                <i class="fa fa-calculator me-2"/>Complete Tax Declaration &amp; Statutory Approval
+                            </h5>
+                            <p class="text-muted mb-0 small">
+                                Manage investment declaration proofs, Chapter VI-A line items, regime switcher, and statutory tax calculation reports.
+                            </p>
+                        </div>
+                        <button name="action_open_tax_declaration_dashboard"
+                                type="object"
+                                class="btn btn-primary btn-lg shadow-sm"
+                                icon="fa-arrow-circle-right"
+                                string="Manage &amp; Approve Full Tax Declaration"/>
+                    </div>
+
+
+
+                    <!-- 1. House Property Loss Carry-Forward (Section 71B - Common to Both Regimes) -->
+                    <div class="card mb-4 border-0 shadow-sm rounded-3">
+                        <div class="card-header py-2 px-3 d-flex justify-content-between align-items-center border-bottom" style="background: rgba(125, 125, 125, 0.08);">
+                            <div class="fw-bold d-flex align-items-center gap-2" style="font-size: 14px;">
+                                <i class="fa fa-home text-primary fs-5"/>
+                                <span>House Property Loss Carry-Forward (Section 71B — Both Regimes)</span>
+                            </div>
+                            <span class="badge rounded-pill shadow-sm" style="background-color: #0284c7; color: #ffffff; font-weight: 600; font-size: 11px; padding: 5px 12px; letter-spacing: 0.3px;">Both Regimes</span>
+                        </div>
+                        <div class="card-body p-3">
+                            <p class="text-muted small mb-2">
+                                Unabsorbed loss from let-out house property eligible for inter-year carry-forward and set-off up to 8 assessment years under Section 71B (Applicable under Old &amp; New Regimes).
+                            </p>
+                            <field name="house_property_loss_ids" nolabel="1">
+                                <list decoration-success="verification_status == 'verified'" decoration-danger="verification_status == 'rejected'" decoration-warning="verification_status == 'pending'">
+                                    <field name="financial_year_id"/>
+                                    <field name="origin_assessment_year" optional="show"/>
+                                    <field name="expiry_assessment_year" optional="show"/>
+                                    <field name="unabsorbed_loss_amount"/>
+                                    <field name="utilized_amount" optional="show"/>
+                                    <field name="remaining_balance" optional="show"/>
+                                    <field name="status" widget="badge" decoration-success="status == 'active'" decoration-muted="status == 'fully_utilized'" decoration-danger="status == 'expired'"/>
+                                    <field name="verification_status" widget="badge" decoration-success="verification_status == 'verified'" decoration-danger="verification_status == 'rejected'" decoration-warning="verification_status == 'pending'"/>
+                                    <field name="verification_remarks" optional="hide"/>
+                                    <field name="verified_by" optional="hide"/>
+                                    <field name="verified_on" optional="hide"/>
+                                </list>
+                            </field>
+                        </div>
+                    </div>
+
+                    <!-- 2. Previous Employer LTA History (Section 10(5) — Old Regime Only) -->
+                    <div class="card mb-3 border-0 shadow-sm rounded-3" invisible="hds_in_is_new_tax_regime">
+                        <div class="card-header py-2 px-3 d-flex justify-content-between align-items-center border-bottom" style="background: rgba(125, 125, 125, 0.08);">
+                            <div class="fw-bold d-flex align-items-center gap-2" style="font-size: 14px;">
+                                <i class="fa fa-plane text-info fs-5"/>
+                                <span>Previous Employer LTA History (Section 10(5) — Old Regime Only)</span>
+                            </div>
+                            <span class="badge rounded-pill shadow-sm" style="background-color: #d97706; color: #ffffff; font-weight: 600; font-size: 11px; padding: 5px 12px; letter-spacing: 0.3px;">Old Regime Only</span>
+                        </div>
+                        <div class="card-body p-3">
+                            <p class="text-muted small mb-2">
+                                Verify previous employer LTA claims and carry-forward entitlement for the current 4-year statutory block under Section 10(5).
+                            </p>
+                            <field name="previous_lta_history_ids" nolabel="1">
+                                <list decoration-success="verification_status == 'verified'" decoration-danger="verification_status == 'rejected'" decoration-warning="verification_status == 'pending'">
+                                    <field name="previous_employer_name"/>
+                                    <field name="employment_from" optional="show"/>
+                                    <field name="employment_to" optional="show"/>
+                                    <field name="previous_block_period" optional="show"/>
+                                    <field name="previous_lta_claims_used" optional="show"/>
+                                    <field name="carry_forward_requested" optional="show"/>
+                                    <field name="carry_forward_eligible" widget="badge" decoration-success="carry_forward_eligible == 'eligible'" decoration-danger="carry_forward_eligible == 'ineligible'" decoration-warning="carry_forward_eligible == 'pending'" optional="show"/>
+                                    <field name="verification_status" widget="badge" decoration-success="verification_status == 'verified'" decoration-danger="verification_status == 'rejected'" decoration-warning="verification_status == 'pending'"/>
+                                    <field name="verified_by" optional="hide"/>
+                                    <field name="verified_on" optional="hide"/>
+                                </list>
+                            </field>
+                        </div>
+                    </div>
 
 
                 </page>

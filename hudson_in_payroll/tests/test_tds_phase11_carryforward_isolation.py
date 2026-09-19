@@ -29,7 +29,7 @@ class TestTdsPhase11CarryForwardIsolation(TransactionCase):
 
         # 2. Create Test FY
         self.fy2026 = self.FinancialYear.create({
-            'name': 'FY 2026-27 (AY 2027-28)',
+            'name': 'Tax Year: 2026-27',
             'code': '2026-2027-AUDIT',
             'assessment_year': '2027-2028',
             'start_date': '2026-04-01',
@@ -37,7 +37,7 @@ class TestTdsPhase11CarryForwardIsolation(TransactionCase):
             'active': True,
         })
         self.fy2025 = self.FinancialYear.create({
-            'name': 'FY 2025-26 (AY 2026-27)',
+            'name': 'Tax Year: 2025-26',
             'code': '2025-2026-AUDIT',
             'assessment_year': '2026-2027',
             'start_date': '2025-04-01',

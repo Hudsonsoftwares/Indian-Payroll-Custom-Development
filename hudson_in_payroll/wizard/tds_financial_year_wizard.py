@@ -26,7 +26,7 @@ class TdsFinancialYearWizard(models.TransientModel):
     name = fields.Char(
         string="New Financial Year Name",
         required=True,
-        help="e.g. FY 2027-28 (AY 2028-29)"
+        help="e.g. Tax Year: 2027-28"
     )
     code = fields.Char(
         string="Financial Year Code",
@@ -82,7 +82,7 @@ class TdsFinancialYearWizard(models.TransientModel):
                 res['end_date'] = fields.Date.from_string(f"{end_yr}-03-31")
                 res['code'] = f"{start_yr}-{end_yr}"
                 res['assessment_year'] = f"{end_yr}-{end_yr + 1}"
-                res['name'] = f"FY {start_yr}-{str(end_yr)[-2:]} (AY {end_yr}-{str(end_yr + 1)[-2:]})"
+                res['name'] = f"Tax Year: {start_yr}-{str(end_yr)[-2:]}"
             except (AttributeError, ValueError, TypeError) as e:
                 _logger.debug("Could not compute default next FY dates: %s", e)
         return res
@@ -100,7 +100,7 @@ class TdsFinancialYearWizard(models.TransientModel):
             self.end_date = fields.Date.from_string(f"{end_yr}-03-31")
             self.code = f"{start_yr}-{end_yr}"
             self.assessment_year = f"{end_yr}-{end_yr + 1}"
-            self.name = f"FY {start_yr}-{str(end_yr)[-2:]} (AY {end_yr}-{str(end_yr + 1)[-2:]})"
+            self.name = f"Tax Year: {start_yr}-{str(end_yr)[-2:]}"
         except (AttributeError, ValueError, TypeError) as e:
             _logger.debug("Could not compute onchange FY dates from source '%s': %s", getattr(source, 'name', 'N/A'), e)
 

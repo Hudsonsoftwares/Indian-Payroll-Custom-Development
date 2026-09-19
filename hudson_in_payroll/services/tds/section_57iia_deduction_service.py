@@ -30,9 +30,36 @@ class Section57IIADeductionService(BaseStatutoryService):
     Single Source of Truth for Section 57(iia) statutory audit logging.
     """
 
+    @classmethod
+    def get_legal_reference_label(cls, financial_year=None, eval_date=None):
+        """
+        Returns statutory legal label:
+        - Up to FY 2025-26: "Section 57(iia), Income-tax Act 1961"
+        - From FY 2026-27 onwards: "Section 93(1)(d), Income-tax Act 2025"
+        """
+        is_ita_2025 = False
+        if financial_year:
+            if getattr(financial_year, 'start_date', False):
+                is_ita_2025 = financial_year.start_date.year >= 2026
+            elif getattr(financial_year, 'name', False):
+                import re
+                m = re.search(r'20(\d{2})', financial_year.name)
+                if m and int(m.group(1)) >= 26:
+                    is_ita_2025 = True
+        elif eval_date:
+            ref_year = eval_date.year if hasattr(eval_date, 'year') else int(str(eval_date)[:4])
+            is_ita_2025 = (eval_date >= fields.Date.from_string('2026-04-01')) if hasattr(eval_date, 'year') else (ref_year >= 2026)
+        
+        return "Section 93(1)(d), Income-tax Act 2025" if is_ita_2025 else "Section 57(iia), Income-tax Act 1961"
+
+    @classmethod
+    def get_statutory_section_code(cls, financial_year=None, eval_date=None):
+        label = cls.get_legal_reference_label(financial_year=financial_year, eval_date=eval_date)
+        return "93(1)(d)" if "93(1)(d)" in label else "57(iia)"
+
     def validate_and_trace(self, declaration_or_dict, eval_date=None, regime_code='old', employee=None, financial_year=None, **kwargs):
         """
-        Evaluates Section 57(iia) statutory eligibility and produces standard ASCII statutory trace log.
+        Evaluates Section 57(iia) / Section 93(1)(d) statutory eligibility and produces standard ASCII statutory trace log.
         """
         regime = (regime_code or 'old').lower()
 
@@ -83,6 +110,10 @@ class Section57IIADeductionService(BaseStatutoryService):
         fy_name = financial_year.name if financial_year else 'N/A'
         emp_type = kwargs.get('employer_type') or (getattr(employee, 'hds_in_employer_category', getattr(employee, 'employer_type', 'private')) if employee else 'private') or 'private'
 
+        # Legal Reference Labels
+        legal_label = self.get_legal_reference_label(financial_year=financial_year, eval_date=eval_date)
+        sec_code_label = self.get_statutory_section_code(financial_year=financial_year, eval_date=eval_date)
+
         # 2. Evaluate Eligibility via Single Source of Truth Engine
         from .eligibility_rule_engine_service import EligibilityRuleEngineService
         from .tds_parameter_service import TdsParameterService
@@ -94,14 +125,16 @@ class Section57IIADeductionService(BaseStatutoryService):
         engine = EligibilityRuleEngineService(self.env)
         engine_res = engine.evaluate_eligibility(
             '57iia',
-            declared_amount=family_pension_amt,
+            declared_amount=declared_amt,
+            approved_amount=approved_amt,
+            declaration_state=decl_state,
             regime_code=regime,
             eval_date=eval_date
         )
 
         allowed_deduction = engine_res.eligible_deduction
         excess_amount = engine_res.excess_amount
-        one_third_amt = round(family_pension_amt / 3.0, 2)
+        one_third_amt = round((approved_amt if (is_post_proof and approved_amt > 0.0) else declared_amt) / 3.0, 2)
         cap_applied = family_pension_amt > 0 and (one_third_amt > configured_limit)
         cap_applied_str = "YES" if cap_applied else "NO"
         is_eligible = allowed_deduction > 0.0 or family_pension_amt == 0.0
@@ -115,7 +148,7 @@ class Section57IIADeductionService(BaseStatutoryService):
         usable_amt = allowed_deduction
 
         _logger.warning("""[TDS_DEBUG_TRACE][SECTION_TRACE]
-section=57(iia)
+section=%s
 declaration_state=%s
 declared_amount=%s
 approved_amount=%s
@@ -124,13 +157,13 @@ usable_amount=%s
 selected_amount=%s
 final_chapter6a_amount=%s
 source_type=%s""",
-            decl_state, declared_amt, approved_amt, allowed_deduction, allowed_deduction, allowed_deduction, allowed_deduction, source_type
+            sec_code_label, decl_state, declared_amt, approved_amt, allowed_deduction, allowed_deduction, allowed_deduction, allowed_deduction, source_type
         )
 
         # 3. Generate Formatted Statutory Trace Log
         trace_log = f"""
 ============================================================
-TDS 57(iia) FAMILY PENSION STATUTORY TRACE
+TDS {sec_code_label.upper()} FAMILY PENSION STATUTORY TRACE
 ============================================================
 
 EMPLOYEE CONTEXT
@@ -141,7 +174,8 @@ Financial Year           : {fy_name}
 Declaration ID           : {decl_id}
 Declaration State        : {decl_state}
 
-Section                  : Sec 57(iia)
+Section                  : {sec_code_label}
+Statutory Reference      : {legal_label}
 Source Type              : {source_type}
 
 ------------------------------------------------------------

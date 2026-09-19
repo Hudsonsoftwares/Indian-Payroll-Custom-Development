@@ -488,6 +488,15 @@ CURRENT_MONTH_TDS=%s""",
             emp_nps_80ccd2   = float(getattr(deduction_calc, 'employer_nps_80ccd2',   0.0) or 0.0)
             fam_pension_57   = float(getattr(deduction_calc, 'family_pension_57iia',  0.0) or 0.0)
             sec_80eea_ded    = float(getattr(deduction_calc, 'section_80eea_deduction', 0.0) or 0.0)
+            from .section_57iia_deduction_service import Section57IIADeductionService
+            from .tds_parameter_service import TdsParameterService
+            tds_param_svc_inst = TdsParameterService(self.env)
+            fp_limit = tds_param_svc_inst.get_family_pension_limit(regime=regime_code, eval_date=eval_date)
+            fp_sec_code = Section57IIADeductionService.get_statutory_section_code(financial_year, eval_date=eval_date)
+            fp_label = Section57IIADeductionService.get_legal_reference_label(financial_year, eval_date=eval_date)
+            fam_pension_gross = float(getattr(oth_inc, 'family_pension_gross', 0.0) or 0.0)
+            fam_pension_ded = float(getattr(oth_inc, 'family_pension_deduction', fam_pension_57) or 0.0)
+            fam_pension_net = float(getattr(oth_inc, 'family_pension_net', 0.0) or 0.0)
             sec_80cch_val    = 0.0
             decl_80cch_claimed = 0.0
             if decl_for_log:
@@ -592,7 +601,7 @@ Input          : Employer/Employee declaration
   FD Interest  : ₹{float(getattr(oth_inc, 'fd_interest', 0.0) or 0.0):,.2f}
   Dividend     : ₹{float(getattr(oth_inc, 'dividend_income', 0.0) or 0.0):,.2f}
   Misc Income  : ₹{float(getattr(oth_inc, 'other_sources_misc', 0.0) or 0.0):,.2f}
-  Fam Pension  : (included in 57(iia) deduction below)
+  Fam Pension  : Gross ₹{fam_pension_gross:,.2f} - Ded ₹{fam_pension_ded:,.2f} = Net ₹{fam_pension_net:,.2f}
   Net HseProperty: ₹{float(getattr(oth_inc, 'net_house_property_income_loss', 0.0) or 0.0):,.2f}
 Formula        : Sum of all other-source income items
 Result (Total Other Income): ₹{float(getattr(oth_inc, 'total_other_income', 0.0) or 0.0):,.2f}
@@ -614,7 +623,7 @@ Result         : ₹{deduction_calc.standard_deduction:,.2f}
 Input          : Declaration approved/usable amounts
   6A-1  Sec 80C  Investments          : ₹{sec_80c_val:,.2f}   (cap ₹1,50,000)
   6A-2  Sec 80CCD(1B) NPS             : ₹{sec_80ccd1b_val:,.2f}   (cap ₹50,000)
-  6A-3  Sec 80CCD(2) Employer NPS     : ₹{emp_nps_80ccd2:,.2f}   (% of Basic+DA)
+  6A-3  Employer NPS (Sec 124)        : ₹{emp_nps_80ccd2:,.2f}   (% of Basic+DA)
   6A-4  Sec 80D Medical Insurance     : ₹{sec_80d_val:,.2f}
   6A-5  Sec 80DD Disability Dependent : ₹{sec_80dd_val:,.2f}
   6A-6  Sec 80TTA/80TTB Savings Int   : ₹{sec_80tta_val:,.2f}
@@ -627,10 +636,11 @@ Input          : Declaration approved/usable amounts
 Formula        : Sum of all permitted Chapter VI-A sections (0 if New Regime)
 Result (Total Chapter VI-A): ₹{total_c6a_val:,.2f}
 
-[STAGE 7 — SECTION 57(iia) FAMILY PENSION DEDUCTION]
-Input          : Family pension income declared
-Formula        : min(1/3 of family pension, ₹15,000)
-Result         : ₹{fam_pension_57:,.2f}
+[STAGE 7 — {fp_label.upper()} FAMILY PENSION DEDUCTION]
+Input          : Gross Family Pension declared = ₹{fam_pension_gross:,.2f}
+Formula        : min(1/3 of family pension, ₹{fp_limit:,.0f}) (Netted under Income from Other Sources)
+Deduction      : ₹{fam_pension_ded:,.2f}
+Net Pension    : ₹{fam_pension_net:,.2f} (Included in Stage 3 Other Income)
 
 [STAGE 8 — HRA EXEMPTION (Sec 10(13A))]
 Input          : Actual HRA, Annual Rent, Basic+DA, Metro flag
@@ -651,12 +661,11 @@ Result         : ₹{sec_80eea_ded:,.2f}
 Input          :
   Standard Deduction   : ₹{deduction_calc.standard_deduction:,.2f}
   Chapter VI-A Total   : ₹{total_c6a_val:,.2f}
-  Employer NPS 80CCD(2): ₹{emp_nps_80ccd2:,.2f}
-  Sec 57(iia)          : ₹{fam_pension_57:,.2f}
+  Employer NPS (Sec 124): ₹{emp_nps_80ccd2:,.2f}
   HRA Exemption        : ₹{deduction_calc.hra_exemption:,.2f}
   Sec 24(b) Self-Occupied: ₹{deduction_calc.home_loan_interest_24b:,.2f}
   80EEA                : ₹{sec_80eea_ded:,.2f}
-Formula        : Sum of all approved deductions
+Formula        : Sum of all approved salary & Ch.VI-A deductions
 Result         : ₹{deduction_calc.total_allowable_deductions:,.2f}
 
 [STAGE 12 — TAXABLE INCOME]
@@ -730,7 +739,7 @@ Section 57(iia)            : ₹{fam_pension_57:,.2f}
 HRA Exemption              : ₹{deduction_calc.hra_exemption:,.2f}
 Sec 24(b) Self-Occupied    : ₹{deduction_calc.home_loan_interest_24b:,.2f}
 80EEA                      : ₹{sec_80eea_ded:,.2f}
-Employer NPS 80CCD(2)      : ₹{emp_nps_80ccd2:,.2f}
+Employer NPS (Sec 124)        : ₹{emp_nps_80ccd2:,.2f}
 Other Deductions           : ₹{float(getattr(deduction_calc, 'other_approved_deductions', 0.0) or 0.0):,.2f}
 Total Allowable Deductions : ₹{deduction_calc.total_allowable_deductions:,.2f}
 Taxable Income             : ₹{taxable_inc.net_taxable_income:,.2f}

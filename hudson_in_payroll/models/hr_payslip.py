@@ -1901,7 +1901,7 @@ else:
         else:
             sec_80ccd2 = getattr(deduct, 'c6a_80ccd2_eligible', 0.0) if deduct else 0.0
             if sec_80ccd2 > 0:
-                tax_comp_deductions.append({'name': 'Section 80CCD(2) (Employer NPS)', 'amount': sec_80ccd2})
+                tax_comp_deductions.append({'name': 'Employer NPS Contribution — Section 124', 'amount': sec_80ccd2})
 
         net_taxable_income = getattr(tax_inc, 'net_taxable_income', max(0.0, gti_taxable - sum(d['amount'] for d in tax_comp_deductions)))
         base_tax = getattr(slab, 'base_tax_liability', 0.0) if slab else 0.0

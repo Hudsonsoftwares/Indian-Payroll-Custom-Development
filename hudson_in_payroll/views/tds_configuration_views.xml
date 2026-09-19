@@ -37,7 +37,7 @@
                     <widget name="web_ribbon" title="Closed" bg_color="text-bg-warning" invisible="not is_closed"/>
                     <div class="oe_title">
                         <label for="name" class="oe_edit_only"/>
-                        <h1><field name="name" placeholder="e.g. FY 2025-26 (AY 2026-27)"/></h1>
+                        <h1><field name="name" placeholder="e.g. Tax Year: 2026-27"/></h1>
                     </div>
                     <group>
                         <group string="Period &amp; Assessment">
@@ -170,7 +170,7 @@
                 Create a new TDS Financial Year
             </p>
             <p>
-                Manage Indian Income Tax Financial Years (e.g. FY 2026-27) and Assessment Years (AY 2027-28).
+                Manage Indian Income Tax Financial Years (e.g. Tax Year: 2026-27).
             </p>
         </field>
     </record>

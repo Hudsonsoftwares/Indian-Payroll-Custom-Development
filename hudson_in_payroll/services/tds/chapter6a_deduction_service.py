@@ -419,9 +419,8 @@ permitted_status=%s""",
                     pass
                 elif cat == '57iia':
                     has_57iia_line = True
-                    selected_amt = section_57iia
-                    other_80 += section_57iia
-                    reason = f"Section 57(iia) statutory approved family pension deduction: ₹{section_57iia:,.2f}"
+                    selected_amt = 0.0
+                    reason = "Netted under Income from Other Sources"
                 elif cat in ('80d_self', '80d_parents', '80d_preventive'):
                     section_80d += amt
                     selected_amt = amt
@@ -533,9 +532,6 @@ TOTAL_CHAPTER6A_DEDUCTIONS_SO_FAR=%s""",
                 section_80d = elig_s + elig_p
                 running_total += section_80d
 
-        if not has_57iia_line and section_57iia > 0.0:
-            other_80 += section_57iia
-            running_total += section_57iia
 
         if not has_80g_line and section_80g > 0.0:
             other_80 += section_80g
