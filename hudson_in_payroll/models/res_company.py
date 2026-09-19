@@ -29,6 +29,11 @@ class ResCompany(models.Model):
             ('hds_in_esic_employer_code', 'VARCHAR'),
             ('hds_in_esic_registration_no', 'VARCHAR'),
             ('hds_in_esic_branch_office', 'VARCHAR'),
+            ('hds_in_esic_contribution_period_type', "VARCHAR DEFAULT 'apr_sep_oct_mar'"),
+            ('hds_in_esic_custom_period1_start_month', "VARCHAR DEFAULT '4'"),
+            ('hds_in_esic_custom_period1_end_month', "VARCHAR DEFAULT '9'"),
+            ('hds_in_esic_custom_period2_start_month', "VARCHAR DEFAULT '10'"),
+            ('hds_in_esic_custom_period2_end_month', "VARCHAR DEFAULT '3'"),
             ('hds_in_enable_lwf', 'BOOLEAN DEFAULT TRUE'),
             ('hds_in_lwf_registration_no', 'VARCHAR'),
             ('hds_in_enable_gratuity', 'BOOLEAN DEFAULT FALSE'),
@@ -123,6 +128,33 @@ class ResCompany(models.Model):
         string="ESIC Branch Office",
         help="Optional. Specify the ESIC Branch/Sub Office associated with this employer."
     )
+    hds_in_esic_contribution_period_type = fields.Selection([
+        ('apr_sep_oct_mar', 'April – September & October – March (Standard / Set A)'),
+        ('jul_dec_jan_jun', 'July – December & January – June (Set B)'),
+        ('may_oct_nov_apr', 'May – October & November – April (Set C)'),
+        ('custom', 'Custom Contribution Periods'),
+    ], string="Contribution Periods Cycle", default='apr_sep_oct_mar',
+       help="Statutory ESIC Contribution Period cycle under Regulation 4 of ESI (General) Regulations, 1950.")
+    hds_in_esic_custom_period1_start_month = fields.Selection([
+        ('1', 'January'), ('2', 'February'), ('3', 'March'), ('4', 'April'),
+        ('5', 'May'), ('6', 'June'), ('7', 'July'), ('8', 'August'),
+        ('9', 'September'), ('10', 'October'), ('11', 'November'), ('12', 'December')
+    ], string="Period 1 Start Month", default='4')
+    hds_in_esic_custom_period1_end_month = fields.Selection([
+        ('1', 'January'), ('2', 'February'), ('3', 'March'), ('4', 'April'),
+        ('5', 'May'), ('6', 'June'), ('7', 'July'), ('8', 'August'),
+        ('9', 'September'), ('10', 'October'), ('11', 'November'), ('12', 'December')
+    ], string="Period 1 End Month", default='9')
+    hds_in_esic_custom_period2_start_month = fields.Selection([
+        ('1', 'January'), ('2', 'February'), ('3', 'March'), ('4', 'April'),
+        ('5', 'May'), ('6', 'June'), ('7', 'July'), ('8', 'August'),
+        ('9', 'September'), ('10', 'October'), ('11', 'November'), ('12', 'December')
+    ], string="Period 2 Start Month", default='10')
+    hds_in_esic_custom_period2_end_month = fields.Selection([
+        ('1', 'January'), ('2', 'February'), ('3', 'March'), ('4', 'April'),
+        ('5', 'May'), ('6', 'June'), ('7', 'July'), ('8', 'August'),
+        ('9', 'September'), ('10', 'October'), ('11', 'November'), ('12', 'December')
+    ], string="Period 2 End Month", default='3')
 
     # LWF Company Configuration Fields
     hds_in_enable_lwf = fields.Boolean(

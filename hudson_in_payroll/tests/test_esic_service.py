@@ -31,6 +31,7 @@ class TestESICComprehensive(TransactionCase):
         super().setUp()
         self.company = self.env.company
         self.company.hds_in_esic_applicable = True
+        self.company.hds_in_esic_contribution_period_type = 'apr_sep_oct_mar'
 
         self.employee = self.env['hr.employee'].create({
             'name': 'Ramesh Kumar (Standard)',
@@ -504,3 +505,21 @@ class TestESICComprehensive(TransactionCase):
         self.assertTrue(slip_lop.hds_in_esic_daily_wage_exempt)
         self.assertEqual(slip_lop.hds_in_esic_average_daily_wage, 160.0)  # 800 / 5 days = 160 <= 176
         self.assertEqual(slip_lop.hds_in_esic_paid_days, 5.0)
+
+    # -------------------------------------------------------------------------
+    # TEST 13: Zero Wage Guard on Employee Form
+    # -------------------------------------------------------------------------
+    def test_14_zero_wage_esic_onchange_warning(self):
+        """Validates that enabling ESIC when wage is 0 resets applicability to False and yields a warning."""
+        zero_wage_emp = self.env['hr.employee'].create({
+            'name': 'Zero Wage Employee',
+            'company_id': self.company.id,
+            'wage': 0.0,
+        })
+        zero_wage_emp.hds_in_esic_applicable = True
+        res = zero_wage_emp._onchange_esic_applicable()
+        self.assertFalse(zero_wage_emp.hds_in_esic_applicable)
+        self.assertEqual(zero_wage_emp.hds_in_esic_ip_status, 'exempt')
+        self.assertIn('warning', res)
+        self.assertEqual(res['warning']['title'], "ESIC Not Applicable")
+

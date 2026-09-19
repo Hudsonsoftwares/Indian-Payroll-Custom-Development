@@ -35,4 +35,5 @@ from . import payroll_dashboard
 from . import hr_leave_type
 from . import hds_salary_statement_report
 from . import ir_ui_menu
+from . import esic_contribution_period
 

@@ -40,6 +40,8 @@ from . import test_section_80u_engine
 from . import test_tds_lta
 from . import test_contract_localization_guards
 from . import test_family_pension_engine
+from . import test_esic_company_config
+from . import test_esic_service
 
 
 

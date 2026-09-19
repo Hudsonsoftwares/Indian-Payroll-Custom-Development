@@ -17,6 +17,8 @@ access_pt_state_slab_user,access.pt.state.slab.user,model_pt_state_slab,hudson_p
 access_pt_state_slab_manager,access.pt.state.slab.manager,model_pt_state_slab,hudson_payroll_base.group_payroll_manager,1,1,1,1
 access_pt_period_schedule_user,access.pt.period.schedule.user,model_pt_period_schedule,hudson_payroll_base.group_payroll_user,1,0,0,0
 access_pt_period_schedule_manager,access.pt.period.schedule.manager,model_pt_period_schedule,hudson_payroll_base.group_payroll_manager,1,1,1,1
+access_esic_contribution_period_user,access.esic.contribution.period.user,model_esic_contribution_period,hudson_payroll_base.group_payroll_user,1,0,0,0
+access_esic_contribution_period_manager,access.esic.contribution.period.manager,model_esic_contribution_period,hudson_payroll_base.group_payroll_manager,1,1,1,1
 access_hds_in_statutory_report_user,access.hds.in.statutory.report.user,model_hds_in_statutory_report,hudson_payroll_base.group_payroll_user,1,0,0,0
 access_hds_in_statutory_report_manager,access.hds.in.statutory.report.manager,model_hds_in_statutory_report,hudson_payroll_base.group_payroll_manager,1,0,0,0
 access_hds_pt_report_tile_user,access.hds.pt.report.tile.user,model_hds_pt_report_tile,base.group_user,1,0,0,0

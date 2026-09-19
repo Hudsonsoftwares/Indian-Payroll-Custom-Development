@@ -274,41 +274,7 @@
                                 icon="fa-arrow-circle-right"
                                 string="Manage &amp; Approve Full Tax Declaration"/>
                     </div>
-
-
-
-                    <!-- 1. House Property Loss Carry-Forward (Section 71B - Common to Both Regimes) -->
-                    <div class="card mb-4 border-0 shadow-sm rounded-3">
-                        <div class="card-header py-2 px-3 d-flex justify-content-between align-items-center border-bottom" style="background: rgba(125, 125, 125, 0.08);">
-                            <div class="fw-bold d-flex align-items-center gap-2" style="font-size: 14px;">
-                                <i class="fa fa-home text-primary fs-5"/>
-                                <span>House Property Loss Carry-Forward (Section 71B — Both Regimes)</span>
-                            </div>
-                            <span class="badge rounded-pill shadow-sm" style="background-color: #0284c7; color: #ffffff; font-weight: 600; font-size: 11px; padding: 5px 12px; letter-spacing: 0.3px;">Both Regimes</span>
-                        </div>
-                        <div class="card-body p-3">
-                            <p class="text-muted small mb-2">
-                                Unabsorbed loss from let-out house property eligible for inter-year carry-forward and set-off up to 8 assessment years under Section 71B (Applicable under Old &amp; New Regimes).
-                            </p>
-                            <field name="house_property_loss_ids" nolabel="1">
-                                <list decoration-success="verification_status == 'verified'" decoration-danger="verification_status == 'rejected'" decoration-warning="verification_status == 'pending'">
-                                    <field name="financial_year_id"/>
-                                    <field name="origin_assessment_year" optional="show"/>
-                                    <field name="expiry_assessment_year" optional="show"/>
-                                    <field name="unabsorbed_loss_amount"/>
-                                    <field name="utilized_amount" optional="show"/>
-                                    <field name="remaining_balance" optional="show"/>
-                                    <field name="status" widget="badge" decoration-success="status == 'active'" decoration-muted="status == 'fully_utilized'" decoration-danger="status == 'expired'"/>
-                                    <field name="verification_status" widget="badge" decoration-success="verification_status == 'verified'" decoration-danger="verification_status == 'rejected'" decoration-warning="verification_status == 'pending'"/>
-                                    <field name="verification_remarks" optional="hide"/>
-                                    <field name="verified_by" optional="hide"/>
-                                    <field name="verified_on" optional="hide"/>
-                                </list>
-                            </field>
-                        </div>
-                    </div>
-
-                    <!-- 2. Previous Employer LTA History (Section 10(5) — Old Regime Only) -->
+                    <!-- Previous Employer LTA History (Section 10(5) — Old Regime Only) -->
                     <div class="card mb-3 border-0 shadow-sm rounded-3" invisible="hds_in_is_new_tax_regime">
                         <div class="card-header py-2 px-3 d-flex justify-content-between align-items-center border-bottom" style="background: rgba(125, 125, 125, 0.08);">
                             <div class="fw-bold d-flex align-items-center gap-2" style="font-size: 14px;">

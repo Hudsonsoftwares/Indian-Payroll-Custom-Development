@@ -149,12 +149,12 @@ class SalaryPreviewService(BaseStatutoryService):
 
         # Statutory Contribution Period Details for UI Preview
         import datetime
-        cur_start, cur_end = period_service.get_contribution_period_bounds(effective_date)
+        cur_start, cur_end = period_service.get_contribution_period_bounds(effective_date, company=company)
         esic_cur_period_label = f"({cur_start.strftime('%b %Y')} – {cur_end.strftime('%b %Y')})"
         esic_cur_period_status = old_esic_app or new_esic_app
 
         next_ref_date = cur_end + datetime.timedelta(days=1)
-        next_start, next_end = period_service.get_contribution_period_bounds(next_ref_date)
+        next_start, next_end = period_service.get_contribution_period_bounds(next_ref_date, company=company)
         esic_next_period_label = f"({next_start.strftime('%b %Y')} – {next_end.strftime('%b %Y')})"
 
         esic_ceiling = period_service.get_parameter('hds_in_esic_pwd_wage_ceiling', date=next_start, as_decimal=False) if getattr(employee, 'hds_in_is_pwd', False) else period_service.get_parameter('hds_in_esic_wage_ceiling', date=next_start, as_decimal=False)

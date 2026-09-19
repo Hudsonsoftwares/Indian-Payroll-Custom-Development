@@ -164,3 +164,47 @@ class TestTdsPhase11CarryForwardIsolation(TransactionCase):
             self.other_svc.aggregate_other_income(self.emp, self.fy2026, regime_code='new')
         self.assertEqual(inc_decl.annual_let_out_rent, 0.0)
         self.assertEqual(inc_decl.let_out_interest_paid, 0.0)
+
+    def test_scenario_11_wizard_origin_regime_based_on_employee_regime(self):
+        """Scenario 11: House Property Loss Origin Regime defaults to employee's tax regime."""
+        # 1. New regime employee/declaration
+        decl_new = self.Declaration.create({
+            'employee_id': self.emp.id,
+            'financial_year_id': self.fy2026.id,
+            'regime_code': 'new',
+        })
+        LossModel = self.env['tds.house.property.loss.carryforward']
+        loss_new = LossModel.with_context(
+            default_employee_id=self.emp.id,
+            default_regime_code='new',
+            default_financial_year_id=self.fy2026.id
+        ).create({
+            'unabsorbed_loss_amount': 50000.0,
+        })
+        self.assertEqual(loss_new.regime_code, 'new')
+
+        # 2. Old regime employee/declaration
+        decl_old = self.Declaration.create({
+            'employee_id': self.emp.id,
+            'financial_year_id': self.fy2025.id,
+            'regime_code': 'old',
+        })
+        loss_old = LossModel.with_context(
+            default_employee_id=self.emp.id,
+            default_regime_code='old',
+            default_financial_year_id=self.fy2025.id
+        ).create({
+            'unabsorbed_loss_amount': 30000.0,
+        })
+        self.assertEqual(loss_old.regime_code, 'old')
+
+        # 3. Unabsorbed loss amount == 0 defaults status to 'draft'
+        loss_zero = LossModel.with_context(
+            default_employee_id=self.emp.id,
+            default_financial_year_id=self.fy2026.id
+        ).create({
+            'unabsorbed_loss_amount': 0.0,
+        })
+        self.assertEqual(loss_zero.status, 'draft')
+        self.assertEqual(loss_new.status, 'active')
+

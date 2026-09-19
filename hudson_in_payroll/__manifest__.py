@@ -31,6 +31,7 @@
         'data/lwf_state_rate_data.xml',
         'data/pt_state_slab_data.xml',
         'data/pt_period_schedule_data.xml',
+        'data/esic_contribution_period_data.xml',
         
         
         'data/hds_pt_report_tiles.xml',
@@ -63,6 +64,7 @@
         'views/lwf_state_rate_views.xml',
         'views/pt_state_slab_views.xml',
         'views/pt_period_schedule_views.xml',
+        'views/esic_contribution_period_views.xml',
         'views/hr_employee_views.xml',
         'views/hr_salary_rule_views.xml',
         'views/hr_contract_views.xml',

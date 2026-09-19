@@ -388,7 +388,7 @@
                                 </group>
                             </group>
                             <separator string="House Property Loss Carry-Forward (Section 71B — Both Regimes)"/>
-                            <field name="house_property_loss_ids" readonly="state in ['approved', 'rejected']">
+                            <field name="house_property_loss_ids" context="{'default_employee_id': employee_id, 'default_regime_code': regime_code, 'default_financial_year_id': financial_year_id}" readonly="state in ['approved', 'rejected']">
                                 <list decoration-success="verification_status == 'verified'" decoration-danger="verification_status == 'rejected'" decoration-warning="verification_status == 'pending'">
                                     <field name="financial_year_id"/>
                                     <field name="origin_assessment_year" optional="show"/>
@@ -396,7 +396,7 @@
                                     <field name="unabsorbed_loss_amount"/>
                                     <field name="utilized_amount" optional="show"/>
                                     <field name="remaining_balance" optional="show"/>
-                                    <field name="status" widget="badge" decoration-success="status == 'active'" decoration-muted="status == 'fully_utilized'" decoration-danger="status == 'expired'"/>
+                                    <field name="status" widget="badge" decoration-info="status == 'draft'" decoration-success="status == 'active'" decoration-muted="status == 'fully_utilized'" decoration-danger="status == 'expired'"/>
                                     <field name="verification_status" widget="badge" decoration-success="verification_status == 'verified'" decoration-danger="verification_status == 'rejected'" decoration-warning="verification_status == 'pending'"/>
                                     <field name="verification_remarks" optional="hide"/>
                                     <field name="verified_by" optional="hide"/>
@@ -728,7 +728,7 @@
                                 </group>
                             </group>
                             <separator string="House Property Loss Carry-Forward (Section 71B — Both Regimes)"/>
-                            <field name="house_property_loss_ids" readonly="state != 'draft'">
+                            <field name="house_property_loss_ids" context="{'default_employee_id': employee_id, 'default_regime_code': regime_code, 'default_financial_year_id': financial_year_id}" readonly="state != 'draft'">
                                 <list decoration-success="verification_status == 'verified'" decoration-danger="verification_status == 'rejected'" decoration-warning="verification_status == 'pending'">
                                     <field name="financial_year_id"/>
                                     <field name="origin_assessment_year" optional="show"/>
@@ -736,7 +736,7 @@
                                     <field name="unabsorbed_loss_amount"/>
                                     <field name="utilized_amount" optional="show"/>
                                     <field name="remaining_balance" optional="show"/>
-                                    <field name="status" widget="badge" decoration-success="status == 'active'" decoration-muted="status == 'fully_utilized'" decoration-danger="status == 'expired'"/>
+                                    <field name="status" widget="badge" decoration-info="status == 'draft'" decoration-success="status == 'active'" decoration-muted="status == 'fully_utilized'" decoration-danger="status == 'expired'"/>
                                     <field name="verification_status" widget="badge" decoration-success="verification_status == 'verified'" decoration-danger="verification_status == 'rejected'" decoration-warning="verification_status == 'pending'"/>
                                     <field name="verification_remarks" optional="hide"/>
                                     <field name="verified_by" optional="hide"/>

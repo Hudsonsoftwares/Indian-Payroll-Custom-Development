@@ -160,12 +160,12 @@ class HdsInSalaryRevision(models.Model):
             is_covered = period_service.is_covered_for_contribution_period(employee, eval_date=rec.effective_date)
             cur_app = bool(company.hds_in_esic_applicable and employee.hds_in_esic_applicable and is_covered)
 
-            cur_start, cur_end = period_service.get_contribution_period_bounds(rec.effective_date)
+            cur_start, cur_end = period_service.get_contribution_period_bounds(rec.effective_date, company=company)
             rec.esic_cur_period_label = f"({cur_start.strftime('%b %Y')} – {cur_end.strftime('%b %Y')})"
             rec.esic_cur_period_status = cur_app
 
             next_ref = cur_end + datetime.timedelta(days=1)
-            next_start, next_end = period_service.get_contribution_period_bounds(next_ref)
+            next_start, next_end = period_service.get_contribution_period_bounds(next_ref, company=company)
             rec.esic_next_period_label = f"({next_start.strftime('%b %Y')} – {next_end.strftime('%b %Y')})"
 
             esic_ceiling = period_service.get_parameter('hds_in_esic_pwd_wage_ceiling', date=next_start, as_decimal=False) if getattr(employee, 'hds_in_is_pwd', False) else period_service.get_parameter('hds_in_esic_wage_ceiling', date=next_start, as_decimal=False)

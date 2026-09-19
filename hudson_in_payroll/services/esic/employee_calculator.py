@@ -34,7 +34,11 @@ class ESICEmployeeCalculator(BaseStatutoryService):
         # Case 1: Worked days lines are populated on payslip
         worked_lines = getattr(payslip, 'worked_days_line_ids', None)
         if worked_lines:
-            unpaid_codes = ('UNPAID', 'ABSENT', 'LEAVE_UNPAID', 'LOP', 'SHORTAGE')
+            contract = getattr(payslip, 'contract_id', None) or getattr(payslip, 'contract', None)
+            pay_by_attendance = bool(getattr(contract, 'pay_by_attendance', False))
+            unpaid_codes = ['UNPAID', 'ABSENT', 'LEAVE_UNPAID', 'LOP']
+            if pay_by_attendance:
+                unpaid_codes.append('SHORTAGE')
             paid_lines = worked_lines.filtered(lambda l: (l.code or '').upper() not in unpaid_codes)
             paid_days = sum(float(l.number_of_days or 0.0) for l in paid_lines)
             unpaid_lines = worked_lines.filtered(lambda l: (l.code or '').upper() in unpaid_codes)
@@ -120,6 +124,16 @@ class ESICEmployeeCalculator(BaseStatutoryService):
         threshold = float(threshold or 176.0)
 
         paid_days = self.get_paid_days(payslip)
+        if paid_days <= 0.0 and esic_wage > 0.0:
+            date_from = getattr(payslip, 'date_from', False) or fields.Date.today()
+            date_to = getattr(payslip, 'date_to', False) or fields.Date.today()
+            if isinstance(date_from, str):
+                date_from = fields.Date.from_string(date_from)
+            if isinstance(date_to, str):
+                date_to = fields.Date.from_string(date_to)
+            cal_days = (date_to - date_from).days + 1 if (date_from and date_to) else 30
+            paid_days = float(max(1, cal_days))
+
         if paid_days <= 0.0:
             average_daily_wage = 0.0
             is_exempt = True

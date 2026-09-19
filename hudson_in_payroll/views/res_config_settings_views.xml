@@ -80,6 +80,13 @@
                                         <label for="hds_in_esic_registration_no" class="col-lg-5 o_light_label"/>
                                         <field name="hds_in_esic_registration_no" placeholder="e.g. ESIC/MH/3100012"/>
                                     </div>
+                                    <div class="mt8">
+                                        <button name="%(hudson_in_payroll.action_esic_contribution_period)d"
+                                                icon="fa-arrow-right"
+                                                type="action"
+                                                string="Configure Contribution Periods"
+                                                class="btn-link"/>
+                                    </div>
                                 </div>
                             </div>
                         </div>

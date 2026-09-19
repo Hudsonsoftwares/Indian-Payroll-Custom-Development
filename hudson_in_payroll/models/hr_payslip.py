@@ -1336,6 +1336,8 @@ else:
                 total_earnings = float(getattr(categories, 'BASIC', 0.0) or 0.0) + float(getattr(categories, 'ALW', 0.0) or 0.0)
         if total_earnings <= 0.0 and contract:
             total_earnings = float(getattr(contract, 'wage', 0.0) or 0.0)
+        if total_earnings <= 0.0 and self.employee_id:
+            total_earnings = float(getattr(self.employee_id, 'wage', 0.0) or 0.0)
 
         # 2. Check shortage & unpaid deductions from evaluated rules, localdict, worked_days, or line_ids
         short_ded = abs(float(ld.get('SHORT') or 0.0))

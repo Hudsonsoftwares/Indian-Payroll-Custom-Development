@@ -309,18 +309,10 @@ class HrEmployee(models.Model):
             if join_date and join_date > today:
                 ref_date = join_date
 
-            year = ref_date.year
-            month = ref_date.month
-
-            if 4 <= month <= 9:
-                period_str = f"April {year} – September {year}"
-                valid_until = f"30-Sep-{year}"
-            elif month >= 10:
-                period_str = f"October {year} – March {year + 1}"
-                valid_until = f"31-Mar-{year + 1}"
-            else:
-                period_str = f"October {year - 1} – March {year}"
-                valid_until = f"31-Mar-{year}"
+            comp = emp.company_id or self.env.company
+            period_start, period_end = period_service.get_contribution_period_bounds(ref_date, company=comp)
+            period_str = f"{period_start.strftime('%B %Y')} – {period_end.strftime('%B %Y')}"
+            valid_until = period_end.strftime('%d-%b-%Y')
 
             gross = emp._get_gross_wage()
             ceiling = 25000.0 if emp.hds_in_is_pwd else 21000.0
@@ -395,6 +387,21 @@ class HrEmployee(models.Model):
             gross = emp._get_gross_wage()
             ceiling = 25000.0 if emp.hds_in_is_pwd else 21000.0
             if emp.hds_in_esic_applicable:
+                if gross <= 0.0:
+                    emp.hds_in_esic_applicable = False
+                    emp.hds_in_esic_ip_status = 'exempt'
+                    emp.hds_in_esic_exit_reason = False
+                    return {
+                        'warning': {
+                            'title': _("ESIC Not Applicable"),
+                            'message': _(
+                                "ESIC cannot be enabled when employee wage/salary is ₹0.\n\n"
+                                "Please define the employee's salary breakdown (Basic, HRA, etc.) first. "
+                                "If the gross wage is within statutory limits (₹21,000 / ₹25,000 for PWD), "
+                                "ESIC will automatically be enabled."
+                            )
+                        }
+                    }
                 is_eligible = emp._evaluate_default_esic_applicable(gross_wage=gross)
                 if not is_eligible and gross > ceiling:
                     emp.hds_in_esic_applicable = False

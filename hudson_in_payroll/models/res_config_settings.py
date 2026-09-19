@@ -59,6 +59,31 @@ class ResConfigSettings(models.TransientModel):
         readonly=False,
         string="ESIC Branch Office"
     )
+    hds_in_esic_contribution_period_type = fields.Selection(
+        related='company_id.hds_in_esic_contribution_period_type',
+        readonly=False,
+        string="Contribution Periods Cycle"
+    )
+    hds_in_esic_custom_period1_start_month = fields.Selection(
+        related='company_id.hds_in_esic_custom_period1_start_month',
+        readonly=False,
+        string="Period 1 Start Month"
+    )
+    hds_in_esic_custom_period1_end_month = fields.Selection(
+        related='company_id.hds_in_esic_custom_period1_end_month',
+        readonly=False,
+        string="Period 1 End Month"
+    )
+    hds_in_esic_custom_period2_start_month = fields.Selection(
+        related='company_id.hds_in_esic_custom_period2_start_month',
+        readonly=False,
+        string="Period 2 Start Month"
+    )
+    hds_in_esic_custom_period2_end_month = fields.Selection(
+        related='company_id.hds_in_esic_custom_period2_end_month',
+        readonly=False,
+        string="Period 2 End Month"
+    )
 
     # LWF Company Configuration Related Fields
     hds_in_enable_lwf = fields.Boolean(

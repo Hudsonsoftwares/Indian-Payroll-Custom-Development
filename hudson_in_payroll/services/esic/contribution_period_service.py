@@ -14,29 +14,84 @@ class ESICContributionPeriodService(BaseStatutoryService):
     through the end of that 6-month period regardless of mid-period increments.
     """
 
-    def get_contribution_period_bounds(self, ref_date):
+    def get_contribution_period_bounds(self, ref_date, company=None):
         """
         Returns statutory (period_start_date, period_end_date) for a given reference date.
-        - April 1 to September 30
-        - October 1 to March 31
+        Respects company ESIC contribution period configuration:
+        - 'apr_sep_oct_mar' (Standard / Set A): April 1 to September 30 & October 1 to March 31
+        - 'jul_dec_jan_jun' (Set B): July 1 to December 31 & January 1 to June 30
+        - 'may_oct_nov_apr' (Set C): May 1 to October 31 & November 1 to April 30
+        - 'custom': Configured start and end months
         """
+        import calendar
         if not ref_date:
             ref_date = datetime.date.today()
         elif isinstance(ref_date, str):
             ref_date = datetime.datetime.strptime(ref_date, '%Y-%m-%d').date()
 
+        comp = company or self.env.company
+
+        # 1. Resolve from master model esic.contribution.period
+        schedule = False
+        if hasattr(self.env, '__getitem__') and 'esic.contribution.period' in self.env:
+            domain = [
+                ('active', '=', True),
+                '|', ('date_from', '=', False), ('date_from', '<=', ref_date),
+                '|', ('date_to', '=', False), ('date_to', '>=', ref_date),
+                '|', ('company_id', '=', False), ('company_id', '=', comp.id),
+            ]
+            schedule = self.env['esic.contribution.period'].search(domain, order='company_id desc, id desc', limit=1)
+
+        if schedule:
+            p1_start_m = int(getattr(schedule, 'period1_start_month', 4) or 4)
+            p1_end_m = int(getattr(schedule, 'period1_end_month', 9) or 9)
+            p2_start_m = int(getattr(schedule, 'period2_start_month', 10) or 10)
+            p2_end_m = int(getattr(schedule, 'period2_end_month', 3) or 3)
+        else:
+            # Fallback to company field or standard April-September & October-March
+            cycle = getattr(comp, 'hds_in_esic_contribution_period_type', 'apr_sep_oct_mar') or 'apr_sep_oct_mar'
+            if cycle == 'jul_dec_jan_jun':
+                p1_start_m, p1_end_m = 7, 12
+                p2_start_m, p2_end_m = 1, 6
+            elif cycle == 'may_oct_nov_apr':
+                p1_start_m, p1_end_m = 5, 10
+                p2_start_m, p2_end_m = 11, 4
+            elif cycle == 'custom':
+                p1_start_m = int(getattr(comp, 'hds_in_esic_custom_period1_start_month', 4) or 4)
+                p1_end_m = int(getattr(comp, 'hds_in_esic_custom_period1_end_month', 9) or 9)
+                p2_start_m = int(getattr(comp, 'hds_in_esic_custom_period2_start_month', 10) or 10)
+                p2_end_m = int(getattr(comp, 'hds_in_esic_custom_period2_end_month', 3) or 3)
+            else:
+                p1_start_m, p1_end_m = 4, 9
+                p2_start_m, p2_end_m = 10, 3
+
         year = ref_date.year
         month = ref_date.month
 
-        if 4 <= month <= 9:
-            start_date = datetime.date(year, 4, 1)
-            end_date = datetime.date(year, 9, 30)
-        elif month >= 10:
-            start_date = datetime.date(year, 10, 1)
-            end_date = datetime.date(year + 1, 3, 31)
+        def _in_range(m, s, e):
+            if s <= e:
+                return s <= m <= e
+            else:
+                return m >= s or m <= e
+
+        if _in_range(month, p1_start_m, p1_end_m):
+            s_month, e_month = p1_start_m, p1_end_m
         else:
-            start_date = datetime.date(year - 1, 10, 1)
-            end_date = datetime.date(year, 3, 31)
+            s_month, e_month = p2_start_m, p2_end_m
+
+        if s_month <= e_month:
+            start_date = datetime.date(year, s_month, 1)
+            last_day = calendar.monthrange(year, e_month)[1]
+            end_date = datetime.date(year, e_month, last_day)
+        else:
+            if month >= s_month:
+                start_date = datetime.date(year, s_month, 1)
+                last_day = calendar.monthrange(year + 1, e_month)[1]
+                end_date = datetime.date(year + 1, e_month, last_day)
+            else:
+                start_date = datetime.date(year - 1, s_month, 1)
+                last_day = calendar.monthrange(year, e_month)[1]
+                end_date = datetime.date(year, e_month, last_day)
 
         return start_date, end_date
 
@@ -140,7 +195,8 @@ class ESICContributionPeriodService(BaseStatutoryService):
             eval_date = datetime.datetime.strptime(eval_date, '%Y-%m-%d').date()
 
         # 1. Determine Contribution Period Bounds
-        period_start, period_end = self.get_contribution_period_bounds(eval_date)
+        company = getattr(employee, 'company_id', None) or self.env.company
+        period_start, period_end = self.get_contribution_period_bounds(eval_date, company=company)
 
         # 2. Determine Applicable Statutory Wage Ceiling
         if getattr(employee, 'hds_in_is_pwd', False):
@@ -219,7 +275,7 @@ class ESICContributionPeriodService(BaseStatutoryService):
         # If employee was already active in ESIC (hds_in_esic_applicable = True and IP status != 'exempt' / 'resigned'),
         # and evaluating a date within the active period, a salary increase cannot drop them mid-period!
         today = datetime.date.today()
-        today_start, today_end = self.get_contribution_period_bounds(today)
+        today_start, today_end = self.get_contribution_period_bounds(today, company=company)
         if period_start == today_start and period_end == today_end:
             origin_emp = getattr(employee, '_origin', employee)
             was_applicable = getattr(employee, 'hds_in_esic_applicable', False) or getattr(origin_emp, 'hds_in_esic_applicable', False)

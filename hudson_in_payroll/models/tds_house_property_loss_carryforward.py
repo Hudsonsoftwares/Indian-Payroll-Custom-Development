@@ -57,12 +57,59 @@ class TdsHousePropertyLossCarryforward(models.Model):
         string="Expiry Assessment Year (AY)",
         help="Final Assessment Year after which loss carry-forward expires (max 8 AYs u/s 71B)."
     )
+    def _default_regime_code(self):
+        ctx = self.env.context
+        if ctx.get('default_regime_code') and ctx.get('default_regime_code') in ('new', 'old', 'both'):
+            return ctx.get('default_regime_code')
+        emp_id = ctx.get('default_employee_id')
+        if not emp_id and ctx.get('active_model') == 'hr.employee':
+            emp_id = ctx.get('active_id')
+        elif not emp_id and ctx.get('active_model') == 'tds.employee.declaration':
+            decl = self.env['tds.employee.declaration'].browse(ctx.get('active_id'))
+            if decl.exists():
+                return decl.regime_code or ('new' if decl.employee_id.hds_in_is_new_tax_regime else 'old')
+        if emp_id:
+            emp = self.env['hr.employee'].browse(emp_id)
+            if emp.exists():
+                return emp.hds_in_tax_regime or ('new' if emp.hds_in_is_new_tax_regime else 'old')
+        company = self.env.company
+        return company.hds_in_default_tax_regime or 'new'
+
     regime_code = fields.Selection(
         [('old', 'Old Regime'), ('new', 'New Regime'), ('both', 'Both Regimes')],
         string="Origin Regime",
-        default='old',
+        default=_default_regime_code,
         help="Tax regime under which the loss originated."
     )
+
+    @api.model
+    def default_get(self, fields_list):
+        res = super().default_get(fields_list)
+        if 'regime_code' in fields_list:
+            ctx_regime = self.env.context.get('default_regime_code')
+            if ctx_regime in ('new', 'old', 'both'):
+                res['regime_code'] = ctx_regime
+            else:
+                emp_id = res.get('employee_id') or self.env.context.get('default_employee_id')
+                if not emp_id and self.env.context.get('active_model') == 'hr.employee':
+                    emp_id = self.env.context.get('active_id')
+                elif not emp_id and self.env.context.get('active_model') == 'tds.employee.declaration':
+                    decl = self.env['tds.employee.declaration'].browse(self.env.context.get('active_id'))
+                    if decl.exists():
+                        res['regime_code'] = decl.regime_code or ('new' if decl.employee_id.hds_in_is_new_tax_regime else 'old')
+                        return res
+                if emp_id:
+                    emp = self.env['hr.employee'].browse(emp_id)
+                    if emp.exists():
+                        res['regime_code'] = emp.hds_in_tax_regime or ('new' if emp.hds_in_is_new_tax_regime else 'old')
+        return res
+
+    @api.onchange('employee_id')
+    def _onchange_employee_id_set_regime(self):
+        if self.employee_id:
+            regime = self.employee_id.hds_in_tax_regime or ('new' if self.employee_id.hds_in_is_new_tax_regime else 'old')
+            if regime in ('new', 'old'):
+                self.regime_code = regime
     raw_loss_amount = fields.Monetary(
         string="Raw Loss Amount (₹)",
         currency_field='currency_id',
@@ -98,11 +145,11 @@ class TdsHousePropertyLossCarryforward(models.Model):
         default=False
     )
     status = fields.Selection(
-        [('active', 'Active'), ('fully_utilized', 'Fully Utilized'), ('expired', 'Expired')],
+        [('draft', 'Draft'), ('active', 'Active'), ('fully_utilized', 'Fully Utilized'), ('expired', 'Expired')],
         string="Status",
         compute='_compute_status',
         store=True,
-        default='active'
+        default='draft'
     )
     # Statutory Verification Workflow (Matching LTA design)
     verification_status = fields.Selection([
@@ -154,11 +201,13 @@ class TdsHousePropertyLossCarryforward(models.Model):
         for rec in self:
             rec.remaining_balance = max(0.0, float(rec.unabsorbed_loss_amount or 0.0) - float(rec.utilized_amount or 0.0))
 
-    @api.depends('remaining_balance', 'is_expired')
+    @api.depends('remaining_balance', 'unabsorbed_loss_amount', 'is_expired')
     def _compute_status(self):
         for rec in self:
             if rec.is_expired:
                 rec.status = 'expired'
+            elif not rec.unabsorbed_loss_amount or rec.unabsorbed_loss_amount <= 0.0:
+                rec.status = 'draft'
             elif rec.remaining_balance <= 0.0 and rec.unabsorbed_loss_amount > 0.0:
                 rec.status = 'fully_utilized'
             else:
