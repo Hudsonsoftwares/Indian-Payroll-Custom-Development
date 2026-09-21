@@ -58,7 +58,7 @@ class PayrollWageAggregationService:
         # Build domain to fetch historical payslips for the employee in the date range
         slip_domain = [
             ('employee_id', '=', employee.id),
-            ('state', 'in', ['done', 'verify']),
+            ('state', 'in', ['done', 'verify', 'paid']),
             ('date_from', '>=', start_date),
             ('date_to', '<=', end_date),
         ]
@@ -88,11 +88,13 @@ class PayrollWageAggregationService:
                 lines = self.env['hr.payslip.line'].search(line_domain)
                 slip_gross_map = {s_id: 0.0 for s_id in historical_slips.ids}
                 slip_ded_map = {s_id: 0.0 for s_id in historical_slips.ids}
-                gross_seen_lines = set()
+                gross_code_slips = set()
                 for line in lines:
-                    if line.category_id.code == 'GROSS' or line.code == 'GROSS':
-                        if line.id not in gross_seen_lines:
-                            gross_seen_lines.add(line.id)
+                    if line.code == 'GROSS':
+                        gross_code_slips.add(line.slip_id.id)
+                        slip_gross_map[line.slip_id.id] = line.total
+                    elif line.category_id.code == 'GROSS':
+                        if line.slip_id.id not in gross_code_slips:
                             slip_gross_map[line.slip_id.id] += line.total
                     elif line.code in ('SHORT', 'UNPAID'):
                         slip_ded_map[line.slip_id.id] += abs(line.total)

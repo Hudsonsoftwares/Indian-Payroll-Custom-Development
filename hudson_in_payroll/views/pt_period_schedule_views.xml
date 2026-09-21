@@ -13,6 +13,7 @@
                 <field name="deduction_strategy"/>
                 <field name="distribution_method"/>
                 <field name="deduction_month" optional="show"/>
+                <field name="min_service_days" optional="show"/>
                 <field name="date_from" optional="show"/>
                 <field name="date_to" optional="show"/>
                 <field name="company_id" groups="base.group_multi_company" optional="show"/>
@@ -35,6 +36,12 @@
                             <field name="name" readonly="1" placeholder="Automated Schedule Name..."/>
                         </h1>
                     </div>
+                    <div class="alert alert-info d-flex align-items-center mb-3" role="status" invisible="periodicity == 'monthly'">
+                        <i class="fa fa-info-circle me-2 fs-5"/>
+                        <div>
+                            For Quarterly &amp; Half-Yearly schedules, Professional Tax is deducted as <strong>Full Amount</strong> at End of Period, Beginning of Period, or a Specific Month (no equal monthly split).
+                        </div>
+                    </div>
                     <group>
                         <group string="General Information">
                             <field name="state_id" options="{'no_create': True, 'no_open': True}"/>
@@ -48,9 +55,11 @@
                     </group>
                     <group>
                         <group string="Deduction Strategy">
-                            <field name="deduction_strategy" readonly="periodicity == 'monthly'"/>
+                            <field name="deduction_strategy" readonly="1" invisible="periodicity != 'monthly'"/>
+                            <field name="non_monthly_deduction_strategy" invisible="periodicity == 'monthly'"/>
                             <field name="distribution_method" readonly="1" force_save="1"/>
                             <field name="deduction_month" invisible="periodicity == 'monthly' or deduction_strategy == 'every_payroll'" readonly="deduction_strategy in ('end_of_period', 'beginning_of_period')" force_save="1" required="deduction_strategy == 'specific_month'"/>
+                            <field name="min_service_days" invisible="periodicity == 'monthly'"/>
                         </group>
                         <group string="Effective Validity">
                             <field name="date_from"/>
@@ -58,10 +67,8 @@
                             <field name="active"/>
                         </group>
                     </group>
-                    <group>
-                        <group string="Statutory References &amp; Remarks">
-                            <field name="remarks" placeholder="Statutory notes, gazette references, or caveats..."/>
-                        </group>
+                    <group string="Statutory References &amp; Remarks">
+                        <field name="remarks" placeholder="Statutory notes, gazette references, or caveats..." nolabel="1"/>
                     </group>
                 </sheet>
             </form>

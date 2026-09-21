@@ -737,10 +737,80 @@ class HrEmployee(models.Model):
         help="12-digit Aadhaar Card Number."
     )
     hds_in_tds_applicable = fields.Boolean(
-        string="TDS Applicable",
-        default=True,
+        string="Enable TDS",
+        default=False,
         help="Enable Indian Income Tax (TDS) withholding computation for this employee."
     )
+    hds_in_tds_month_division = fields.Integer(
+        string="TDS Month Division",
+        compute='_compute_hds_in_tds_month_division',
+        store=False,
+        readonly=True,
+        help="Remaining months in the Financial Year from employee's joining date to Financial Year end."
+    )
+
+    def _get_employee_joining_date(self):
+        """Helper to reliably retrieve employee joining date from contract or explicit joining date fields."""
+        self.ensure_one()
+        join_date = (
+            getattr(self, 'contract_date_start', None) or
+            (self.version_id.contract_date_start if hasattr(self, 'version_id') and self.version_id else None) or
+            getattr(self, 'hds_in_doj', None) or
+            getattr(self, 'hds_in_esic_joining_date', None) or
+            getattr(self, 'hds_in_pf_joining_date', None)
+        )
+        if not join_date:
+            emp_id = self._origin.id if (getattr(self, '_origin', None) and self._origin.id and isinstance(self._origin.id, int)) else (self.id if isinstance(self.id, int) else False)
+            if emp_id:
+                version = self.env['hr.version'].search([
+                    ('employee_id', '=', emp_id),
+                    ('contract_date_start', '!=', False)
+                ], order='contract_date_start asc, id asc', limit=1)
+                if version:
+                    join_date = version.contract_date_start
+        return join_date or False
+
+    @api.depends(
+        'company_id',
+        'hds_in_tds_applicable',
+        'contract_date_start',
+        'version_id.contract_date_start',
+        'hds_in_esic_joining_date',
+        'hds_in_pf_joining_date'
+    )
+    def _compute_hds_in_tds_month_division(self):
+        for emp in self:
+            if not emp.hds_in_tds_applicable:
+                emp.hds_in_tds_month_division = 0
+                continue
+
+            join_date = emp._get_employee_joining_date()
+            if not join_date:
+                emp.hds_in_tds_month_division = 0
+                continue
+
+            company = emp.company_id or self.env.company
+            fy = getattr(company, 'hds_in_default_tax_year', None)
+            if not fy or not fy.active:
+                fy = self.env['tds.financial.year'].search([('active', '=', True)], order='start_date desc', limit=1)
+
+            if not fy or not fy.end_date or not fy.start_date:
+                emp.hds_in_tds_month_division = 12
+                continue
+
+            # If joined on or before FY start date, standard full year (12)
+            if join_date <= fy.start_date:
+                emp.hds_in_tds_month_division = 12
+            elif join_date > fy.end_date:
+                emp.hds_in_tds_month_division = 1
+            else:
+                # Mid-year joiner: count of months from join_date month to fy.end_date month (inclusive)
+                rem_months = (fy.end_date.year - join_date.year) * 12 + (fy.end_date.month - join_date.month) + 1
+                emp.hds_in_tds_month_division = max(1, min(12, rem_months))
+
+    @api.onchange('contract_date_start', 'hds_in_tds_applicable', 'hds_in_esic_joining_date', 'hds_in_pf_joining_date')
+    def _onchange_contract_date_start_tds(self):
+        self._compute_hds_in_tds_month_division()
     hds_in_residential_status = fields.Selection([
         ('ror', 'Resident & Ordinarily Resident (ROR)'),
         ('rnor', 'Resident but Not Ordinarily Resident (RNOR)'),
@@ -762,6 +832,39 @@ class HrEmployee(models.Model):
                 emp.resident_status = 'non_resident'
             else:
                 emp.resident_status = 'resident'
+
+    @api.onchange('hds_in_residential_status')
+    def _onchange_hds_in_residential_status(self):
+        """Automatically toggle is_non_resident checkbox based on residential status dropdown selection."""
+        for emp in self:
+            if hasattr(emp, 'is_non_resident'):
+                emp.is_non_resident = (emp.hds_in_residential_status == 'nre')
+
+    @api.onchange('is_non_resident')
+    def _onchange_is_non_resident(self):
+        """Automatically sync residential status dropdown when is_non_resident checkbox is toggled."""
+        for emp in self:
+            if hasattr(emp, 'is_non_resident'):
+                if emp.is_non_resident and emp.hds_in_residential_status != 'nre':
+                    emp.hds_in_residential_status = 'nre'
+                elif not emp.is_non_resident and emp.hds_in_residential_status == 'nre':
+                    emp.hds_in_residential_status = 'ror'
+
+    @api.model_create_multi
+    def create(self, vals_list):
+        for vals in vals_list:
+            if 'hds_in_residential_status' in vals and 'is_non_resident' not in vals:
+                vals['is_non_resident'] = (vals.get('hds_in_residential_status') == 'nre')
+            elif 'is_non_resident' in vals and 'hds_in_residential_status' not in vals:
+                vals['hds_in_residential_status'] = 'nre' if vals.get('is_non_resident') else 'ror'
+        return super().create(vals_list)
+
+    def write(self, vals):
+        if 'hds_in_residential_status' in vals and 'is_non_resident' not in vals:
+            vals['is_non_resident'] = (vals.get('hds_in_residential_status') == 'nre')
+        elif 'is_non_resident' in vals and 'hds_in_residential_status' not in vals:
+            vals['hds_in_residential_status'] = 'nre' if vals.get('is_non_resident') else 'ror'
+        return super().write(vals)
 
     # Previous Employer Income & TDS (For Mid-Year Joiners)
     hds_in_prev_taxable_gross = fields.Monetary(
@@ -916,10 +1019,10 @@ class HrEmployee(models.Model):
 
     hds_in_current_fy_id = fields.Many2one(
         'tds.financial.year',
-        string="Financial Year",
+        string="Tax Year",
         compute='_compute_current_fy_regime',
         store=False,
-        help="Automatically resolved active Financial Year for current date."
+        help="Automatically resolved active Tax Year for current date."
     )
     hds_in_current_tax_regime_id = fields.Many2one(
         'tds.tax.regime',

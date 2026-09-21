@@ -201,7 +201,19 @@ registry.category("services").add("hds_dashboard_nav_service", hdsDashboardNavSe
             domain: [["state", "!=", "cancel"]],
         },
         esic_liability: {
-            name: "ESIC Liability Slips",
+            name: "Employer ESIC Contribution Slips",
+            res_model: "hr.payslip",
+            views: [[false, "list"], [false, "form"]],
+            domain: [["state", "!=", "cancel"]],
+        },
+        lwf_liability: {
+            name: "Employer LWF Contribution Slips",
+            res_model: "hr.payslip",
+            views: [[false, "list"], [false, "form"]],
+            domain: [["state", "!=", "cancel"]],
+        },
+        total_employer_statutory: {
+            name: "Employer Statutory Contribution Slips",
             res_model: "hr.payslip",
             views: [[false, "list"], [false, "form"]],
             domain: [["state", "!=", "cancel"]],
@@ -296,13 +308,20 @@ registry.category("services").add("hds_dashboard_nav_service", hdsDashboardNavSe
             });
         }
 
+        const rootEl = (cardEl && cardEl.closest) ? (cardEl.closest(".o_hds_dashboard_root") || cardEl.closest("[data-hds-dashboard-root]")) : document.querySelector(".o_hds_dashboard_root");
+        const monthSelect = document.querySelector("[name='payroll_month_num'] select, select[name='payroll_month_num']");
+        const selectedMonth = (monthSelect && monthSelect.value) ? monthSelect.value : (cardEl?.dataset?.monthNum || rootEl?.dataset?.monthNum);
+
         const actionService = getActionService();
         if (rpc && actionService) {
             rpc("/web/dataset/call_kw/hds.payroll.dashboard/get_card_action", {
                 model: "hds.payroll.dashboard",
                 method: "get_card_action",
                 args: [],
-                kwargs: { card_type: cardType },
+                kwargs: {
+                    card_type: cardType,
+                    month_num: selectedMonth,
+                },
             }).then(backendAction => {
                 if (backendAction && backendAction.res_model) {
                     executeAction(backendAction);
@@ -382,3 +401,4 @@ registry.category("services").add("hds_dashboard_nav_service", hdsDashboardNavSe
         }
     }, true);
 })();
+

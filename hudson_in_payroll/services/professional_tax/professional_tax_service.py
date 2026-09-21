@@ -147,8 +147,17 @@ class ProfessionalTaxService(BaseStatutoryService):
                 gross_val = getattr(target_emp.contract_id, 'wage', 0.0) or 0.0
 
             # Deduct attendance shortage (SHORT) and unpaid leave (UNPAID) to obtain attendance-earned wages
-            short_ded = abs(float(dict_ctx.get('SHORT') or 0.0))
-            unpaid_ded = abs(float(dict_ctx.get('UNPAID') or 0.0))
+            rules_obj = dict_ctx.get('rules')
+            short_ded = abs(float(
+                dict_ctx.get('SHORT') or
+                getattr(getattr(rules_obj, 'SHORT', None), 'total', 0.0) or
+                0.0
+            ))
+            unpaid_ded = abs(float(
+                dict_ctx.get('UNPAID') or
+                getattr(getattr(rules_obj, 'UNPAID', None), 'total', 0.0) or
+                0.0
+            ))
 
             if short_ded <= 0.0:
                 worked_days = dict_ctx.get('worked_days')
@@ -199,6 +208,8 @@ class ProfessionalTaxService(BaseStatutoryService):
             ratio = slip._get_earned_wage_ratio(localdict=dict_ctx)
             if ratio <= 0.0:
                 target_salary = 0.0
+            elif ratio < 1.0 and abs(target_salary - (gross_val if 'gross_val' in locals() else target_salary)) < 0.01:
+                target_salary = max(0.0, round(target_salary * ratio, 2))
 
         target_gender = gender
         if not target_gender and target_emp:
@@ -245,6 +256,23 @@ class ProfessionalTaxService(BaseStatutoryService):
             audit.attach_input("single_month_salary", sal)
             audit.attach_input("company_id", comp.id if comp else False)
 
+            # 0b. Zero Earned Wage Guard (not applied in simulation mode)
+            if not is_simulation and sal <= 0.0:
+                audit.attach_parameter("validation_status", "ZERO_WAGE")
+                audit.attach_output("pt_deduction", 0.0)
+                audit.log_message("Zero earned wage in current payroll.")
+                _logger.debug("Professional Tax zero wage for employee '%s'", emp.name if emp else 'Unknown')
+                return ProfessionalTaxResult(
+                    amount=0.0,
+                    state=state,
+                    company=comp,
+                    slab=False,
+                    is_valid=False,
+                    validation_status='ZERO_WAGE',
+                    failure_reason="Zero earned wage in current payroll.",
+                    period_liability=0.0
+                )
+
             # 1. Location Service State Resolution
             state = state or self.location_service.get_work_state(emp)
             audit.attach_parameter("resolved_state", state.name if state else False)
@@ -257,6 +285,28 @@ class ProfessionalTaxService(BaseStatutoryService):
             if period_sched:
                 audit.attach_parameter("period_schedule_id", period_sched.id)
                 audit.attach_parameter("deduction_strategy", period_sched.deduction_strategy)
+
+            # Minimum Service Days Guard (e.g. Kerala 60-day rule)
+            if period_sched and getattr(period_sched, 'min_service_days', 0) > 0 and emp:
+                meets_min, s_days, min_days = self.sched_service.check_min_service_days(period_sched, emp, eval_date=date_eval)
+                audit.attach_parameter("service_days", s_days)
+                audit.attach_parameter("min_service_days", min_days)
+                if not meets_min:
+                    reason = f"Employee appointment days ({s_days}) in period window below minimum required ({min_days} days)."
+                    audit.attach_parameter("validation_status", "BELOW_MIN_SERVICE_DAYS")
+                    audit.attach_output("pt_deduction", 0.0)
+                    audit.log_message(reason)
+                    _logger.debug("PT Below min service days for '%s': %s < %s", emp.name, s_days, min_days)
+                    return ProfessionalTaxResult(
+                        amount=0.0,
+                        state=state,
+                        company=comp,
+                        slab=False,
+                        is_valid=False,
+                        validation_status='BELOW_MIN_SERVICE_DAYS',
+                        failure_reason=reason,
+                        period_liability=0.0
+                    )
 
             # 3. Wage Aggregation Basis Resolution (Monthly vs Half-Yearly vs Quarterly)
             salary_basis = strategy.calculate_wage_basis(
@@ -302,7 +352,37 @@ class ProfessionalTaxService(BaseStatutoryService):
                 period_schedule=period_sched,
                 is_simulation=is_simulation
             )
-            _logger.warning("Statutory PT Liability: %s | Current Payroll Deduction: %s", period_liability, final_deduction)
+            _logger.debug("Statutory PT Liability: %s | Current Payroll Deduction: %s", period_liability, final_deduction)
+
+            # 6. Net Pay Guard: PT capped at GROSS + DED (categories in localdict)
+            # Skipped when is_simulation or categories are missing
+            if not is_simulation and localdict and 'categories' in localdict:
+                cats = localdict.get('categories')
+                gross_amt = 0.0
+                ded_amt = 0.0
+                if cats:
+                    gross_amt = getattr(cats, 'GROSS', 0.0) if hasattr(cats, 'GROSS') else (cats.get('GROSS', 0.0) if isinstance(cats, dict) else 0.0)
+                    ded_amt = getattr(cats, 'DED', 0.0) if hasattr(cats, 'DED') else (cats.get('DED', 0.0) if isinstance(cats, dict) else 0.0)
+                try:
+                    gross_amt = float(gross_amt or 0.0)
+                    ded_amt = float(ded_amt or 0.0)
+                except (ValueError, TypeError):
+                    gross_amt, ded_amt = 0.0, 0.0
+
+                # Note: DED is signed negative in Odoo payroll localdict
+                net_available = max(0.0, round(gross_amt + ded_amt, 2))
+                audit.attach_parameter("guard_gross", gross_amt)
+                audit.attach_parameter("guard_ded", ded_amt)
+                audit.attach_parameter("guard_net_available", net_available)
+
+                if final_deduction > net_available:
+                    shortfall = round(final_deduction - net_available, 2)
+                    audit.attach_parameter("pt_capped", True)
+                    audit.attach_parameter("pt_shortfall", shortfall)
+                    audit.attach_parameter("original_pt_deduction", final_deduction)
+                    audit.log_message(f"PT deduction capped at net available pay ({net_available}). Shortfall: {shortfall}")
+                    _logger.debug("PT deduction capped from %s to %s (net available: %s)", final_deduction, net_available, net_available)
+                    final_deduction = net_available
 
             audit.attach_parameter("period_liability", period_liability)
             audit.attach_parameter("normal_amount", calc_result.normal_amount)
@@ -310,6 +390,25 @@ class ProfessionalTaxService(BaseStatutoryService):
             audit.attach_parameter("override_month", calc_result.override_month)
             audit.attach_parameter("override_amount", calc_result.override_amount)
             audit.attach_output("pt_deduction", final_deduction)
+
+            if final_deduction <= 0.0 and period_sched and not self.sched_service.should_deduct(period_sched, eval_date=date_eval, employee=emp):
+                reason = "Non-deduction month for periodic schedule; waiting for period end."
+                audit.attach_parameter("validation_status", "WAITING_FOR_PERIOD_END")
+                audit.attach_output("pt_deduction", 0.0)
+                audit.log_message(reason)
+                return ProfessionalTaxResult(
+                    amount=0.0,
+                    state=val_result.resolved_state or state,
+                    company=comp,
+                    slab=val_result.matched_slab,
+                    override_applied=calc_result.override_applied,
+                    override_month=calc_result.override_month,
+                    override_amount=calc_result.override_amount,
+                    is_valid=False,
+                    validation_status='WAITING_FOR_PERIOD_END',
+                    failure_reason=reason,
+                    period_liability=period_liability
+                )
 
             return ProfessionalTaxResult(
                 amount=final_deduction,

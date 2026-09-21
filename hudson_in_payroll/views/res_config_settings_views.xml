@@ -222,13 +222,6 @@
                                         <label for="hds_in_default_tax_year" class="col-lg-5 o_light_label"/>
                                         <field name="hds_in_default_tax_year" placeholder="Select Default Tax Year"/>
                                     </div>
-                                    <div class="row mt8" invisible="not hds_in_default_tax_year">
-                                        <label for="tds_month_division" class="col-lg-5 o_light_label"/>
-                                        <div class="col-lg-7 d-flex align-items-center">
-                                            <field name="tds_month_division" class="oe_inline"/>
-                                            <span class="text-muted ms-2"> Months</span>
-                                        </div>
-                                    </div>
                                 </div>
                             </div>
                         </div>

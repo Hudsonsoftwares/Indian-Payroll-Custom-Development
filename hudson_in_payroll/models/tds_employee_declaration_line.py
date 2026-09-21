@@ -31,7 +31,7 @@ class TdsEmployeeDeclarationLine(models.Model):
     )
     financial_year_id = fields.Many2one(
         'tds.financial.year',
-        string="Financial Year",
+        string="Tax Year",
         related='declaration_id.financial_year_id',
         store=True,
         readonly=True

@@ -14,12 +14,12 @@
                 </header>
                 <sheet>
                     <group>
-                        <group string="Employee &amp; Financial Year">
+                        <group string="Employee &amp; Tax Year">
                             <field name="employee_id"/>
                             <field name="financial_year_id"/>
                             <field name="origin_assessment_year" placeholder="e.g. 2025-2026"/>
                             <field name="expiry_assessment_year" placeholder="e.g. 2033-2034"/>
-                            <field name="regime_code"/>
+                            <field name="regime_code" readonly="1" force_save="1"/>
                             <field name="status" widget="badge" decoration-info="status == 'draft'" decoration-success="status == 'active'" decoration-muted="status == 'fully_utilized'" decoration-danger="status == 'expired'"/>
                         </group>
                         <group string="Section 71B Loss &amp; Set-Off Details">

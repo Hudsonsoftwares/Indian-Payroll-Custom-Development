@@ -42,7 +42,7 @@ class TdsEmployee80dDeclaration(models.Model):
     )
     financial_year_id = fields.Many2one(
         'tds.financial.year',
-        string="Financial Year",
+        string="Tax Year",
         required=True,
         ondelete='restrict'
     )

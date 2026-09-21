@@ -281,13 +281,22 @@
                                         <td style="padding: 5px 8px; border: 1px solid #dee2e6; background: #f8f9fa; font-weight: bold;">Tax After Rebate</td>
                                         <td style="text-align: right; padding: 5px 8px; border: 1px solid #dee2e6; font-weight: bold;"><t t-esc="'{:,.2f}'.format(r['tax_after_rebate'])"/></td>
                                     </tr>
-                                    <tr t-if="r['surcharge_amount'] > 0">
+                                    <tr t-if="r.get('surcharge_amount', 0) &gt; 0 or r.get('marginal_relief', 0) &gt; 0">
                                         <td style="padding: 5px 8px; border: 1px solid #dee2e6; background: #f8f9fa;">
                                             Add: Surcharge @ <t t-esc="'{:.0f}'.format(r['surcharge_rate'])"/>%
+                                            <t t-if="r.get('marginal_relief', 0) &gt; 0">
+                                                (Before Relief: ₹<t t-esc="'{:,.2f}'.format(r.get('surcharge_before_relief', r['surcharge_amount']))"/>)
+                                            </t>
                                         </td>
-                                        <td style="text-align: right; padding: 5px 8px; border: 1px solid #dee2e6;">+ &#160;<t t-esc="'{:,.2f}'.format(r['surcharge_amount'])"/></td>
+                                        <td style="text-align: right; padding: 5px 8px; border: 1px solid #dee2e6;">+ &#160;<t t-esc="'{:,.2f}'.format(r.get('surcharge_before_relief', r['surcharge_amount']))"/></td>
                                     </tr>
-                                    <tr t-if="r['surcharge_amount'] == 0">
+                                    <tr t-if="r.get('marginal_relief', 0) &gt; 0">
+                                        <td style="padding: 5px 8px; border: 1px solid #dee2e6; background: #f8f9fa; color: #155724;">
+                                            Less: Marginal Relief u/s Surcharge
+                                        </td>
+                                        <td style="text-align: right; padding: 5px 8px; border: 1px solid #dee2e6; color: #155724;">- &#160;<t t-esc="'{:,.2f}'.format(r['marginal_relief'])"/></td>
+                                    </tr>
+                                    <tr t-if="r.get('surcharge_amount', 0) == 0 and r.get('marginal_relief', 0) == 0">
                                         <td style="padding: 5px 8px; border: 1px solid #dee2e6; background: #f8f9fa; color: #6c757d;">Surcharge</td>
                                         <td style="text-align: right; padding: 5px 8px; border: 1px solid #dee2e6; color: #6c757d; font-style: italic;">Not Applicable</td>
                                     </tr>

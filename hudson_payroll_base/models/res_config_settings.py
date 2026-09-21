@@ -1,5 +1,4 @@
-# -*- coding: utf-8 -*-
-from odoo import api, fields, models
+from odoo import api, fields, models, _
 
 
 class ResCompany(models.Model):
@@ -37,6 +36,24 @@ class ResCompany(models.Model):
         default=False,
         help="Create consolidated journal entries upon pay run confirmation."
     )
+    enable_contract_expiry_notification = fields.Boolean(
+        string='Enable Contract Expiry Notification',
+        default=True,
+        help="Send automated email and in-app notifications when contracts are nearing expiration."
+    )
+    enable_work_permit_expiry_notification = fields.Boolean(
+        string='Enable Work Permit Expiry Notification',
+        default=True,
+        help="Send automated email and in-app notifications when work permits are nearing expiration."
+    )
+    expiry_notification_user_ids = fields.Many2many(
+        'res.users',
+        'company_expiry_notification_user_rel',
+        'company_id',
+        'user_id',
+        string='Expiry Notification HR Recipients',
+        help="Specific HR / Management users who should receive in-app and email notifications when contracts or work permits are expiring. If empty, defaults to employee's HR Responsible and Payroll Managers."
+    )
 
     @api.model_create_multi
     def create(self, vals_list):
@@ -70,6 +87,22 @@ class ResConfigSettings(models.TransientModel):
     # Notice period fields are inherited from res.company via base hr module:
     # contract_expiration_notice_period
     # work_permit_expiration_notice_period
+
+    enable_contract_expiry_notification = fields.Boolean(
+        related='company_id.enable_contract_expiry_notification',
+        readonly=False,
+        string='Enable Contract Expiry Notification'
+    )
+    enable_work_permit_expiry_notification = fields.Boolean(
+        related='company_id.enable_work_permit_expiry_notification',
+        readonly=False,
+        string='Enable Work Permit Expiry Notification'
+    )
+    expiry_notification_user_ids = fields.Many2many(
+        related='company_id.expiry_notification_user_ids',
+        readonly=False,
+        string='HR Notification Recipients'
+    )
 
     ytd_reset_date = fields.Selection(
         related='company_id.ytd_reset_date',
@@ -105,3 +138,25 @@ class ResConfigSettings(models.TransientModel):
         string='Biometric / Attendance Integration',
         help='Integrate attendance records and worked days with payslip computation.'
     )
+
+    def action_check_and_notify_expirations(self):
+        """Action button to trigger expiry check on demand from Settings UI."""
+        counts = self.env['hr.employee'].notify_expiring_contract_work_permit()
+        c_count = counts.get('contract_notified_count', 0)
+        p_count = counts.get('permit_notified_count', 0)
+        total = c_count + p_count
+        msg = _(
+            "Expiry Check Completed: %s contract notification(s) and %s work permit notification(s) processed.",
+            c_count, p_count
+        )
+        return {
+            'type': 'ir.actions.client',
+            'tag': 'display_notification',
+            'params': {
+                'title': _("Automated Expiry Notifications"),
+                'message': msg,
+                'type': 'success' if total > 0 else 'info',
+                'sticky': False,
+            }
+        }
+

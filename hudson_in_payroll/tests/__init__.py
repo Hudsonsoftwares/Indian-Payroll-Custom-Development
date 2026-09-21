@@ -42,6 +42,9 @@ from . import test_contract_localization_guards
 from . import test_family_pension_engine
 from . import test_esic_company_config
 from . import test_esic_service
+from . import test_pt_min_service_days
+from . import test_pt_attendance_earned_wage_and_carry_forward
+from . import test_tds_surcharge_marginal_relief
 
 
 

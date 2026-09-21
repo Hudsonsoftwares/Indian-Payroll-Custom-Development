@@ -54,6 +54,111 @@ class HrPayslip(models.Model):
         readonly=False,
         help="Mode of salary disbursement for this payslip. Auto-populated from employee profile."
     )
+    hds_in_employer_epf = fields.Monetary(
+        string="Employer EPF (12%)",
+        compute="_compute_hds_in_employer_statutory",
+        store=True,
+        currency_field="currency_id",
+        help="12% EPF/EPS Employer Contribution (3.67% EPF + 8.33% EPS)"
+    )
+    hds_in_employer_epf_share = fields.Monetary(
+        string="Employer EPF (3.67%)",
+        compute="_compute_hds_in_employer_statutory",
+        store=True,
+        currency_field="currency_id",
+        help="Employer EPF 3.67% Contribution (Net EPF)"
+    )
+    hds_in_employer_eps = fields.Monetary(
+        string="Employer EPS (8.33%)",
+        compute="_compute_hds_in_employer_statutory",
+        store=True,
+        currency_field="currency_id",
+        help="Employer Pension Scheme 8.33% Contribution"
+    )
+    hds_in_employer_edli = fields.Monetary(
+        string="EDLI (0.5%)",
+        compute="_compute_hds_in_employer_statutory",
+        store=True,
+        currency_field="currency_id",
+        help="Employees Deposit Linked Insurance 0.5% Contribution"
+    )
+    hds_in_employer_epf_admin = fields.Monetary(
+        string="EPF Admin (0.5%)",
+        compute="_compute_hds_in_employer_statutory",
+        store=True,
+        currency_field="currency_id",
+        help="EPF Administration Charges 0.5%"
+    )
+    hds_in_employer_esic = fields.Monetary(
+        string="Employer ESIC (3.25%)",
+        compute="_compute_hds_in_employer_statutory",
+        store=True,
+        currency_field="currency_id",
+        help="3.25% ESIC Employer Contribution"
+    )
+    hds_in_employer_lwf = fields.Monetary(
+        string="Employer LWF Share",
+        compute="_compute_hds_in_employer_statutory",
+        store=True,
+        currency_field="currency_id",
+        help="Employer Labour Welfare Fund Contribution"
+    )
+    hds_in_total_employer_statutory = fields.Monetary(
+        string="Total Employer Statutory",
+        compute="_compute_hds_in_employer_statutory",
+        store=True,
+        currency_field="currency_id",
+        help="Total Employer Statutory Cost (EPF 12% + EDLI + Admin + ESIC + LWF)"
+    )
+
+    @api.depends('line_ids.total', 'line_ids.code')
+    def _compute_hds_in_employer_statutory(self):
+        for slip in self:
+            er_epf_share = 0.0
+            er_eps = 0.0
+            er_edli = 0.0
+            er_admin = 0.0
+            er_esic = 0.0
+            er_lwf = 0.0
+            codes = set((l.code or '').upper() for l in slip.line_ids)
+            has_split_pf = 'EPS' in codes or 'EPF_SHARE' in codes
+
+            for line in slip.line_ids:
+                code = (line.code or '').upper()
+                amt = abs(float(line.total or 0.0))
+
+                if code == 'EPF_SHARE':
+                    er_epf_share += amt
+                elif code == 'EPS':
+                    er_eps += amt
+                elif code == 'EDLI':
+                    er_edli += amt
+                elif code in ('EPF_ADMIN', 'EDLI_ADMIN'):
+                    er_admin += amt
+                elif not has_split_pf and code in ('EMPLOYER_EPF', 'ER_PF'):
+                    er_epf_share += amt
+
+                # Employer ESIC
+                if code in ('ESIC_ER', 'ER_ESI'):
+                    er_esic += amt
+                elif code == 'ESI' and 'ESIC_EE' not in codes and 'ESIC_ER' not in codes:
+                    er_esic += amt
+
+                # Employer LWF
+                if code in ('LWF_ER', 'ER_LWF'):
+                    er_lwf += amt
+
+            # Pure 12% Employer EPF Contribution (EPF 3.67% + EPS 8.33%)
+            er_epf_12 = er_epf_share + er_eps
+            slip.hds_in_employer_epf_share = er_epf_share
+            slip.hds_in_employer_eps = er_eps
+            slip.hds_in_employer_edli = er_edli
+            slip.hds_in_employer_epf_admin = er_admin
+            slip.hds_in_employer_epf = er_epf_12
+            slip.hds_in_employer_esic = er_esic
+            slip.hds_in_employer_lwf = er_lwf
+            # Total Statutory = EPF 12% + EDLI 0.5% + Admin 0.5% + ESIC 3.25% + LWF
+            slip.hds_in_total_employer_statutory = er_epf_12 + er_edli + er_admin + er_esic + er_lwf
 
     @api.depends('employee_id', 'employee_id.hds_in_payment_mode')
     def _compute_hds_in_payment_mode(self):
@@ -116,7 +221,7 @@ class HrPayslip(models.Model):
                 self.name or self.id
             )
             return 0.0
-        if not getattr(self.employee_id, 'hds_in_tds_applicable', True):
+        if not getattr(self.employee_id, 'hds_in_tds_applicable', False):
             _logger.info(
                 "[TDS_APPLICABILITY_CHECK] TDS is disabled for employee '%s' (ID: %s). Skipping TDS calculation for payslip %s.",
                 getattr(self.employee_id, 'name', 'N/A'),
@@ -1151,17 +1256,17 @@ else:
         import logging
         _logger = logging.getLogger(__name__)
         self.ensure_one()
-        _logger.warning(">>> Delegating to: %s", service_class.__name__)
+        _logger.debug(">>> Delegating to: %s", service_class.__name__)
         eval_ctx = localdict or self._get_payroll_eval_context(raise_if_missing=(localdict is None))
         if eval_ctx:
             cats = eval_ctx.get('categories')
             gross_val = cats.GROSS if cats and hasattr(cats, 'GROSS') else None
-            _logger.warning(">>> Localdict GROSS: %s", gross_val)
+            _logger.debug(">>> Localdict GROSS: %s", gross_val)
 
         service = service_class(self.env, localdict=eval_ctx)
         compute_fn = getattr(service, compute_method_name)
         result = compute_fn(self)
-        _logger.warning(">>> PT Result Returned: %s", getattr(result, 'amount', result))
+        _logger.debug(">>> PT Result Returned: %s", getattr(result, 'amount', result))
         amount = result.amount if hasattr(result, 'amount') else result
         return -amount if negate else amount
 
@@ -1283,7 +1388,7 @@ else:
     # -------------------------------------------------------------------------
     # PUBLIC PROFESSIONAL TAX ORCHESTRATION API FOR SALARY RULES (Zero Arguments in XML)
     # -------------------------------------------------------------------------
-    def hds_in_compute_professional_tax(self):
+    def hds_in_compute_professional_tax(self, localdict=None):
         """
         Public API entrypoint for Professional Tax (PT) Salary Rule (Zero arguments in XML).
         Delegates computation to ProfessionalTaxService via _delegate_statutory_service DRY helper.
@@ -1292,14 +1397,11 @@ else:
         if self.employee_id and hasattr(self.employee_id, 'hds_in_pt_applicable') and not self.employee_id.hds_in_pt_applicable:
             return 0.0
         self._validate_company_state_statutory()
-        import logging
-        _logger = logging.getLogger(__name__)
-        _logger.warning(">>> hds_in_compute_professional_tax() CALLED")
-        return self._delegate_statutory_service(ProfessionalTaxService, 'compute_pt_amount', negate=True)
+        return self._delegate_statutory_service(ProfessionalTaxService, 'compute_pt_amount', negate=True, localdict=localdict)
 
-    def hds_in_compute_pt(self):
+    def hds_in_compute_pt(self, localdict=None):
         """Alias for hds_in_compute_professional_tax for backward compatibility."""
-        return self.hds_in_compute_professional_tax()
+        return self.hds_in_compute_professional_tax(localdict=localdict)
 
     # -------------------------------------------------------------------------
     # PUBLIC BONUS ORCHESTRATION API FOR SALARY RULES (Zero Arguments in XML)
@@ -1907,8 +2009,18 @@ else:
 
         net_taxable_income = getattr(tax_inc, 'net_taxable_income', max(0.0, gti_taxable - sum(d['amount'] for d in tax_comp_deductions)))
         base_tax = getattr(slab, 'base_tax_liability', 0.0) if slab else 0.0
+        tax_after_rebate = getattr(rebate, 'tax_after_rebate', base_tax) if rebate else base_tax
+        rebate_applied = getattr(rebate, 'rebate_applied', 0.0) if rebate else 0.0
+
+        surcharge_rate = float(getattr(surcharge, 'surcharge_rate_pct', getattr(surcharge, 'surcharge_rate', 0.0)) or 0.0)
+        surcharge_amount = float(getattr(surcharge, 'surcharge_amount', 0.0) or 0.0)
+        surcharge_before_relief = float(getattr(surcharge, 'surcharge_before_relief', surcharge_amount) or 0.0)
+        marginal_relief = float(getattr(surcharge, 'marginal_relief', 0.0) or 0.0)
+        is_surcharge_applicable = bool(getattr(surcharge, 'is_applicable', (surcharge_amount > 0 or surcharge_rate > 0)))
+        tax_plus_surcharge = float(getattr(surcharge, 'tax_plus_surcharge', tax_after_rebate + surcharge_amount) or 0.0)
+
         cess_val = getattr(cess_obj, 'cess_amount', 0.0) if cess_obj else 0.0
-        total_annual_tax = getattr(tds_res, 'total_annual_tax_liability', base_tax + cess_val)
+        total_annual_tax = getattr(tds_res, 'total_annual_tax_liability', tax_plus_surcharge + cess_val)
 
         # Authoritative TDS Engine Breakdown according to financial-year payroll period
         current_month_tds = getattr(monthly_obj, 'current_month_tds', 0.0) if monthly_obj else 0.0
@@ -1978,6 +2090,16 @@ else:
             'gti_taxable': gti_taxable,
             'net_taxable_income': net_taxable_income,
             'base_tax': base_tax,
+            'income_tax': tax_after_rebate,
+            'tax_after_rebate': tax_after_rebate,
+            'rebate_applied': rebate_applied,
+            'surcharge': surcharge_amount,
+            'surcharge_amount': surcharge_amount,
+            'surcharge_rate': surcharge_rate,
+            'surcharge_before_relief': surcharge_before_relief,
+            'marginal_relief': marginal_relief,
+            'is_surcharge_applicable': is_surcharge_applicable,
+            'tax_plus_surcharge': tax_plus_surcharge,
             'cess': cess_val,
             'total_annual_tax': total_annual_tax,
             'current_month_tds': current_month_tds,

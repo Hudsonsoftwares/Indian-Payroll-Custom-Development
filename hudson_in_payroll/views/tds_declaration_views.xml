@@ -10,7 +10,7 @@
         <field name="name">tds.employee.tax.regime.tree</field>
         <field name="model">tds.employee.tax.regime</field>
         <field name="arch" type="xml">
-            <list string="Financial Year Tax Selections" decoration-muted="is_locked">
+            <list string="Tax Year Selections" decoration-muted="is_locked">
                 <field name="employee_id"/>
                 <field name="financial_year_id" optional="show"/>
                 <field name="regime_id" optional="show"/>
@@ -23,14 +23,14 @@
         <field name="name">tds.employee.tax.regime.form</field>
         <field name="model">tds.employee.tax.regime</field>
         <field name="arch" type="xml">
-            <form string="Financial Year Tax Selection">
+            <form string="Tax Year Selection">
                 <header invisible="not is_locked">
                     <button name="action_administrative_unlock" string="Admin Unlock Regime" type="object" class="btn-warning" groups="hudson_payroll_base.group_payroll_manager"/>
                 </header>
                 <sheet>
                     <widget name="web_ribbon" title="LOCKED" bg_color="text-bg-danger" invisible="not is_locked"/>
                     <group>
-                        <group string="Employee &amp; Financial Year">
+                        <group string="Employee &amp; Tax Year">
                             <field name="employee_id" options="{'no_create': True}"/>
                             <field name="company_id" groups="base.group_multi_company"/>
                             <field name="financial_year_id" options="{'no_create': True}"/>
@@ -61,7 +61,7 @@
                 <filter string="Locked Selections" name="filter_locked" domain="[('is_locked', '=', True)]"/>
                 <group>
                     <filter string="Employee" name="group_by_employee" context="{'group_by': 'employee_id'}"/>
-                    <filter string="Financial Year" name="group_by_fy" context="{'group_by': 'financial_year_id'}"/>
+                    <filter string="Tax Year" name="group_by_fy" context="{'group_by': 'financial_year_id'}"/>
                     <filter string="Tax Regime" name="group_by_regime" context="{'group_by': 'regime_id'}"/>
                 </group>
             </search>
@@ -485,7 +485,7 @@
                     </div>
 
                     <group>
-                        <group string="Employee &amp; Financial Year Summary">
+                        <group string="Employee &amp; Tax Year Summary">
                             <field name="employee_id" readonly="1" options="{'no_open': True}"/>
                             <field name="company_id" groups="base.group_multi_company"/>
                             <field name="financial_year_id" readonly="1" options="{'no_open': True}"/>
@@ -871,7 +871,7 @@
                 <filter string="Rejected" name="filter_rejected" domain="[('state', '=', 'rejected')]"/>
                 <group>
                     <filter string="Employee" name="group_by_employee" context="{'group_by': 'employee_id'}"/>
-                    <filter string="Financial Year" name="group_by_fy" context="{'group_by': 'financial_year_id'}"/>
+                    <filter string="Tax Year" name="group_by_fy" context="{'group_by': 'financial_year_id'}"/>
                     <filter string="Status" name="group_by_state" context="{'group_by': 'state'}"/>
                 </group>
             </search>
@@ -949,7 +949,7 @@
                         <h1><field name="name" readonly="1"/></h1>
                     </div>
                     <group>
-                        <group string="Employee &amp; Financial Year">
+                        <group string="Employee &amp; Tax Year">
                             <field name="employee_id" readonly="state != 'draft'"/>
                             <field name="company_id" groups="base.group_multi_company"/>
                             <field name="financial_year_id" readonly="state != 'draft'"/>

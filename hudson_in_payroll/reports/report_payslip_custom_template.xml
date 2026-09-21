@@ -221,12 +221,18 @@
                         <!-- Tax Summary Box -->
                         <table style="width: 100%; border-collapse: collapse; font-size: 8px; border-top: 1px solid #000000; background: #fafafa;">
                             <tr>
-                                <td style="padding: 2px 4px; font-weight: bold;">Income Tax Payable: ₹ <t t-esc="'{:,.2f}'.format(pdata['base_tax'])"/></td>
-                                <td style="padding: 2px 4px; font-weight: bold; text-align: right;">Cess (4%): ₹ <t t-esc="'{:,.2f}'.format(pdata['cess'])"/></td>
+                                <td style="padding: 2px 4px; font-weight: bold;">Income Tax: ₹ <t t-esc="'{:,.2f}'.format(pdata.get('tax_after_rebate', pdata.get('base_tax', 0.0)))"/></td>
+                                <td style="padding: 2px 4px; font-weight: bold; text-align: right;">
+                                    Surcharge<t t-if="pdata.get('surcharge_rate', 0) &gt; 0"> (<t t-esc="'{:.0f}'.format(pdata['surcharge_rate'])"/>%)</t>: ₹ <t t-esc="'{:,.2f}'.format(pdata.get('surcharge_before_relief', pdata.get('surcharge', 0.0)))"/>
+                                </td>
                             </tr>
                             <tr>
-                                <td style="padding: 2px 4px; font-weight: bold;">Annual TDS Liability: ₹ <t t-esc="'{:,.2f}'.format(pdata['total_annual_tax'])"/></td>
-                                <td style="padding: 2px 4px; font-weight: bold; text-align: right;">Current Month TDS: ₹ <t t-esc="'{:,.2f}'.format(pdata['current_month_tds'])"/></td>
+                                <td style="padding: 2px 4px; font-weight: bold;">Marginal Relief: ₹ <t t-esc="'{:,.2f}'.format(pdata.get('marginal_relief', 0.0))"/></td>
+                                <td style="padding: 2px 4px; font-weight: bold; text-align: right;">Health &amp; Education Cess (4%): ₹ <t t-esc="'{:,.2f}'.format(pdata.get('cess', 0.0))"/></td>
+                            </tr>
+                            <tr>
+                                <td style="padding: 2px 4px; font-weight: bold;">Total TDS Liability: ₹ <t t-esc="'{:,.2f}'.format(pdata.get('total_annual_tax', 0.0))"/></td>
+                                <td style="padding: 2px 4px; font-weight: bold; text-align: right;">TDS Deducted: ₹ <t t-esc="'{:,.2f}'.format(pdata.get('current_month_tds', 0.0))"/></td>
                             </tr>
                             <tr>
                                 <td style="padding: 2px 4px; font-weight: bold;">TDS Recovered YTD (inc. current): ₹ <t t-esc="'{:,.2f}'.format(pdata['tds_recovered_ytd'])"/></td>

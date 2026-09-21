@@ -24,12 +24,12 @@ class TdsFinancialYearWizard(models.TransientModel):
         help="Target Financial Year to copy statutory configurations from."
     )
     name = fields.Char(
-        string="New Financial Year Name",
+        string="New Tax Year Name",
         required=True,
         help="e.g. Tax Year: 2027-28"
     )
     code = fields.Char(
-        string="Financial Year Code",
+        string="Tax Year Code",
         required=True,
         help="e.g. 2027-2028"
     )

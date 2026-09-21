@@ -127,4 +127,44 @@
             </xpath>
         </field>
     </record>
+
+    <!-- 6. Dedicated Statutory Compliance Summary (Employer Share) List View -->
+    <record id="view_hr_payslip_list_employer_statutory" model="ir.ui.view">
+        <field name="name">hr.payslip.list.employer.statutory</field>
+        <field name="model">hr.payslip</field>
+        <field name="priority">99</field>
+        <field name="arch" type="xml">
+            <list string="Statutory Compliance Summary (Employer Share)" decoration-info="state == 'draft'" decoration-success="state in ('done', 'paid')" create="false">
+                <field name="employee_id" widget="many2one_avatar_employee"/>
+                <field name="date_from" string="Period From"/>
+                <field name="date_to" string="Period To"/>
+                <field name="gross_wage" widget="monetary" sum="Total Gross Wage" optional="show"/>
+                <field name="hds_in_employer_epf_share" string="EPF (3.67%)" widget="monetary" sum="Total EPF (3.67%)" optional="show"/>
+                <field name="hds_in_employer_eps" string="EPS (8.33%)" widget="monetary" sum="Total EPS (8.33%)" optional="show"/>
+                <field name="hds_in_employer_epf" string="Employer EPF (12%)" widget="monetary" sum="Total EPF (12%)" class="fw-bold text-info"/>
+                <field name="hds_in_employer_edli" string="EDLI (0.5%)" widget="monetary" sum="Total EDLI (0.5%)" optional="show"/>
+                <field name="hds_in_employer_epf_admin" string="EPF Admin (0.5%)" widget="monetary" sum="Total Admin (0.5%)" optional="show"/>
+                <field name="hds_in_employer_esic" string="Employer ESIC (3.25%)" widget="monetary" sum="Total Employer ESIC"/>
+                <field name="hds_in_employer_lwf" string="Employer LWF" widget="monetary" sum="Total Employer LWF" optional="show"/>
+                <field name="hds_in_total_employer_statutory" string="Total Statutory" widget="monetary" sum="Total Statutory Cost" class="fw-bold text-primary"/>
+                <field name="state" widget="badge" decoration-info="state == 'draft'" decoration-warning="state == 'verify'" decoration-success="state in ('done', 'paid')" decoration-danger="state == 'cancel'"/>
+            </list>
+        </field>
+    </record>
+
+    <!-- Action for Dedicated Employer Statutory List View -->
+    <record id="action_hr_payslip_employer_statutory" model="ir.actions.act_window">
+        <field name="name">Statutory Compliance Summary (Employer Share)</field>
+        <field name="res_model">hr.payslip</field>
+        <field name="view_mode">list,form</field>
+        <field name="view_ids" eval="[(5, 0, 0),
+            (0, 0, {'view_mode': 'list', 'view_id': ref('view_hr_payslip_list_employer_statutory')}),
+            (0, 0, {'view_mode': 'form', 'view_id': ref('hudson_payroll_base.hr_payslip_view_form')})]"/>
+        <field name="domain">[('state', '!=', 'cancel')]</field>
+        <field name="help" type="html">
+            <p class="o_view_nocontent_smiling_face">
+                No payslips found for this period.
+            </p>
+        </field>
+    </record>
 </odoo>

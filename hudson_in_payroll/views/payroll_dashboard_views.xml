@@ -224,10 +224,10 @@
                                     <field name="payroll_month_num" options="{'no_create': True}" class="oe_inline"/>
                                 </div>
 
-                                <!-- FY Selector -->
+                                <!-- Tax Year Selector -->
                                 <div class="d-flex flex-column" style="min-width: 160px;">
                                     <span class="small text-uppercase fw-semibold mb-1" style="color: #cbd5e1 !important; font-size: 10px; letter-spacing: 0.5px;">
-                                        <i class="fa fa-university me-1"/> Financial Year
+                                        <i class="fa fa-university me-1"/> Tax Year
                                     </span>
                                     <field name="financial_year_id" options="{'no_create': True}" class="oe_inline"/>
                                 </div>

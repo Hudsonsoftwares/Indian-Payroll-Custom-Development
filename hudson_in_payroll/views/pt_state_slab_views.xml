@@ -7,7 +7,7 @@
         <field name="arch" type="xml">
             <list string="Professional Tax State Slabs" multi_edit="1">
                 <field name="state_id"/>
-                <field name="periodicity"/>
+                <field name="periodicity" readonly="1"/>
                 <field name="gender" optional="show"/>
                 <field name="salary_from"/>
                 <field name="salary_to"/>
@@ -47,7 +47,7 @@
                             <field name="salary_from"/>
                             <field name="salary_to" placeholder="Leave blank for open-ended upper slab"/>
                             <field name="pt_amount"/>
-                            <field name="periodicity"/>
+                            <field name="periodicity" readonly="1"/>
                         </group>
                     </group>
                     <group>

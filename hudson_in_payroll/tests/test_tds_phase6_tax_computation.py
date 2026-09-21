@@ -65,6 +65,9 @@ class TestTdsPhase6TaxComputation(TransactionCase):
         # 1. Low income (No surcharge)
         sur_res = sur_svc.calculate_surcharge(net_taxable_income=1000000.0, tax_after_rebate=50000.0, financial_year=self.fy, regime_code='new')
         self.assertEqual(sur_res.surcharge_amount, 0.0)
+        self.assertEqual(sur_res.surcharge_before_relief, 0.0)
+        self.assertEqual(sur_res.marginal_relief, 0.0)
+        self.assertFalse(sur_res.is_applicable)
 
         # 2. Cess (4% of ₹50,000 = ₹2,000)
         cess_res = cess_svc.calculate_cess(tax_plus_surcharge=50000.0)

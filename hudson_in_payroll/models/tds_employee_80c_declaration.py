@@ -44,10 +44,10 @@ class TdsEmployee80cDeclaration(models.Model):
     )
     financial_year_id = fields.Many2one(
         'tds.financial.year',
-        string="Financial Year",
+        string="Tax Year",
         required=True,
         ondelete='restrict',
-        help="Target Financial Year for Section 80C investments."
+        help="Target Tax Year for Section 80C investments."
     )
     tax_regime_id = fields.Many2one(
         'tds.tax.regime',

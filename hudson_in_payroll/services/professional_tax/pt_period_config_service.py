@@ -153,13 +153,109 @@ class PTPeriodScheduleService:
         last_day = calendar.monthrange(year, month)[1]
         return (date(year, month, 1), date(year, month, last_day))
 
-    def _get_emp_date(self, employee, field_name):
-        if not employee or field_name not in employee._fields:
+    def _get_emp_date(self, record, field_name):
+        if not record or not hasattr(record, '_fields') or field_name not in record._fields:
             return False
-        val = getattr(employee, field_name, False)
+        val = getattr(record, field_name, False)
+        if not val:
+            return False
         if isinstance(val, str):
             return fields.Date.from_string(val)
+        if hasattr(val, 'date'):
+            return val.date()
         return val
+
+    def get_employment_dates(self, employee):
+        """
+        Resolves employee appointment/join date and departure/exit date.
+        Uses robust Odoo 19 fallback chain:
+        - Join date: employee.contract_date_start or employee.date_start or
+          employee.version_id.contract_date_start or employee.version_id.date_start or
+          employee.contract_id.contract_date_start or employee.contract_id.date_start
+        - Exit date: employee.departure_date or employee.contract_date_end or employee.date_end or
+          employee.version_id.departure_date or employee.version_id.contract_date_end or employee.version_id.date_end or
+          employee.contract_id.contract_date_end or employee.contract_id.date_end
+        Returns tuple of (emp_start, emp_end) as datetime.date or None.
+        """
+        if not employee:
+            return None, None
+
+        emp_start = None
+        for fname in ('contract_date_start', 'date_start', 'joining_date', 'first_contract_date'):
+            emp_start = self._get_emp_date(employee, fname)
+            if emp_start:
+                break
+        if not emp_start and hasattr(employee, 'version_id') and employee.version_id:
+            for fname in ('contract_date_start', 'date_start'):
+                emp_start = self._get_emp_date(employee.version_id, fname)
+                if emp_start:
+                    break
+        if not emp_start and hasattr(employee, 'contract_id') and employee.contract_id:
+            for fname in ('contract_date_start', 'date_start'):
+                emp_start = self._get_emp_date(employee.contract_id, fname)
+                if emp_start:
+                    break
+
+        emp_end = None
+        for fname in ('departure_date', 'contract_date_end', 'date_end', 'resignation_date'):
+            emp_end = self._get_emp_date(employee, fname)
+            if emp_end:
+                break
+        if not emp_end and hasattr(employee, 'version_id') and employee.version_id:
+            for fname in ('departure_date', 'contract_date_end', 'date_end'):
+                emp_end = self._get_emp_date(employee.version_id, fname)
+                if emp_end:
+                    break
+        if not emp_end and hasattr(employee, 'contract_id') and employee.contract_id:
+            for fname in ('contract_date_end', 'date_end'):
+                emp_end = self._get_emp_date(employee.contract_id, fname)
+                if emp_end:
+                    break
+
+        return emp_start, emp_end
+
+    def compute_service_days(self, employee, window_start, window_end):
+        """
+        Calculates employee appointment/service calendar days in [window_start, window_end].
+        Purely calendar/appointment based; attendance / LOP is intentionally ignored.
+        """
+        if not employee:
+            return 0
+        if isinstance(window_start, str):
+            window_start = fields.Date.from_string(window_start)
+        if isinstance(window_end, str):
+            window_end = fields.Date.from_string(window_end)
+
+        emp_start, emp_end = self.get_employment_dates(employee)
+
+        effective_start = max(window_start, emp_start) if emp_start else window_start
+        effective_end = min(window_end, emp_end) if emp_end else window_end
+
+        if effective_start > effective_end:
+            return 0
+
+        return (effective_end - effective_start).days + 1
+
+    def calculate_service_days(self, employee, window_start, window_end):
+        """Alias for compute_service_days."""
+        return self.compute_service_days(employee, window_start, window_end)
+
+    def check_min_service_days(self, schedule, employee, eval_date=None):
+        """
+        Validates whether employee meets the minimum service days required by schedule.
+        Returns: (meets_min, service_days, min_service_days)
+        """
+        min_days = getattr(schedule, 'min_service_days', 0) or 0
+        if not schedule or min_days <= 0:
+            return True, 0, 0
+
+        if not employee:
+            return True, 0, min_days
+
+        start_d, end_d = self.resolve_period_window(schedule, eval_date=eval_date)
+        service_days = self.compute_service_days(employee, start_d, end_d)
+        is_eligible = service_days >= min_days
+        return is_eligible, service_days, min_days
 
     def calculate_eligible_payrolls(self, employee, period_start_date, period_end_date):
         """
@@ -169,19 +265,7 @@ class PTPeriodScheduleService:
         if not employee:
             return 1
 
-        emp_start = (
-            self._get_emp_date(employee, 'joining_date') or
-            self._get_emp_date(employee, 'first_contract_date')
-        )
-        if not emp_start and 'contract_id' in employee._fields and employee.contract_id:
-            emp_start = self._get_emp_date(employee.contract_id, 'date_start')
-
-        emp_end = (
-            self._get_emp_date(employee, 'departure_date') or
-            self._get_emp_date(employee, 'resignation_date')
-        )
-        if not emp_end and 'contract_id' in employee._fields and employee.contract_id:
-            emp_end = self._get_emp_date(employee.contract_id, 'date_end')
+        emp_start, emp_end = self.get_employment_dates(employee)
 
         count = 0
         cur_year = period_start_date.year

@@ -19,3 +19,4 @@ from . import hr_payroll_headcount
 from . import hr_payroll_dashboard_warning
 from . import hr_payroll_benefit
 from . import hr_salary_rule_section
+from . import hr_employee

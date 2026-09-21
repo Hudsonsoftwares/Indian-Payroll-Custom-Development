@@ -9,7 +9,7 @@
         <field name="name">tds.financial.year.tree</field>
         <field name="model">tds.financial.year</field>
         <field name="arch" type="xml">
-            <list string="Financial Years" decoration-muted="not active" decoration-danger="is_closed">
+            <list string="Tax Years" decoration-muted="not active" decoration-danger="is_closed">
                 <field name="code"/>
                 <field name="name"/>
                 <field name="assessment_year" optional="show"/>
@@ -45,7 +45,6 @@
                             <field name="assessment_year" placeholder="e.g. 2026-2027"/>
                             <field name="start_date"/>
                             <field name="end_date"/>
-                            <field name="tds_month_division"/>
                             <field name="tds_recalculation_from_month"/>
                             <field name="tds_recalculation_distribution_months"/>
                         </group>
@@ -142,7 +141,7 @@
         <field name="model">tds.financial.year</field>
         <field name="arch" type="xml">
             <search string="Search Financial Years">
-                <field name="name" string="Financial Year" filter_domain="['|', ('name', 'ilike', self), ('code', 'ilike', self)]"/>
+                <field name="name" string="Tax Year" filter_domain="['|', ('name', 'ilike', self), ('code', 'ilike', self)]"/>
                 <field name="code"/>
                 <field name="assessment_year"/>
                 <filter string="Active" name="filter_active" domain="[('active', '=', True)]"/>
@@ -269,7 +268,7 @@
                 <filter string="New Regime" name="filter_new" domain="[('regime_code', '=', 'new')]"/>
                 <filter string="Old Regime" name="filter_old" domain="[('regime_code', '=', 'old')]"/>
                 <group>
-                    <filter string="Financial Year" name="group_by_fy" context="{'group_by': 'financial_year_id'}"/>
+                    <filter string="Tax Year" name="group_by_fy" context="{'group_by': 'financial_year_id'}"/>
                     <filter string="Tax Regime" name="group_by_regime" context="{'group_by': 'regime_code'}"/>
                 </group>
 
@@ -320,7 +319,7 @@
                 <filter string="New Regime" name="filter_new" domain="[('regime_code', '=', 'new')]"/>
                 <filter string="Old Regime" name="filter_old" domain="[('regime_code', '=', 'old')]"/>
                 <group>
-                    <filter string="Financial Year" name="group_by_fy" context="{'group_by': 'financial_year_id'}"/>
+                    <filter string="Tax Year" name="group_by_fy" context="{'group_by': 'financial_year_id'}"/>
                     <filter string="Tax Regime" name="group_by_regime" context="{'group_by': 'regime_code'}"/>
                 </group>
 
@@ -432,7 +431,7 @@
                 <filter string="80EEA Ineligible" name="filter_ineligible" domain="[('is_80eea_eligible', '=', False)]"/>
                 <group>
                     <filter string="Employee" name="group_by_employee" context="{'group_by': 'employee_id'}"/>
-                    <filter string="Financial Year" name="group_by_fy" context="{'group_by': 'financial_year_id'}"/>
+                    <filter string="Tax Year" name="group_by_fy" context="{'group_by': 'financial_year_id'}"/>
                     <filter string="State" name="group_by_state" context="{'group_by': 'state'}"/>
                 </group>
             </search>

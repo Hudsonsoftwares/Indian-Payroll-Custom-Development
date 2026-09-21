@@ -138,9 +138,10 @@ class HrPayslip(models.Model):
                 total_unpaid_days += unpaid_leave_hours / denom
             
             # Shortage reconciliation
+            today_date = fields.Date.today()
             is_regularized = current_date in regularized_dates
-            if is_regularized:
-                # Regularized day: no shortage is deducted
+            if is_regularized or current_date > today_date:
+                # Regularized day or future date (not yet reached): no shortage is deducted
                 shortage_hours = 0.0
             else:
                 # Leave takes priority, subtract leave hours from scheduled hours for shortage calculation

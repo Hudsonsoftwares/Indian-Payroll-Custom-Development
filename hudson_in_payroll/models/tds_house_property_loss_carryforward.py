@@ -38,7 +38,7 @@ class TdsHousePropertyLossCarryforward(models.Model):
     )
     financial_year_id = fields.Many2one(
         'tds.financial.year',
-        string="Financial Year of Origin",
+        string="Tax Year",
         required=True,
         ondelete='restrict',
         help="Tax year in which the House Property loss originated."

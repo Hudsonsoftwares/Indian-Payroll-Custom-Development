@@ -14,7 +14,7 @@ class HdsPayrollDashboard(models.Model):
     _description = 'Indian HR & Payroll Dashboard'
 
     name = fields.Char(string="Dashboard Name", default="Payroll Dashboard")
-    financial_year_id = fields.Many2one('tds.financial.year', string="Financial Year", default=lambda self: self._default_financial_year())
+    financial_year_id = fields.Many2one('tds.financial.year', string="Tax Year", default=lambda self: self._default_financial_year())
     payroll_month_num = fields.Selection([
         ('1', 'January'), ('2', 'February'), ('3', 'March'), ('4', 'April'),
         ('5', 'May'), ('6', 'June'), ('7', 'July'), ('8', 'August'),
@@ -26,8 +26,9 @@ class HdsPayrollDashboard(models.Model):
     # 1. Primary KPI Metrics
     total_payroll_cost = fields.Monetary(string="Total Payroll Cost", currency_field='currency_id', compute='_compute_dashboard_metrics')
     total_gross_pay = fields.Monetary(string="Total Gross Pay", currency_field='currency_id', compute='_compute_dashboard_metrics')
-    total_net_pay = fields.Monetary(string="Total Net Wage (Payable)", currency_field='currency_id', compute='_compute_dashboard_metrics')
+    total_net_pay = fields.Monetary(string="Total Net Wage", currency_field='currency_id', compute='_compute_dashboard_metrics')
     total_net_paid = fields.Monetary(string="Disbursed Net Pay", currency_field='currency_id', compute='_compute_dashboard_metrics')
+    total_net_payable = fields.Monetary(string="Net Pay Due (Payable)", currency_field='currency_id', compute='_compute_dashboard_metrics')
     total_basic_wage = fields.Monetary(string="Total Basic Wage", currency_field='currency_id', compute='_compute_dashboard_metrics')
     avg_net_wage = fields.Monetary(string="Avg Net Wage", currency_field='currency_id', compute='_compute_dashboard_metrics')
     avg_basic_wage = fields.Monetary(string="Avg Basic Wage", currency_field='currency_id', compute='_compute_dashboard_metrics')
@@ -62,6 +63,14 @@ class HdsPayrollDashboard(models.Model):
     epf_total_liability = fields.Monetary(string="EPF Total Liability", currency_field='currency_id', compute='_compute_dashboard_metrics')
     esic_total_liability = fields.Monetary(string="ESIC Total Liability", currency_field='currency_id', compute='_compute_dashboard_metrics')
     pt_total_liability = fields.Monetary(string="Professional Tax Liability", currency_field='currency_id', compute='_compute_dashboard_metrics')
+    epf_employer_liability = fields.Monetary(string="Employer EPF Liability", currency_field='currency_id', compute='_compute_dashboard_metrics')
+    epf_er_share_amount = fields.Monetary(string="Employer EPF Share (3.67%)", currency_field='currency_id', compute='_compute_dashboard_metrics')
+    epf_er_eps_amount = fields.Monetary(string="Employer EPS (8.33%)", currency_field='currency_id', compute='_compute_dashboard_metrics')
+    epf_er_edli_amount = fields.Monetary(string="Employer EDLI (0.5%)", currency_field='currency_id', compute='_compute_dashboard_metrics')
+    epf_er_admin_amount = fields.Monetary(string="Employer EPF Admin (0.5%)", currency_field='currency_id', compute='_compute_dashboard_metrics')
+    esic_employer_liability = fields.Monetary(string="Employer ESIC Liability", currency_field='currency_id', compute='_compute_dashboard_metrics')
+    lwf_employer_liability = fields.Monetary(string="Employer LWF Liability", currency_field='currency_id', compute='_compute_dashboard_metrics')
+    total_employer_statutory_liability = fields.Monetary(string="Total Employer Statutory Liability", currency_field='currency_id', compute='_compute_dashboard_metrics')
 
     # 6. Statutory Compliance & Identifier Status
     epf_complete_count = fields.Integer(string="EPF Complete UAN Count", compute='_compute_dashboard_metrics')
@@ -272,12 +281,12 @@ class HdsPayrollDashboard(models.Model):
                 rec.final_settlement_approved_count = 0
                 rec.final_settlement_paid_count = 0
 
-            # Payslips and Payroll Financial Metrics for period (Company-aware, Non-cancelled & Deduplicated)
+            # Payslips and Payroll Financial Metrics for period (Company-aware, Paid/Done Slips Only - Excluding Draft)
             company_domain = [('company_id', 'in', self.env.companies.ids)]
             period_domain = [
                 ('date_from', '<=', month_end),
                 ('date_to', '>=', month_start),
-                ('state', '!=', 'cancel'),
+                ('state', 'in', ('paid', 'done')),
             ] + company_domain
             all_slips = self.env['hr.payslip'].search(period_domain)
 
@@ -311,6 +320,13 @@ class HdsPayrollDashboard(models.Model):
             tot_epf = 0.0
             tot_esi = 0.0
             tot_pt = 0.0
+            tot_er_epf = 0.0
+            tot_er_epf_share = 0.0
+            tot_er_eps = 0.0
+            tot_er_edli = 0.0
+            tot_er_admin = 0.0
+            tot_er_esic = 0.0
+            tot_er_lwf = 0.0
             tot_employer_cost = 0.0
             tot_hours = 0.0
             tot_days = 0.0
@@ -329,6 +345,12 @@ class HdsPayrollDashboard(models.Model):
                             net_val = abs(float(line.total or 0.0))
                             break
 
+                contract_wage = float(getattr(slip.contract_id, 'wage', 0.0) or 0.0) if slip.contract_id else 0.0
+                if gross_val <= 0.0 and contract_wage > 0.0:
+                    gross_val = contract_wage
+                if net_val <= 0.0 and contract_wage > 0.0 and not slip.line_ids:
+                    net_val = contract_wage
+
                 tot_gross += gross_val
                 tot_net += net_val
                 if slip.state == 'paid':
@@ -340,45 +362,80 @@ class HdsPayrollDashboard(models.Model):
                 has_er_epf = 'EMPLOYER_EPF' in codes or 'ER_PF' in codes
 
                 slip_employer_contrib = 0.0
+                slip_er_epf = 0.0
+                slip_er_esic = 0.0
+                slip_er_lwf = 0.0
+
                 for line in slip.line_ids:
                     code = (line.code or '').upper()
-                    amt = float(line.total or 0.0)
+                    amt = abs(float(line.total or 0.0))
                     rule = line.salary_rule_id
 
                     if code == 'BASIC':
-                        tot_basic += abs(amt)
+                        tot_basic += amt
                     elif code in ('TDS', 'INCOME_TAX', 'IT', 'HDS_IN_TDS'):
-                        tot_tds += abs(amt)
+                        tot_tds += amt
                     elif code in ('PT', 'PROF_TAX'):
-                        tot_pt += abs(amt)
+                        tot_pt += amt
 
-                    # EPF Statutory Liabilities (avoid double-counting EPS + EPF_SHARE when EMPLOYER_EPF is present)
+                    # EPF Statutory Liabilities (Combined EE + ER for compliance records)
                     if code in ('PF', 'EPF', 'EE_PF'):
-                        tot_epf += abs(amt)
+                        tot_epf += amt
                     elif code in ('EMPLOYER_EPF', 'ER_PF'):
-                        tot_epf += abs(amt)
+                        tot_epf += amt
                     elif not has_er_epf and code in ('EPS', 'EPF_SHARE'):
-                        tot_epf += abs(amt)
+                        tot_epf += amt
                     elif code in ('EDLI', 'EPF_ADMIN', 'EDLI_ADMIN'):
-                        tot_epf += abs(amt)
+                        tot_epf += amt
 
-                    # ESIC Statutory Liabilities
+                    # Employer EPF Share Only (Pure 12% EPF/EPS contribution)
+                    if code in ('EMPLOYER_EPF', 'ER_PF'):
+                        slip_er_epf += amt
+                    elif not has_er_epf and code in ('EPS', 'EPF_SHARE'):
+                        slip_er_epf += amt
+
+                    # Statutory Employer EPF Breakdown components
+                    if code == 'EPF_SHARE':
+                        tot_er_epf_share += amt
+                    elif code == 'EPS':
+                        tot_er_eps += amt
+                    elif code == 'EDLI':
+                        tot_er_edli += amt
+                    elif code in ('EPF_ADMIN', 'EDLI_ADMIN'):
+                        tot_er_admin += amt
+                    elif not ('EPS' in codes or 'EPF_SHARE' in codes) and code in ('EMPLOYER_EPF', 'ER_PF'):
+                        tot_er_epf_share += amt
+
+                    # ESIC Statutory Liabilities (Combined EE + ER)
                     if code in ('ESIC_EE', 'EE_ESI'):
-                        tot_esi += abs(amt)
+                        tot_esi += amt
                     elif code in ('ESIC_ER', 'ER_ESI'):
-                        tot_esi += abs(amt)
+                        tot_esi += amt
                     elif code == 'ESI' and 'ESIC_EE' not in codes and 'ESIC_ER' not in codes:
-                        tot_esi += abs(amt)
+                        tot_esi += amt
+
+                    # Employer ESIC Share Only (3.25% contribution)
+                    if code in ('ESIC_ER', 'ER_ESI'):
+                        slip_er_esic += amt
+                    elif code == 'ESI' and 'ESIC_EE' not in codes and 'ESIC_ER' not in codes:
+                        slip_er_esic += amt
+
+                    # Employer LWF Share Only
+                    if code in ('LWF_ER', 'ER_LWF'):
+                        slip_er_lwf += amt
 
                     # Employer Cost Contribution (Employer EPF, EDLI, EPF Admin, Employer ESIC, Employer LWF)
                     if getattr(rule, 'hds_in_contributes_to_employer_cost', False):
-                        slip_employer_contrib += abs(amt)
+                        slip_employer_contrib += amt
                     elif code in ('EMPLOYER_EPF', 'EDLI', 'EPF_ADMIN', 'EDLI_ADMIN', 'ESIC_ER', 'LWF_ER'):
-                        slip_employer_contrib += abs(amt)
+                        slip_employer_contrib += amt
                     elif not has_er_epf and code in ('EPS', 'EPF_SHARE'):
-                        slip_employer_contrib += abs(amt)
+                        slip_employer_contrib += amt
 
                 tot_employer_cost += slip_employer_contrib
+                tot_er_epf += slip_er_epf
+                tot_er_esic += slip_er_esic
+                tot_er_lwf += slip_er_lwf
 
                 for wd in slip.worked_days_line_ids:
                     tot_hours += float(wd.number_of_hours or 0.0)
@@ -386,8 +443,9 @@ class HdsPayrollDashboard(models.Model):
 
             rec.total_payroll_cost = (tot_gross + tot_employer_cost) if (tot_gross > 0 or tot_employer_cost > 0) else tot_net
             rec.total_gross_pay = tot_gross
-            rec.total_net_pay = tot_net_payable
+            rec.total_net_pay = tot_net
             rec.total_net_paid = tot_net_paid
+            rec.total_net_payable = tot_net_payable
             rec.total_basic_wage = tot_basic
             rec.avg_net_wage = (tot_net / len(slips)) if slips else 0.0
             rec.avg_basic_wage = (tot_basic / len(slips)) if slips else 0.0
@@ -397,6 +455,14 @@ class HdsPayrollDashboard(models.Model):
             rec.epf_total_liability = tot_epf
             rec.esic_total_liability = tot_esi
             rec.pt_total_liability = tot_pt
+            rec.epf_employer_liability = tot_er_epf
+            rec.epf_er_share_amount = tot_er_epf_share
+            rec.epf_er_eps_amount = tot_er_eps
+            rec.epf_er_edli_amount = tot_er_edli
+            rec.epf_er_admin_amount = tot_er_admin
+            rec.esic_employer_liability = tot_er_esic
+            rec.lwf_employer_liability = tot_er_lwf
+            rec.total_employer_statutory_liability = tot_er_epf + tot_er_edli + tot_er_admin + tot_er_esic + tot_er_lwf
 
             # YTD TDS computation for FY
             fy_start = rec.financial_year_id.start_date if rec.financial_year_id else date(year, 4, 1)
@@ -429,6 +495,12 @@ class HdsPayrollDashboard(models.Model):
             # Total Action Required Items
             rec.pending_actions_count = rec.missing_pan_count + rec.missing_bank_count + rec.pending_declarations_count + rec.attendance_pending_count + rec.missing_salary_count
 
+    @api.onchange('payroll_month_num', 'financial_year_id')
+    def _onchange_period_controls(self):
+        self._compute_dashboard_metrics()
+        self._compute_dashboard_html()
+
+    @api.depends('payroll_month_num', 'financial_year_id')
     def _compute_dashboard_html(self):
         for rec in self:
             rec._compute_dashboard_metrics()
@@ -509,7 +581,7 @@ class HdsPayrollDashboard(models.Model):
                 t_domain = [
                     ('date_from', '<=', t_end),
                     ('date_to', '>=', t_start),
-                    ('state', '!=', 'cancel'),
+                    ('state', 'in', ('paid', 'done')),
                 ] + company_domain
                 t_all_slips = self.env['hr.payslip'].search(t_domain)
                 t_latest = {}
@@ -738,14 +810,21 @@ class HdsPayrollDashboard(models.Model):
             else:
                 trend_breakdown_html = ""
 
+            if rec.total_net_paid > 0 and rec.total_net_payable > 0:
+                net_status_label = f"Disbursed: {currency_symbol} {rec.total_net_paid:,.2f} &bull; Due: {currency_symbol} {rec.total_net_payable:,.2f}"
+            elif rec.total_net_paid > 0:
+                net_status_label = f"🟢 100% Disbursed ({currency_symbol} {rec.total_net_paid:,.2f})"
+            else:
+                net_status_label = f"Payable: {currency_symbol} {rec.total_net_payable:,.2f}"
+
             rec.dashboard_html = f"""
-            <div class="o_hds_dashboard_root" data-hds-dashboard-root="true" style="font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; width: 100%; box-sizing: border-box;">
+            <div class="o_hds_dashboard_root" data-hds-dashboard-root="true" data-month-num="{m_num}" data-year="{year}" data-date-from="{month_start}" data-date-to="{month_end}" style="font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; width: 100%; box-sizing: border-box;">
 
                 <!-- 1. PRIMARY KPI CARDS GRID (PAYRUN PALETTE) -->
                 <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 16px; margin-bottom: 22px;">
 
                     <!-- Card 1: Total Payroll Cost (Payrun Employer Cost - Purple) -->
-                    <div role="button" tabindex="0" onclick="window.hdsCardClick &amp;&amp; window.hdsCardClick(this, 'total_payroll_cost')" data-card-type="total_payroll_cost" class="hds-dash-card o_hds_dashboard_card_clickable" style="text-decoration: none; display: block; padding: 18px; border-top: 4px solid #c084fc !important; cursor: pointer;">
+                    <div role="button" tabindex="0" onclick="window.hdsCardClick &amp;&amp; window.hdsCardClick(this, 'total_payroll_cost')" data-card-type="total_payroll_cost" data-month-num="{m_num}" data-year="{year}" data-date-from="{month_start}" data-date-to="{month_end}" class="hds-dash-card o_hds_dashboard_card_clickable" style="text-decoration: none; display: block; padding: 18px; border-top: 4px solid #c084fc !important; cursor: pointer;">
                         <div style="display: flex; justify-content: space-between; align-items: center;">
                             <span class="small fw-semibold text-uppercase" style="color: #c084fc !important; font-size: 11px; letter-spacing: 0.5px;">
                                 <i class="fa fa-briefcase me-1"/> Total Payroll Cost
@@ -760,11 +839,11 @@ class HdsPayrollDashboard(models.Model):
                         </div>
                     </div>
 
-                    <!-- Card 2: Net Salary Payable (Payrun Net - Emerald Green) -->
-                    <div role="button" tabindex="0" onclick="window.hdsCardClick &amp;&amp; window.hdsCardClick(this, 'total_net_pay')" data-card-type="total_net_pay" class="hds-dash-card o_hds_dashboard_card_clickable" style="text-decoration: none; display: block; padding: 18px; border-top: 4px solid #4ade80 !important; cursor: pointer;">
+                    <!-- Card 2: Total Net Salary (Payrun Net - Emerald Green) -->
+                    <div role="button" tabindex="0" onclick="window.hdsCardClick &amp;&amp; window.hdsCardClick(this, 'total_net_pay')" data-card-type="total_net_pay" data-month-num="{m_num}" data-year="{year}" data-date-from="{month_start}" data-date-to="{month_end}" class="hds-dash-card o_hds_dashboard_card_clickable" style="text-decoration: none; display: block; padding: 18px; border-top: 4px solid #4ade80 !important; cursor: pointer;">
                         <div style="display: flex; justify-content: space-between; align-items: center;">
                             <span class="small fw-semibold text-uppercase" style="color: #4ade80 !important; font-size: 11px; letter-spacing: 0.5px;">
-                                <i class="fa fa-credit-card me-1"/> Net Salary Payable
+                                <i class="fa fa-credit-card me-1"/> Total Net Salary
                             </span>
                             <span style="font-size: 11px; color: #4ade80; font-weight: 600;">Disbursement &darr;</span>
                         </div>
@@ -772,7 +851,7 @@ class HdsPayrollDashboard(models.Model):
                             {currency_symbol} {rec.total_net_pay:,.2f}
                         </div>
                         <div style="font-size: 11px; color: #4ade80; font-weight: 600;">
-                            Disbursable Amount
+                            {net_status_label}
                         </div>
                     </div>
 
@@ -1034,31 +1113,56 @@ class HdsPayrollDashboard(models.Model):
                 <!-- 5. STATUTORY & TAX CARD SECTION -->
                 <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 18px; margin-bottom: 22px;">
 
-                    <!-- Statutory Compliance Card -->
+                    <!-- Statutory Compliance Card (Employer Share Only) -->
                     <div class="hds-dash-card" style="padding: 18px;">
-                        <div class="hds-text-primary" style="font-size: 14px; font-weight: 700; margin-bottom: 12px; border-bottom: 1px solid var(--hds-row-border); padding-bottom: 8px; display: flex; align-items: center; gap: 8px;">
-                            <i class="fa fa-check-circle" style="color: #4ade80;"/> Statutory Compliance Summary
+                        <div class="hds-text-primary" style="font-size: 14px; font-weight: 700; margin-bottom: 12px; border-bottom: 1px solid var(--hds-row-border); padding-bottom: 8px; display: flex; align-items: center; justify-content: space-between;">
+                            <span style="display: flex; align-items: center; gap: 8px;">
+                                <i class="fa fa-shield" style="color: #4ade80;"/> Statutory Compliance Summary (Employer Share)
+                            </span>
+                            <span role="button" tabindex="0" onclick="window.hdsCardClick &amp;&amp; window.hdsCardClick(this, 'total_employer_statutory')" data-card-type="total_employer_statutory" class="o_hds_dashboard_card_clickable" style="cursor: pointer; font-size: 11px; padding: 3px 10px; border-radius: 12px; background: rgba(74, 222, 128, 0.15); color: #4ade80; font-weight: 700; display: inline-flex; align-items: center; gap: 4px;" title="Open employee-wise Employer Cost List View">
+                                View Employee List &rarr;
+                            </span>
                         </div>
                         <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; font-size: 12px;">
                             <div role="button" tabindex="0" onclick="window.hdsCardClick &amp;&amp; window.hdsCardClick(this, 'epf_liability')" data-card-type="epf_liability" class="hds-subcard o_hds_dashboard_card_clickable" style="text-decoration: none; display: block; padding: 12px; cursor: pointer;">
-                                <div class="hds-text-muted" style="font-size: 11px; font-weight: 600;">EPF / PF Liability</div>
-                                <div class="hds-text-primary" style="font-weight: 700; font-size: 14px; margin-top: 2px;">{currency_symbol} {rec.epf_total_liability:,.2f}</div>
-                                <div style="color: #4ade80; font-size: 10px; font-weight: 600; margin-top: 4px;">🟢 ECR Ready &bull; <u>View</u></div>
+                                <div class="hds-text-muted" style="font-size: 11px; font-weight: 600;">Employer EPF (12%)</div>
+                                <div class="hds-text-primary" style="font-weight: 700; font-size: 14px; margin-top: 2px;">{currency_symbol} {rec.epf_employer_liability:,.2f}</div>
+                                <div style="margin-top: 6px; padding-top: 6px; border-top: 1px dashed var(--hds-row-border); display: grid; grid-template-columns: 1fr 1fr; gap: 4px 6px; font-size: 10px;">
+                                    <div><span style="color: var(--hds-text-muted);">EPF (3.67%):</span> <b style="color: #38bdf8;">{currency_symbol} {rec.epf_er_share_amount:,.2f}</b></div>
+                                    <div><span style="color: var(--hds-text-muted);">EPS (8.33%):</span> <b style="color: #818cf8;">{currency_symbol} {rec.epf_er_eps_amount:,.2f}</b></div>
+                                </div>
+                                <div style="color: #4ade80; font-size: 10px; font-weight: 600; margin-top: 5px;">🟢 12% PF Contribution &bull; <u>View</u></div>
+                            </div>
+                            <div role="button" tabindex="0" onclick="window.hdsCardClick &amp;&amp; window.hdsCardClick(this, 'edli_admin_liability')" data-card-type="edli_admin_liability" class="hds-subcard o_hds_dashboard_card_clickable" style="text-decoration: none; display: block; padding: 12px; cursor: pointer;">
+                                <div class="hds-text-muted" style="font-size: 11px; font-weight: 600;">EDLI &amp; Admin (1.0%)</div>
+                                <div class="hds-text-primary" style="font-weight: 700; font-size: 14px; margin-top: 2px;">{currency_symbol} {(rec.epf_er_edli_amount + rec.epf_er_admin_amount):,.2f}</div>
+                                <div style="margin-top: 6px; padding-top: 6px; border-top: 1px dashed var(--hds-row-border); display: grid; grid-template-columns: 1fr 1fr; gap: 4px 6px; font-size: 10px;">
+                                    <div><span style="color: var(--hds-text-muted);">EDLI (0.5%):</span> <b style="color: #fbbf24;">{currency_symbol} {rec.epf_er_edli_amount:,.2f}</b></div>
+                                    <div><span style="color: var(--hds-text-muted);">Admin (0.5%):</span> <b style="color: #4ade80;">{currency_symbol} {rec.epf_er_admin_amount:,.2f}</b></div>
+                                </div>
+                                <div style="color: #fbbf24; font-size: 10px; font-weight: 600; margin-top: 5px;">🟡 0.5% EDLI + Admin &bull; <u>View</u></div>
                             </div>
                             <div role="button" tabindex="0" onclick="window.hdsCardClick &amp;&amp; window.hdsCardClick(this, 'esic_liability')" data-card-type="esic_liability" class="hds-subcard o_hds_dashboard_card_clickable" style="text-decoration: none; display: block; padding: 12px; cursor: pointer;">
-                                <div class="hds-text-muted" style="font-size: 11px; font-weight: 600;">ESIC Liability</div>
-                                <div class="hds-text-primary" style="font-weight: 700; font-size: 14px; margin-top: 2px;">{currency_symbol} {rec.esic_total_liability:,.2f}</div>
-                                <div style="color: #4ade80; font-size: 10px; font-weight: 600; margin-top: 4px;">🟢 Ready for Filing &bull; <u>View</u></div>
+                                <div class="hds-text-muted" style="font-size: 11px; font-weight: 600;">Employer ESIC Share</div>
+                                <div class="hds-text-primary" style="font-weight: 700; font-size: 14px; margin-top: 2px;">{currency_symbol} {rec.esic_employer_liability:,.2f}</div>
+                                <div style="color: #4ade80; font-size: 10px; font-weight: 600; margin-top: 4px;">🟢 3.25% Contribution &bull; <u>View</u></div>
                             </div>
-                            <div role="button" tabindex="0" onclick="window.hdsCardClick &amp;&amp; window.hdsCardClick(this, 'pt_liability')" data-card-type="pt_liability" class="hds-subcard o_hds_dashboard_card_clickable" style="text-decoration: none; display: block; padding: 12px; cursor: pointer;">
-                                <div class="hds-text-muted" style="font-size: 11px; font-weight: 600;">Professional Tax (PT)</div>
-                                <div class="hds-text-primary" style="font-weight: 700; font-size: 14px; margin-top: 2px;">{currency_symbol} {rec.pt_total_liability:,.2f}</div>
-                                <div style="color: #4ade80; font-size: 10px; font-weight: 600; margin-top: 4px;">🟢 State Slabs Applied &bull; <u>View</u></div>
+                            <div role="button" tabindex="0" onclick="window.hdsCardClick &amp;&amp; window.hdsCardClick(this, 'lwf_liability')" data-card-type="lwf_liability" class="hds-subcard o_hds_dashboard_card_clickable" style="text-decoration: none; display: block; padding: 12px; cursor: pointer;">
+                                <div class="hds-text-muted" style="font-size: 11px; font-weight: 600;">Employer LWF Share</div>
+                                <div class="hds-text-primary" style="font-weight: 700; font-size: 14px; margin-top: 2px;">{currency_symbol} {rec.lwf_employer_liability:,.2f}</div>
+                                <div style="color: #4ade80; font-size: 10px; font-weight: 600; margin-top: 4px;">🟢 State LWF Rule &bull; <u>View</u></div>
                             </div>
-                            <div role="button" tabindex="0" onclick="window.hdsCardClick &amp;&amp; window.hdsCardClick(this, 'tds_withholding')" data-card-type="tds_withholding" class="hds-subcard o_hds_dashboard_card_clickable" style="text-decoration: none; display: block; padding: 12px; cursor: pointer;">
-                                <div class="hds-text-muted" style="font-size: 11px; font-weight: 600;">TDS Withholding</div>
-                                <div class="hds-text-primary" style="font-weight: 700; font-size: 14px; margin-top: 2px;">{currency_symbol} {rec.tds_this_month:,.2f}</div>
-                                <div style="color: #4ade80; font-size: 10px; font-weight: 600; margin-top: 4px;">🟢 Form 24Q Ready &bull; <u>View</u></div>
+                            <div role="button" tabindex="0" onclick="window.hdsCardClick &amp;&amp; window.hdsCardClick(this, 'total_employer_statutory')" data-card-type="total_employer_statutory" class="hds-subcard o_hds_dashboard_card_clickable" style="text-decoration: none; display: block; padding: 12px; cursor: pointer; grid-column: span 2;">
+                                <div style="display: flex; justify-content: space-between; align-items: center;">
+                                    <div>
+                                        <div class="hds-text-muted" style="font-size: 11px; font-weight: 600;">Total Employer Statutory</div>
+                                        <div class="hds-text-primary" style="font-weight: 700; font-size: 15px; margin-top: 2px; color: #c084fc;">{currency_symbol} {rec.total_employer_statutory_liability:,.2f}</div>
+                                    </div>
+                                    <div style="text-align: right;">
+                                        <div style="color: #c084fc; font-size: 10px; font-weight: 600;">🟣 EPF + EDLI/Admin + ESIC + LWF</div>
+                                        <div style="color: var(--hds-text-muted); font-size: 10px; margin-top: 2px;">Click to view employee list &rarr;</div>
+                                    </div>
+                                </div>
                             </div>
                         </div>
                     </div>
@@ -1111,6 +1215,7 @@ class HdsPayrollDashboard(models.Model):
             </div>
             """
 
+
     def action_refresh_dashboard(self):
         self.ensure_one()
         self.env.invalidate_all()
@@ -1120,6 +1225,24 @@ class HdsPayrollDashboard(models.Model):
             'type': 'ir.actions.client',
             'tag': 'reload',
         }
+
+    def action_view_missing_pan_employees(self):
+        return self.get_card_action(card_type='missing_pan')
+
+    def action_view_missing_bank_employees(self):
+        return self.get_card_action(card_type='missing_bank')
+
+    def action_view_pending_declarations(self):
+        return self.get_card_action(card_type='pending_declarations')
+
+    def action_view_new_joiners(self):
+        return self.get_card_action(card_type='new_joiners')
+
+    def write(self, vals):
+        res = super().write(vals)
+        if 'payroll_month_num' in vals or 'financial_year_id' in vals:
+            self.env.invalidate_all()
+        return res
 
     def web_read(self, specification: dict) -> list[dict]:
         self.env.invalidate_all()
@@ -1161,21 +1284,47 @@ class HdsPayrollDashboard(models.Model):
         month_name = calendar.month_name[m_num]
         active_emps = self.env['hr.employee'].search([('active', '=', True)])
 
-        # 1. Payslips / Total Payroll Cost / Net Salary / TDS This Month / Liabilities
-        if card_type in ('total_payroll_cost', 'total_net_pay', 'tds_this_month', 'tds_withholding', 'epf_liability', 'esic_liability', 'pt_liability'):
+        # 1. Statutory Compliance (Employer Share) Dedicated List View
+        if card_type in ('epf_liability', 'esic_liability', 'lwf_liability', 'total_employer_statutory', 'edli_admin_liability'):
+            list_view = self.env.ref('hudson_in_payroll.view_hr_payslip_list_employer_statutory', raise_if_not_found=False)
+            views = [[list_view.id, 'list'], [False, 'form']] if list_view else [[False, 'list'], [False, 'form']]
+            title_map = {
+                'epf_liability': f"Statutory Compliance — Employer EPF (12%) ({month_name} {year})",
+                'edli_admin_liability': f"Statutory Compliance — EDLI & EPF Admin (1%) ({month_name} {year})",
+                'esic_liability': f"Statutory Compliance — Employer ESIC Share ({month_name} {year})",
+                'lwf_liability': f"Statutory Compliance — Employer LWF Share ({month_name} {year})",
+                'total_employer_statutory': f"Statutory Compliance Summary — Employer Share ({month_name} {year})",
+            }
+            period_domain = [
+                ('date_from', '<=', month_end),
+                ('date_to', '>=', month_start),
+                ('state', 'in', ('paid', 'done')),
+            ]
+            if 'company_id' in self.env['hr.payslip']._fields:
+                period_domain.append(('company_id', 'in', self.env.companies.ids))
+            return {
+                'type': 'ir.actions.act_window',
+                'name': title_map.get(card_type, f"Statutory Compliance Summary — {month_name} {year}"),
+                'res_model': 'hr.payslip',
+                'view_mode': 'list,form',
+                'views': views,
+                'domain': period_domain,
+                'target': 'current',
+            }
+
+        # 2. Payslips / Total Payroll Cost / Net Salary / TDS This Month / Liabilities
+        if card_type in ('total_payroll_cost', 'total_net_pay', 'tds_this_month', 'tds_withholding', 'pt_liability'):
             title_map = {
                 'total_payroll_cost': f"Total Payroll Cost Slips — {month_name} {year}",
                 'total_net_pay': f"Net Salary Disbursement — {month_name} {year}",
                 'tds_this_month': f"TDS Withholding Slips — {month_name} {year}",
                 'tds_withholding': f"TDS Withholding Slips — {month_name} {year}",
-                'epf_liability': f"EPF Liability Slips — {month_name} {year}",
-                'esic_liability': f"ESIC Liability Slips — {month_name} {year}",
                 'pt_liability': f"Professional Tax Slips — {month_name} {year}",
             }
             period_domain = [
                 ('date_from', '<=', month_end),
                 ('date_to', '>=', month_start),
-                ('state', '!=', 'cancel'),
+                ('state', 'in', ('paid', 'done')),
             ]
             if 'company_id' in self.env['hr.payslip']._fields:
                 period_domain.append(('company_id', 'in', self.env.companies.ids))

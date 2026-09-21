@@ -206,6 +206,8 @@ class ReportStatutoryTaxCalculation(models.AbstractModel):
             rebate_applicable = bool(getattr(rebate, 'is_applicable', rebate_applied > 0))
             tax_after_rebate = float(getattr(rebate, 'tax_after_rebate', 0.0) or 0.0)
             surcharge_amount = float(getattr(surcharge, 'surcharge_amount', 0.0) or 0.0)
+            surcharge_before_relief = float(getattr(surcharge, 'surcharge_before_relief', surcharge_amount) or 0.0)
+            marginal_relief = float(getattr(surcharge, 'marginal_relief', 0.0) or 0.0)
             surcharge_rate = float(getattr(surcharge, 'surcharge_rate', 0.0) or 0.0)
             tax_plus_surcharge = float(getattr(surcharge, 'tax_plus_surcharge', 0.0) or 0.0)
             cess_amount = float(getattr(cess, 'cess_amount', 0.0) or 0.0)
@@ -517,6 +519,8 @@ Actual Current Month TDS : ₹{current_month_tds:,.2f}
                 'rebate_applicable': rebate_applicable,
                 'tax_after_rebate': tax_after_rebate,
                 'surcharge_amount': surcharge_amount,
+                'surcharge_before_relief': surcharge_before_relief,
+                'marginal_relief': marginal_relief,
                 'surcharge_rate': surcharge_rate,
                 'tax_plus_surcharge': tax_plus_surcharge,
                 'cess_amount': cess_amount,

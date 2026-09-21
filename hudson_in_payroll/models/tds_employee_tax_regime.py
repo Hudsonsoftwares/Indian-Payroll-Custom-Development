@@ -54,11 +54,11 @@ class TdsEmployeeTaxRegime(models.Model):
 
     financial_year_id = fields.Many2one(
         'tds.financial.year',
-        string="Financial Year",
+        string="Tax Year",
         required=True,
         default=_default_financial_year_id,
         ondelete='restrict',
-        help="Financial Year covered by this regime selection."
+        help="Tax Year covered by this regime selection."
     )
 
     regime_id = fields.Many2one(

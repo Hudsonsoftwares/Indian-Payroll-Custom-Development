@@ -7,6 +7,12 @@
               sequence="60"/>
 
     <!-- India Section Submenus -->
+    <menuitem id="menu_hds_employer_statutory_summary_report"
+              name="Statutory Compliance (Employer Share)"
+              parent="menu_hds_statutory_reports"
+              action="action_hr_payslip_employer_statutory"
+              sequence="10"/>
+
     <menuitem id="menu_hds_pt_statutory_report"
               name="Professional Tax (PT) Report"
               parent="menu_hds_statutory_reports"

@@ -32,43 +32,58 @@
                             </setting>
 
                             <!-- Row 1 Right: Contract Expiration Notice Period -->
-                            <setting id="contract_expiration_notice_period_setting" string="Contract Expiration Notice Period" help="Number of days prior to the contract end date that a contract expiration warning is triggered.">
+                            <setting id="contract_expiration_notice_period_setting" string="Contract Expiration Notice Period" help="Number of days prior to the contract end date that an expiration alert is triggered. Automatically sends an email to the employee, plus in-app notifications and email to HR.">
+                                <field name="enable_contract_expiry_notification"/>
                                 <div class="content-group">
                                     <div class="d-flex align-items-center mt4">
                                         <span class="me-2">Warn me</span>
                                         <field name="contract_expiration_notice_period" class="oe_inline text-center" style="width: 65px !important;"/>
                                         <span class="ms-2">days before end of contract.</span>
                                     </div>
+                                    <div class="text-muted small mt-1" invisible="not enable_contract_expiry_notification">
+                                        <i class="fa fa-envelope-o me-1 text-primary"/> Automated email to employee + In-App &amp; Email to HR.
+                                    </div>
                                 </div>
                             </setting>
 
                             <!-- Row 2 Left: Work Permit Expiration Notice Period -->
-                            <setting id="work_permit_expiration_notice_period_setting" string="Work Permit Expiration Notice Period" help="Number of days prior to the work permit expiration date that a warning is triggered.">
+                            <setting id="work_permit_expiration_notice_period_setting" string="Work Permit Expiration Notice Period" help="Number of days prior to the work permit expiration date that an expiration alert is triggered. Automatically sends an email to the employee, plus in-app notifications and email to HR.">
+                                <field name="enable_work_permit_expiry_notification"/>
                                 <div class="content-group">
                                     <div class="d-flex align-items-center mt4">
                                         <span class="me-2">Warn me</span>
                                         <field name="work_permit_expiration_notice_period" class="oe_inline text-center" style="width: 65px !important;"/>
                                         <span class="ms-2">days before expiration of the Work Permit.</span>
                                     </div>
+                                    <div class="text-muted small mt-1" invisible="not enable_work_permit_expiry_notification">
+                                        <i class="fa fa-envelope-o me-1 text-primary"/> Automated email to employee + In-App &amp; Email to HR.
+                                    </div>
                                 </div>
                             </setting>
 
-                            <!-- Row 2 Right: YTD Reset Date -->
+                            <!-- Row 2 Right: Expiry Notification HR Recipients -->
+                            <setting id="expiry_notification_recipients_setting" string="Expiry Alert HR Recipients" help="Select HR Officers / Managers who should receive in-app notifications and emails upon contract/work permit expiry. If blank, defaults to the employee's HR responsible and Payroll Managers.">
+                                <div class="content-group mt4">
+                                    <field name="expiry_notification_user_ids" widget="many2many_tags" placeholder="Select HR Officers / Managers..."/>
+                                    <div class="text-muted small mt-1">
+                                        <i class="fa fa-clock-o me-1 text-primary"/> Automatically checked and dispatched daily via background automation.
+                                    </div>
+                                </div>
+                            </setting>
+
+                            <!-- Row 3 Left: YTD Reset Date -->
                             <setting id="ytd_reset_date_setting" string="YTD Reset Date" help="Date when Year-To-Date accumulator totals reset to zero.">
                                 <div class="content-group mt4">
                                     <field name="ytd_reset_date" class="w-75"/>
                                 </div>
                             </setting>
 
-                            <!-- Row 3 Left: Send payslips to employees -->
+                            <!-- Row 3 Right: Send payslips to employees -->
                             <setting id="send_payslips_setting" string="Send payslips to employees" help="Define when payslips are printed and sent to employees">
                                 <div class="content-group mt4">
                                     <field name="send_payslips" class="w-75"/>
                                 </div>
                             </setting>
-
-                            <!-- Row 3 Right: Empty Placeholder to balance grid -->
-                            <setting id="payroll_empty_cell_setting" invisible="1"/>
                         </block>
 
                         <!-- ========================================== -->

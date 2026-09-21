@@ -41,6 +41,8 @@ Key Features:
         'reports/payment_advice_report.xml',
         'reports/hr_payslip_report.xml',
         'data/mail_template_data.xml',
+        'data/mail_template_expiry_data.xml',
+        'data/ir_cron_data.xml',
         'wizard/hr_payslip_employees_views.xml',
         'wizard/pay_run_pay_wizard_views.xml',
         'views/payrun_wizard_views.xml',
@@ -60,6 +62,7 @@ Key Features:
         'views/hr_payroll_benefit_views.xml',
         'wizard/hr_salary_adjustment_wizard_views.xml',
         'views/hr_salary_adjustment_views.xml',
+        'views/res_partner_bank_views.xml',
         'views/hr_payroll_menu_views.xml',
     ],
     'assets': {

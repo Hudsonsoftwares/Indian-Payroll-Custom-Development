@@ -56,6 +56,7 @@
             <field name="window_end_month">9</field>
             <field name="deduction_strategy">end_of_period</field>
             <field name="deduction_month">9</field>
+            <field name="min_service_days">60</field>
             <field name="remarks">Statutory Kerala Professional Tax H1 Schedule (April - September)</field>
             <field name="active" eval="True"/>
         </record>
@@ -68,6 +69,7 @@
             <field name="window_end_month">3</field>
             <field name="deduction_strategy">end_of_period</field>
             <field name="deduction_month">3</field>
+            <field name="min_service_days">60</field>
             <field name="remarks">Statutory Kerala Professional Tax H2 Schedule (October - March)</field>
             <field name="active" eval="True"/>
         </record>

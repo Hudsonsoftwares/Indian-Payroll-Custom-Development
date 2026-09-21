@@ -206,7 +206,17 @@
                     <!-- Labour Welfare Fund (LWF) directly below ESIC -->
                     <separator string="Labour Welfare Fund (LWF)" class="mt-4 mb-2"/>
                     <field name="hds_in_lwf_applicable" string="LWF Applicable"/>
+
+                    <!-- Tax Deducted at Source (TDS) directly below LWF -->
+                    <separator string="Tax Deducted at Source (TDS)" class="mt-4 mb-2"/>
+                    <field name="hds_in_tds_applicable" string="Enable TDS"/>
+                    <field name="hds_in_tds_month_division" string="TDS Month Division" readonly="1" invisible="not hds_in_tds_applicable or not hds_in_tds_month_division"/>
                 </group>
+            </xpath>
+
+            <!-- Aadhaar under Citizenship in Personal Information Tab -->
+            <xpath expr="//group[@name='citizenship']" position="inside">
+                <field name="hds_in_aadhaar" string="Aadhaar Number" placeholder="e.g. 123456789012"/>
             </xpath>
 
             <!-- Statutory Information (PAN, UAN, PF Account Number, LWF Account Number, ESIC Number) matching Screenshot 2 -->
@@ -228,20 +238,7 @@
             <!-- 3. INDIAN INCOME TAX (TDS) PROFILE NOTEBOOK PAGE       -->
             <!-- ======================================================= -->
             <xpath expr="//notebook" position="inside">
-                <page string="Income Tax (TDS)" name="income_tax_tds_profile">
-                    
-                    <!-- Section 1: Employee Tax Profile -->
-                    <separator string="Section 1: Employee Tax Profile"/>
-                    <group>
-                        <group string="Permanent Tax Master Information">
-                            <field name="hds_in_pan" placeholder="e.g. ABCDE1234F"/>
-                            <field name="hds_in_aadhaar" placeholder="e.g. 123456789012"/>
-                        </group>
-                        <group string="Tax Compliance Setup">
-                            <field name="hds_in_tds_applicable"/>
-                            <field name="hds_in_residential_status"/>
-                        </group>
-                    </group>
+                <page string="Income Tax (TDS)" name="income_tax_tds_profile" invisible="not hds_in_tds_applicable">
 
                     <!-- Section 2: Active Tax Year Configuration & Summary Figures -->
                     <separator string="Section 2: Active Tax Year Configuration &amp; Summary Figures"/>
@@ -306,6 +303,18 @@
 
 
                 </page>
+            </xpath>
+        </field>
+    </record>
+
+    <!-- Position Residential Status between Nationality and Non-resident checkbox -->
+    <record id="hds_in_view_employee_form_citizenship_residence" model="ir.ui.view">
+        <field name="name">hr.employee.form.inherit.citizenship.residence</field>
+        <field name="model">hr.employee</field>
+        <field name="inherit_id" ref="hudson_employee_info.view_employee_form_inherit_hudson_employee_info"/>
+        <field name="arch" type="xml">
+            <xpath expr="//field[@name='is_non_resident']" position="before">
+                <field name="hds_in_residential_status" string="Residential Status"/>
             </xpath>
         </field>
     </record>

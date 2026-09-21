@@ -32,6 +32,10 @@ class TestPTPeriodScheduleRegression(TransactionCase):
         self.emp_mh_male = self.env['hr.employee'].create({'name': 'MH Male Reg', 'sex': 'male', 'work_location_id': self.work_loc_mh.id, 'company_id': self.company.id})
         self.emp_mh_female = self.env['hr.employee'].create({'name': 'MH Female Reg', 'sex': 'female', 'work_location_id': self.work_loc_mh.id, 'company_id': self.company.id})
         self.emp_kl_male = self.env['hr.employee'].create({'name': 'KL Male Reg', 'sex': 'male', 'work_location_id': self.work_loc_kl.id, 'company_id': self.company.id})
+        for emp in (self.emp_mh_male, self.emp_mh_female, self.emp_kl_male):
+            emp.write({'contract_date_start': '2026-01-01', 'date_start': '2026-01-01'})
+            if emp.version_id:
+                emp.version_id.write({'contract_date_start': '2026-01-01', 'date_start': '2026-01-01'})
 
         # Service
         from odoo.addons.hudson_in_payroll.services.professional_tax.professional_tax_service import ProfessionalTaxService

@@ -33,6 +33,10 @@ class TestPTConfigurableSchedule(TransactionCase):
         # Create Employees
         self.emp_mh = self.env['hr.employee'].create({'name': 'MH Employee', 'sex': 'male', 'work_location_id': self.work_loc_mh.id, 'company_id': self.company.id})
         self.emp_kl = self.env['hr.employee'].create({'name': 'KL Employee', 'sex': 'male', 'work_location_id': self.work_loc_kl.id, 'company_id': self.company.id})
+        for emp in (self.emp_mh, self.emp_kl):
+            emp.write({'contract_date_start': '2026-01-01', 'date_start': '2026-01-01'})
+            if emp.version_id:
+                emp.version_id.write({'contract_date_start': '2026-01-01', 'date_start': '2026-01-01'})
 
         # Instantiate Services
         from odoo.addons.hudson_in_payroll.services.professional_tax.professional_tax_service import ProfessionalTaxService

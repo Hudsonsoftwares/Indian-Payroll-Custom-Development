@@ -22,10 +22,10 @@ class TdsSurcharge(models.Model):
     )
     financial_year_id = fields.Many2one(
         'tds.financial.year',
-        string="Financial Year",
+        string="Tax Year",
         required=True,
         ondelete='cascade',
-        help="Financial year for which this surcharge slab applies."
+        help="Tax year for which this surcharge slab applies."
     )
     regime_id = fields.Many2one(
         'tds.tax.regime',

@@ -22,10 +22,10 @@ class TdsTaxSlab(models.Model):
     )
     financial_year_id = fields.Many2one(
         'tds.financial.year',
-        string="Financial Year",
+        string="Tax Year",
         required=True,
         ondelete='cascade',
-        help="Financial year for which this income slab is applicable."
+        help="Tax year for which this income slab is applicable."
     )
     regime_id = fields.Many2one(
         'tds.tax.regime',

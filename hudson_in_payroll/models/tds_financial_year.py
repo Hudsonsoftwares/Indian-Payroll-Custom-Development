@@ -20,12 +20,12 @@ class TdsFinancialYear(models.Model):
     )
 
     name = fields.Char(
-        string="Financial Year Name",
+        string="Tax Year Name",
         required=True,
         help="e.g. Tax Year: 2026-27"
     )
     code = fields.Char(
-        string="Financial Year Code",
+        string="Tax Year Code",
         required=True,
         help="e.g. 2025-2026"
     )

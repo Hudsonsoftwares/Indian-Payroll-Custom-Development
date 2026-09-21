@@ -48,6 +48,43 @@ class TdsComputationResult:
         """Total projected annual tax liability after cess."""
         return self.health_education_cess.total_annual_tax_liability
 
+    @property
+    def surcharge_before_relief(self):
+        """Surcharge before marginal relief."""
+        return getattr(self.surcharge_engine, 'surcharge_before_relief', getattr(self.surcharge_engine, 'surcharge_amount', 0.0))
+
+    @property
+    def marginal_relief(self):
+        """Statutory marginal relief amount."""
+        return getattr(self.surcharge_engine, 'marginal_relief', 0.0)
+
+    @property
+    def surcharge_amount(self):
+        """Final surcharge amount after marginal relief."""
+        return getattr(self.surcharge_engine, 'surcharge_amount', 0.0)
+
+    @property
+    def tax_plus_surcharge(self):
+        """Tax liability plus final surcharge."""
+        return getattr(self.surcharge_engine, 'tax_plus_surcharge', 0.0)
+
+    def get_tax_summary_breakdown(self):
+        """Returns the statutory TDS liability breakdown dictionary."""
+        return {
+            'income_tax': float(getattr(self.rebate_engine, 'tax_after_rebate', 0.0) or 0.0),
+            'base_tax': float(getattr(self.income_tax_slab, 'base_tax_liability', 0.0) or 0.0),
+            'rebate': float(getattr(self.rebate_engine, 'rebate_applied', 0.0) or 0.0),
+            'surcharge_rate': float(getattr(self.surcharge_engine, 'surcharge_rate_pct', getattr(self.surcharge_engine, 'surcharge_rate', 0.0)) or 0.0),
+            'surcharge_before_relief': self.surcharge_before_relief,
+            'marginal_relief': self.marginal_relief,
+            'surcharge': self.surcharge_amount,
+            'surcharge_amount': self.surcharge_amount,
+            'tax_plus_surcharge': self.tax_plus_surcharge,
+            'cess': float(getattr(self.health_education_cess, 'cess_amount', 0.0) or 0.0),
+            'total_tax_liability': float(self.total_annual_tax_liability or 0.0),
+            'current_month_tds': float(self.current_month_tds or 0.0),
+        }
+
 
 class TdsOrchestrationEngine(BaseStatutoryService):
     """
@@ -227,7 +264,9 @@ taxable_income_passed_to_tax_calculator=%s""",
         )
         if debug_enabled:
             _logger.warning(
-                "After SurchargeEngineService | Surcharge Amount: %s",
+                "After SurchargeEngineService | Surcharge Before Relief: %s, Marginal Relief: %s, Final Surcharge: %s",
+                getattr(surcharge_calc, 'surcharge_before_relief', surcharge_calc.surcharge_amount),
+                getattr(surcharge_calc, 'marginal_relief', 0.0),
                 surcharge_calc.surcharge_amount
             )
 
@@ -691,9 +730,11 @@ Tax After Rebate       : ₹{rebate_calc.tax_after_rebate:,.2f}
 [STAGE 15 — SURCHARGE]
 Input          : Taxable Income=₹{taxable_inc.net_taxable_income:,.2f}  Tax After Rebate=₹{rebate_calc.tax_after_rebate:,.2f}
 Surcharge Rate : {surcharge_rate_val * 100:.0f}%
-Formula        : Tax After Rebate × Surcharge Rate
-Result (Surcharge)     : ₹{surcharge_calc.surcharge_amount:,.2f}
-Tax + Surcharge        : ₹{tax_plus_surcharge:,.2f}
+Formula        : (Tax After Rebate × Surcharge Rate) - Marginal Relief
+Surcharge Pre-Relief : ₹{getattr(surcharge_calc, 'surcharge_before_relief', surcharge_calc.surcharge_amount):,.2f}
+Marginal Relief      : ₹{getattr(surcharge_calc, 'marginal_relief', 0.0):,.2f}
+Result (Final Surcharge): ₹{surcharge_calc.surcharge_amount:,.2f}
+Tax + Surcharge      : ₹{tax_plus_surcharge:,.2f}
 
 [STAGE 16 — HEALTH & EDUCATION CESS]
 Input          : Tax + Surcharge=₹{tax_plus_surcharge:,.2f}
@@ -745,7 +786,9 @@ Total Allowable Deductions : ₹{deduction_calc.total_allowable_deductions:,.2f}
 Taxable Income             : ₹{taxable_inc.net_taxable_income:,.2f}
 Gross Tax                  : ₹{slab_calc.base_tax_liability:,.2f}
 87A Rebate                 : ₹{rebate_calc.rebate_applied:,.2f}
-Surcharge                  : ₹{surcharge_calc.surcharge_amount:,.2f}
+Surcharge Before Relief    : ₹{getattr(surcharge_calc, 'surcharge_before_relief', surcharge_calc.surcharge_amount):,.2f}
+Marginal Relief            : ₹{getattr(surcharge_calc, 'marginal_relief', 0.0):,.2f}
+Final Surcharge            : ₹{surcharge_calc.surcharge_amount:,.2f}
 Cess (4%)                  : ₹{cess_calc.cess_amount:,.2f}
 Annual Tax Liability        : ₹{cess_calc.total_annual_tax_liability:,.2f}
 YTD TDS                    : ₹{monthly_tds.ytd_tds_deducted:,.2f}
