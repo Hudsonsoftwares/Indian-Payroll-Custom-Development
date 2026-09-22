@@ -211,19 +211,27 @@ caller/method=%s""",
             start_cal_m = recalc_start_fy_idx + 3 if recalc_start_fy_idx <= 9 else recalc_start_fy_idx - 9
             recalc_start_month_name = month_names_dict.get(start_cal_m, str(start_cal_m))
 
+            # Determine employee-specific total periods in FY based on joining date
+            period_svc = PayrollPeriodService(self.env)
+            emp_total_fy_periods = period_svc.calculate_total_periods_in_fy(employee, financial_year, eval_date=eval_date)
+
             tds_months = int(getattr(financial_year, 'tds_month_division', 0) or 0)
             if tds_months <= 0:
-                tds_months_param = self.env['ir.config_parameter'].sudo().get_param('hudson_in_payroll.tds_month_division', default=12)
-                try:
-                    tds_months = int(tds_months_param)
-                    if tds_months <= 0:
-                        tds_months = 12
-                except (ValueError, TypeError):
-                    tds_months = 12
+                # Check employee's dynamic month division based on joining date
+                tds_months = int(getattr(employee, 'hds_in_tds_month_division', 0) or 0)
+                if tds_months <= 0:
+                    tds_months = emp_total_fy_periods
 
-            completed_m_cnt = max(0, eval_fy_idx - 1)
-            future_m_cnt = max(0, 12 - eval_fy_idx)
-            dist_m_cnt = max(1, 12 - eval_fy_idx + 1) if is_recalc_active else tds_months
+            joining_date = period_svc._resolve_employee_joining_date(employee)
+            if joining_date and fy_start and joining_date > fy_start:
+                join_elapsed = (joining_date.year - fy_start_year) * 12 + (joining_date.month - fy_start_month) + 1
+                emp_join_idx = min(12, max(1, join_elapsed))
+            else:
+                emp_join_idx = 1
+
+            completed_m_cnt = max(0, eval_fy_idx - emp_join_idx)
+            future_m_cnt = max(0, remaining_periods - 1)
+            dist_m_cnt = remaining_periods
 
             _logger.warning("""[TDS_DEBUG_TRACE][PAYROLL_MONTH_CONTEXT]
 completed_payroll_months=%s

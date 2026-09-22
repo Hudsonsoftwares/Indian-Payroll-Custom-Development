@@ -531,8 +531,11 @@ class TdsEmployeeDeclaration(models.Model):
 
                 contract_obj = sal_svc._get_employee_contract(emp) if (emp and hasattr(sal_svc, '_get_employee_contract')) else False
                 c_id = getattr(contract_obj, 'id', 'N/A') if contract_obj else 'N/A'
-                m_b = float(getattr(contract_obj, 'basic_salary', 0.0) or 0.0) if contract_obj else (annual_b / 12.0)
-                m_d = float(getattr(contract_obj, 'da', 0.0) or getattr(contract_obj, 'da_amount', 0.0) or 0.0) if contract_obj else (annual_d / 12.0)
+                from ..services.tds.payroll_period_service import PayrollPeriodService
+                _period_svc = PayrollPeriodService(rec.env)
+                _emp_periods = _period_svc.calculate_total_periods_in_fy(emp, fy) if (emp and fy) else 12.0
+                m_b = float(getattr(contract_obj, 'basic_salary', 0.0) or 0.0) if contract_obj else (annual_b / float(_emp_periods or 12))
+                m_d = float(getattr(contract_obj, 'da', 0.0) or getattr(contract_obj, 'da_amount', 0.0) or 0.0) if contract_obj else (annual_d / float(_emp_periods or 12))
 
                 from ..services.tds.tds_declaration_lifecycle_logger import TdsDeclarationLifecycleLogger
                 lifecycle_logger = TdsDeclarationLifecycleLogger(rec.env)

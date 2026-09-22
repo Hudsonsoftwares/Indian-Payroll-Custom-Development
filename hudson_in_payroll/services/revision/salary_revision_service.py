@@ -36,8 +36,9 @@ class SalaryRevisionService(BaseStatutoryService):
             raise UserError(self.env._("No active contract found for employee '%s'. Revisions require an active contract.") % employee.name)
 
         effective_date = wizard.effective_date
-        if contract.date_start and effective_date < contract.date_start:
-            raise ValidationError(self.env._("Revision effective date (%s) cannot precede contract start date (%s).") % (effective_date, contract.date_start))
+        c_start = getattr(contract, 'contract_date_start', False) or getattr(contract, 'date_start', False)
+        if c_start and effective_date < c_start:
+            raise ValidationError(self.env._("Revision effective date (%s) cannot precede contract start date (%s).") % (effective_date, c_start))
 
         current_wage = contract.wage or 0.0
         new_wage = wizard.revised_wage
@@ -132,5 +133,17 @@ class SalaryRevisionService(BaseStatutoryService):
         return revision_record
 
     def _get_active_contract(self, employee):
+        if not employee:
+            return False
+        contract = getattr(employee, 'version_id', False) or getattr(employee, 'contract_id', False)
+        if contract:
+            return contract
         contracts = self.env['hr.version'].search([('employee_id', '=', employee.id)])
-        return contracts.sorted(lambda c: c.date_start or fields.Date.today(), reverse=True)[0] if contracts else False
+        if contracts:
+            open_contracts = contracts.filtered(lambda c: getattr(c, 'state', False) == 'open')
+            target_list = open_contracts if open_contracts else contracts
+            def _sort_key(c):
+                start = getattr(c, 'contract_date_start', False) or getattr(c, 'date_start', False)
+                return start or fields.Date.today()
+            return target_list.sorted(_sort_key, reverse=True)[0]
+        return False

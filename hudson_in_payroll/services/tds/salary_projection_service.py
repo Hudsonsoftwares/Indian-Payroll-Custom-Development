@@ -117,7 +117,7 @@ class SalaryProjectionService(BaseStatutoryService):
         # - Projection Months (salary_projection_months) is used ONLY to estimate projected annual income.
         # - Remaining Payroll Periods (remaining_periods) is used ONLY inside MonthlyTDSDistributionService to distribute remaining TDS liability.
         period_svc = PayrollPeriodService(self.env)
-        total_fy_months = period_svc.calculate_total_periods_in_fy(employee, financial_year)
+        total_fy_months = period_svc.calculate_total_periods_in_fy(employee, financial_year, eval_date=eval_date)
         remaining_periods = period_svc.calculate_remaining_periods(employee, financial_year, eval_date=eval_date)
 
         # Query paid/confirmed PRIOR payslips for current FY on or before eval_date.
@@ -152,6 +152,24 @@ class SalaryProjectionService(BaseStatutoryService):
                 join_fy_idx = min(12, max(1, join_elapsed))
             else:
                 join_fy_idx = 1
+
+            if join_fy_idx == 1 and employee and financial_year:
+                from .previous_employer_income_service import PreviousEmployerIncomeService
+                prev_svc = PreviousEmployerIncomeService(self.env)
+                prev_res = prev_svc.aggregate_previous_employer_income(employee, financial_year)
+                if prev_res.has_declaration and (prev_res.taxable_salary > 0 or prev_res.tds_deducted > 0):
+                    earliest_slip = self.env['hr.payslip'].search([
+                        ('employee_id', '=', employee.id),
+                        ('date_from', '>=', fy_start),
+                        ('date_to', '<=', fy_end)
+                    ], order='date_from asc', limit=1)
+                    if earliest_slip and earliest_slip.date_from:
+                        s_date = fields.Date.from_string(earliest_slip.date_from)
+                        join_elapsed = (s_date.year - fy_start_year) * 12 + (s_date.month - fy_start_month) + 1
+                        join_fy_idx = min(12, max(1, join_elapsed))
+                    else:
+                        elapsed_for_join = (eval_year - fy_start_year) * 12 + (eval_month - fy_start_month) + 1
+                        join_fy_idx = min(12, max(1, elapsed_for_join))
 
             elapsed_months = (eval_year - fy_start_year) * 12 + (eval_month - fy_start_month) + 1
             eval_fy_idx = min(12, max(1, elapsed_months))

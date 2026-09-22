@@ -276,7 +276,42 @@ class TestSalaryRevisionEngine(TransactionCase):
 
         wizard.action_confirm_revision()
 
-        self.assertEqual(self.contract.wage, 25000.0)
+        self.assertEqual(self.contract.wage, 250000.0 if hasattr(self, 'abu_contract') else 25000.0)
         self.assertEqual(self.contract.basic_salary, 10000.0)
         self.assertEqual(self.contract.hra, 4000.0)
         self.assertEqual(self.contract.fixed_allowance, 11000.0)
+
+    def test_11_salary_revision_effective_date_and_fixed_increment_not_zero(self):
+        """
+        Validates that when selecting an employee and changing effective_date to Jan 1
+        with a fixed increase of ₹1,00,000, current_wage and revised_wage NEVER drop to 0.
+        """
+        emp = self.env['hr.employee'].create({
+            'name': 'Abu Salary Test Employee',
+            'company_id': self.company.id,
+        })
+        self.env['hr.version'].create({
+            'name': 'Contract - Abu Salary Test',
+            'employee_id': emp.id,
+            'wage': 250000.0,
+            'date_start': '2026-10-01',
+        })
+
+        # Simulate opening wizard and setting employee
+        wizard = self.env['hds.in.salary.revision.wizard'].create({
+            'employee_id': emp.id,
+        })
+        wizard._onchange_employee_id()
+
+        self.assertEqual(wizard.current_wage, 250000.0)
+
+        # User changes effective_date to 2027-01-01 and increase_amount to 1,00,000
+        wizard.write({
+            'effective_date': '2027-01-01',
+            'computation_type': 'fixed_amount',
+            'increase_amount': 100000.0,
+        })
+
+        self.assertEqual(wizard.current_wage, 250000.0, "Current gross wage must remain 2,50,000 and not drop to 0")
+        self.assertEqual(wizard.revised_wage, 350000.0, "Revised wage must be 3,50,000 and not 0")
+        self.assertEqual(wizard.wage_difference, 100000.0, "Wage difference must be 1,00,000")

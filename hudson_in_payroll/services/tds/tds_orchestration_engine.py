@@ -944,33 +944,34 @@ contract_wage=%s""",
             )
 
             # 2. SHOW ANNUAL INCOME INPUTS
+            fy_emp_months = max(1, (sal_proj.months_elapsed + sal_proj.months_remaining) if sal_proj else 12)
             _logger.warning("""[TDS_DEBUG_TRACE] INCOME_COMPONENT
 code=BASIC
 name=Basic Salary
 monthly=%s
 annual=%s
-included=True""", sal_proj.total_basic / 12.0 if sal_proj.total_basic else 0.0, sal_proj.total_basic)
+included=True""", sal_proj.total_basic / float(fy_emp_months) if sal_proj.total_basic else 0.0, sal_proj.total_basic)
 
             _logger.warning("""[TDS_DEBUG_TRACE] INCOME_COMPONENT
 code=HRA
 name=House Rent Allowance
 monthly=%s
 annual=%s
-included=True""", sal_proj.total_hra / 12.0 if sal_proj.total_hra else 0.0, sal_proj.total_hra)
+included=True""", sal_proj.total_hra / float(fy_emp_months) if sal_proj.total_hra else 0.0, sal_proj.total_hra)
 
             _logger.warning("""[TDS_DEBUG_TRACE] INCOME_COMPONENT
 code=DA
 name=Dearness Allowance
 monthly=%s
 annual=%s
-included=True""", sal_proj.total_da / 12.0 if sal_proj.total_da else 0.0, sal_proj.total_da)
+included=True""", sal_proj.total_da / float(fy_emp_months) if sal_proj.total_da else 0.0, sal_proj.total_da)
 
             _logger.warning("""[TDS_DEBUG_TRACE] INCOME_COMPONENT
 code=ALLOWANCES
 name=Other Allowances
 monthly=%s
 annual=%s
-included=True""", sal_proj.total_allowances / 12.0 if sal_proj.total_allowances else 0.0, sal_proj.total_allowances)
+included=True""", sal_proj.total_allowances / float(fy_emp_months) if sal_proj.total_allowances else 0.0, sal_proj.total_allowances)
 
             if prev_emp.taxable_salary > 0:
                 _logger.warning("""[TDS_DEBUG_TRACE] INCOME_COMPONENT

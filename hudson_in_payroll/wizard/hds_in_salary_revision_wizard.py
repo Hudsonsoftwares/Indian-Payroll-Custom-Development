@@ -15,6 +15,23 @@ class HdsInSalaryRevisionWizard(models.TransientModel):
     _name = 'hds.in.salary.revision.wizard'
     _description = 'Hudson Indian Payroll Salary Revision Wizard'
 
+    def _get_employee_contract(self, employee):
+        """Resolves active/open employee contract safely across Odoo 19 hr.version."""
+        if not employee:
+            return False
+        contract = getattr(employee, 'version_id', False) or getattr(employee, 'contract_id', False)
+        if contract:
+            return contract
+        contracts = self.env['hr.version'].search([('employee_id', '=', employee.id)])
+        if contracts:
+            open_contracts = contracts.filtered(lambda c: getattr(c, 'state', False) == 'open')
+            target_list = open_contracts if open_contracts else contracts
+            def _sort_key(c):
+                start = getattr(c, 'contract_date_start', False) or getattr(c, 'date_start', False)
+                return start or fields.Date.today()
+            return target_list.sorted(_sort_key, reverse=True)[0]
+        return False
+
     @api.model
     def default_get(self, fields_list):
         res = super().default_get(fields_list)
@@ -24,14 +41,13 @@ class HdsInSalaryRevisionWizard(models.TransientModel):
         if active_model == 'hr.employee' and active_id:
             employee = self.env['hr.employee'].browse(active_id)
             res['employee_id'] = employee.id
-            contracts = self.env['hr.version'].search([('employee_id', '=', employee.id)])
-            contract = contracts.sorted(lambda c: c.date_start or fields.Date.today(), reverse=True)[0] if contracts else False
+            contract = self._get_employee_contract(employee)
             if contract:
                 res['contract_id'] = contract.id
-                res['current_wage'] = contract.wage
-                res['current_employer_cost_monthly'] = contract.hds_in_employer_cost_monthly
-                res['current_employer_cost_annual'] = contract.hds_in_employer_cost_annual
-                if contract.struct_id:
+                res['current_wage'] = contract.wage or 0.0
+                res['current_employer_cost_monthly'] = getattr(contract, 'hds_in_employer_cost_monthly', 0.0) or 0.0
+                res['current_employer_cost_annual'] = getattr(contract, 'hds_in_employer_cost_annual', 0.0) or 0.0
+                if getattr(contract, 'struct_id', False):
                     res['struct_id'] = contract.struct_id.id
         return res
 
@@ -42,32 +58,40 @@ class HdsInSalaryRevisionWizard(models.TransientModel):
     job_id = fields.Many2one('hr.job', string="Designation", related='employee_id.job_id', readonly=True)
     company_id = fields.Many2one('res.company', string="Company", related='employee_id.company_id', readonly=True)
     currency_id = fields.Many2one('res.currency', string="Currency", related='company_id.currency_id', readonly=True)
-    contract_id = fields.Many2one('hr.version', string="Current Contract", readonly=True)
+    contract_id = fields.Many2one('hr.version', string="Current Contract", compute='_compute_contract_info', readonly=False, store=True)
+    current_wage = fields.Monetary(string="Current Gross Salary", currency_field='currency_id', compute='_compute_contract_info', readonly=False, store=True)
+    current_employer_cost_monthly = fields.Monetary(string="Current Employer Cost (Monthly)", currency_field='currency_id', compute='_compute_contract_info', readonly=False, store=True)
+    current_employer_cost_annual = fields.Monetary(string="Current Employer Cost (Annual)", currency_field='currency_id', compute='_compute_contract_info', readonly=False, store=True)
+    struct_id = fields.Many2one('hr.payroll.structure', string="Payroll Structure", compute='_compute_contract_info', readonly=False, store=True)
+
+    @api.depends('employee_id')
+    def _compute_contract_info(self):
+        for wizard in self:
+            if wizard.employee_id:
+                contract = wizard._get_employee_contract(wizard.employee_id)
+                if contract:
+                    wizard.contract_id = contract.id
+                    wizard.current_wage = contract.wage or 0.0
+                    wizard.current_employer_cost_monthly = getattr(contract, 'hds_in_employer_cost_monthly', 0.0) or 0.0
+                    wizard.current_employer_cost_annual = getattr(contract, 'hds_in_employer_cost_annual', 0.0) or 0.0
+                    wizard.struct_id = contract.struct_id.id if getattr(contract, 'struct_id', False) else False
+                else:
+                    wizard.contract_id = False
+                    wizard.current_wage = getattr(wizard.employee_id, 'wage', 0.0) or 0.0
+                    wizard.current_employer_cost_monthly = 0.0
+                    wizard.current_employer_cost_annual = 0.0
+                    wizard.struct_id = False
+            else:
+                wizard.contract_id = False
+                wizard.current_wage = 0.0
+                wizard.current_employer_cost_monthly = 0.0
+                wizard.current_employer_cost_annual = 0.0
+                wizard.struct_id = False
 
     @api.onchange('employee_id')
     def _onchange_employee_id(self):
-        if self.employee_id:
-            contracts = self.env['hr.version'].search([('employee_id', '=', self.employee_id.id)])
-            contract = contracts.sorted(lambda c: c.date_start or fields.Date.today(), reverse=True)[0] if contracts else False
-            if contract:
-                self.contract_id = contract.id
-                self.current_wage = contract.wage or 0.0
-                self.current_employer_cost_monthly = contract.hds_in_employer_cost_monthly or 0.0
-                self.current_employer_cost_annual = contract.hds_in_employer_cost_annual or 0.0
-                self.struct_id = contract.struct_id.id if contract.struct_id else False
-            else:
-                self.contract_id = False
-                self.current_wage = self.employee_id.wage or 0.0
-                self.current_employer_cost_monthly = 0.0
-                self.current_employer_cost_annual = 0.0
-                self.struct_id = False
-            self._onchange_breakdown_distribution_mode()
-        else:
-            self.contract_id = False
-            self.current_wage = 0.0
-            self.current_employer_cost_monthly = 0.0
-            self.current_employer_cost_annual = 0.0
-            self.struct_id = False
+        self._compute_contract_info()
+        self._onchange_breakdown_distribution_mode()
 
     @api.depends('employee_id')
     def _compute_employee_code(self):
@@ -78,10 +102,6 @@ class HdsInSalaryRevisionWizard(models.TransientModel):
                 wizard.employee_code = str(code)
             else:
                 wizard.employee_code = False
-    current_wage = fields.Monetary(string="Current Gross Salary", currency_field='currency_id', readonly=True)
-    current_employer_cost_monthly = fields.Monetary(string="Current Employer Cost (Monthly)", currency_field='currency_id', readonly=True)
-    current_employer_cost_annual = fields.Monetary(string="Current Employer Cost (Annual)", currency_field='currency_id', readonly=True)
-    struct_id = fields.Many2one('hr.payroll.structure', string="Payroll Structure", readonly=True)
 
     # Section 2: Revision Details
     effective_date = fields.Date(string="Effective Date", default=fields.Date.today, required=True)
@@ -313,7 +333,16 @@ class HdsInSalaryRevisionWizard(models.TransientModel):
     )
     def _compute_payroll_preview(self):
         for wizard in self:
-            if not wizard.employee_id or wizard.current_wage <= 0.0:
+            wage_base = wizard.current_wage
+            if (not wage_base or wage_base <= 0.0) and wizard.employee_id:
+                contract = wizard._get_employee_contract(wizard.employee_id)
+                if contract and contract.wage:
+                    wage_base = contract.wage
+                    wizard.current_wage = wage_base
+                    if not wizard.contract_id:
+                        wizard.contract_id = contract.id
+
+            if not wizard.employee_id or wage_base <= 0.0:
                 wizard.revised_wage = 0.0
                 wizard.wage_difference = 0.0
                 wizard.preview_show_pf = False
@@ -351,12 +380,12 @@ class HdsInSalaryRevisionWizard(models.TransientModel):
             if wizard.revision_basis == 'capped_wage':
                 revised_wage = wizard.capped_wage_amount
             elif wizard.computation_type == 'percentage':
-                revised_wage = wizard.current_wage * (1.0 + (wizard.increase_percentage / 100.0))
+                revised_wage = wage_base * (1.0 + (wizard.increase_percentage / 100.0))
             else:
-                revised_wage = wizard.current_wage + wizard.increase_amount
+                revised_wage = wage_base + wizard.increase_amount
 
             wizard.revised_wage = revised_wage
-            wizard.wage_difference = revised_wage - wizard.current_wage
+            wizard.wage_difference = revised_wage - wage_base
 
             # Set section visibility flags
             wizard.preview_show_pf = bool(wizard.employee_id.hds_in_epf_applicable)
@@ -368,7 +397,7 @@ class HdsInSalaryRevisionWizard(models.TransientModel):
             manual_dict = wizard._get_manual_breakdown_dict() if wizard.breakdown_distribution_mode == 'manual_adjust' else None
             preview = preview_service.calculate_preview(
                 wizard.employee_id,
-                wizard.current_wage,
+                wage_base,
                 revised_wage,
                 effective_date=wizard.effective_date,
                 mode=wizard.breakdown_distribution_mode,

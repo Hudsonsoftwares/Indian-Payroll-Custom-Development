@@ -292,33 +292,34 @@ contract_wage=%s""",
             prev_emp = res.annual_income_projection.previous_employer_income
             oth_inc = res.annual_income_projection.other_income_aggregation
 
+            fy_emp_months = max(1, (sal_proj.months_elapsed + sal_proj.months_remaining) if sal_proj else 12)
             _logger.warning("""[TDS_DEBUG_TRACE] INCOME_COMPONENT
 code=BASIC
 name=Basic Salary
 monthly=%s
 annual=%s
-included=True""", sal_proj.total_basic / 12.0 if sal_proj.total_basic else 0.0, sal_proj.total_basic)
+included=True""", sal_proj.total_basic / float(fy_emp_months) if sal_proj.total_basic else 0.0, sal_proj.total_basic)
 
             _logger.warning("""[TDS_DEBUG_TRACE] INCOME_COMPONENT
 code=HRA
 name=House Rent Allowance
 monthly=%s
 annual=%s
-included=True""", sal_proj.total_hra / 12.0 if sal_proj.total_hra else 0.0, sal_proj.total_hra)
+included=True""", sal_proj.total_hra / float(fy_emp_months) if sal_proj.total_hra else 0.0, sal_proj.total_hra)
 
             _logger.warning("""[TDS_DEBUG_TRACE] INCOME_COMPONENT
 code=DA
 name=Dearness Allowance
 monthly=%s
 annual=%s
-included=True""", sal_proj.total_da / 12.0 if sal_proj.total_da else 0.0, sal_proj.total_da)
+included=True""", sal_proj.total_da / float(fy_emp_months) if sal_proj.total_da else 0.0, sal_proj.total_da)
 
             _logger.warning("""[TDS_DEBUG_TRACE] INCOME_COMPONENT
 code=ALLOWANCES
 name=Other Allowances
 monthly=%s
 annual=%s
-included=True""", sal_proj.total_allowances / 12.0 if sal_proj.total_allowances else 0.0, sal_proj.total_allowances)
+included=True""", sal_proj.total_allowances / float(fy_emp_months) if sal_proj.total_allowances else 0.0, sal_proj.total_allowances)
 
             if prev_emp.taxable_salary > 0:
                 _logger.warning("""[TDS_DEBUG_TRACE] INCOME_COMPONENT
@@ -1862,9 +1863,19 @@ else:
 
         contract = self.contract_id or (emp.version_id if hasattr(emp, 'version_id') else False)
         from ..services.tds.payroll_period_service import PayrollPeriodService
+        from ..services.tds.previous_employer_income_service import PreviousEmployerIncomeService
         period_svc = PayrollPeriodService(self.env)
-        total_fy_months = period_svc.calculate_total_periods_in_fy(emp, fy)
+        # Pass eval_date so mid-year joiners with Form 12B get correct period count (not 12)
+        total_fy_months = period_svc.calculate_total_periods_in_fy(emp, fy, eval_date=eval_date)
         rem_periods_count = period_svc.calculate_remaining_periods(emp, fy, eval_date=eval_date)
+
+        # Resolve previous employer income (salary + TDS) for PDF display.
+        # Use a direct service call so the result is authoritative regardless of whether
+        # the user filled tds.employee.income.declaration or hr.employee fields.
+        prev_emp_svc = PreviousEmployerIncomeService(self.env)
+        prev_emp_res_pdf = prev_emp_svc.aggregate_previous_employer_income(emp, fy) if fy else None
+        prev_employer_salary_pdf = float(getattr(prev_emp_res_pdf, 'taxable_salary', 0.0) or 0.0) if prev_emp_res_pdf else 0.0
+        prev_employer_tds_pdf = float(getattr(prev_emp_res_pdf, 'tds_deducted', 0.0) or 0.0) if prev_emp_res_pdf else 0.0
 
         rem_months = getattr(sal_proj, 'months_remaining', max(0, rem_periods_count - 1))
 
@@ -1934,17 +1945,37 @@ else:
         if remaining_alw > 0.01:
             tax_comp_income.append({'head': 'Special / Other Allowance', 'annual': remaining_alw, 'exempt': 0.0, 'taxable': remaining_alw})
 
-        prev_emp_val = getattr(prev_emp, 'taxable_salary', 0.0) if prev_emp else 0.0
+        # Previous employer taxable salary for PDF income table.
+        # Primary:  use engine's authoritative value (proj.previous_employer_income.taxable_salary)
+        #           — the engine now has a built-in safety fallback so this is the most reliable.
+        # Fallback: direct service result (prev_employer_salary_pdf) if engine value is 0.
+        engine_prev_sal = float(getattr(prev_emp, 'taxable_salary', 0.0) or 0.0) if prev_emp else 0.0
+        prev_emp_val = engine_prev_sal if engine_prev_sal > 0 else prev_employer_salary_pdf
+        # Sync: if the service found data but engine did not (should not happen after fix), use service
+        if prev_emp_val == 0 and prev_employer_salary_pdf > 0:
+            prev_emp_val = prev_employer_salary_pdf
         if prev_emp_val > 0:
-            tax_comp_income.append({'head': 'Previous Employer Salary', 'annual': prev_emp_val, 'exempt': 0.0, 'taxable': prev_emp_val})
-        
+            tax_comp_income.append({'head': 'Previous Employer Salary (Form 12B)', 'annual': prev_emp_val, 'exempt': 0.0, 'taxable': prev_emp_val})
+
         oth_inc_val = getattr(oth_inc, 'total_other_income', 0.0) if oth_inc else 0.0
         if oth_inc_val > 0:
             tax_comp_income.append({'head': 'Declared Other Income', 'annual': oth_inc_val, 'exempt': 0.0, 'taxable': oth_inc_val})
 
+        # Derive display GTI from the income list.
+        # Then override with engine's authoritative gross_total_income to capture any engine-side
+        # components that may differ from the display list (e.g., engine resolves prev employer
+        # income from a different path or captures additional components).
         gti_annual = sum(i['annual'] for i in tax_comp_income)
         gti_exempt = sum(i['exempt'] for i in tax_comp_income)
         gti_taxable = sum(i['taxable'] for i in tax_comp_income)
+        # Override with engine GTI if it's larger (engine is the source of truth for tax computation)
+        engine_gti = float(getattr(proj, 'gross_total_income', 0.0) or 0.0) if proj else 0.0
+        engine_net_taxable = float(getattr(tax_inc, 'net_taxable_income', 0.0) or 0.0) if tax_inc else 0.0
+        if engine_gti > gti_annual + 0.01:
+            # Engine has more income than the display list — adjust the display totals
+            gap = engine_gti - gti_annual
+            gti_annual = engine_gti
+            gti_taxable = gti_annual - gti_exempt
 
         # Resolve Tax Regime
         regime_code = 'new'
@@ -2027,17 +2058,31 @@ else:
         cess_val = getattr(cess_obj, 'cess_amount', 0.0) if cess_obj else 0.0
         total_annual_tax = getattr(tds_res, 'total_annual_tax_liability', tax_plus_surcharge + cess_val)
 
-        # Authoritative TDS Engine Breakdown according to financial-year payroll period
-        current_month_tds = getattr(monthly_obj, 'current_month_tds', 0.0) if monthly_obj else 0.0
-        prior_ytd_tds = getattr(monthly_obj, 'total_tds_paid_so_far', 0.0) if monthly_obj else 0.0
-        tds_recovered_ytd = prior_ytd_tds + current_month_tds
-        remaining_tds_liability = max(0.0, total_annual_tax - tds_recovered_ytd)
+        # Authoritative TDS Engine Breakdown — read directly from MonthlyTDSDistributionResult
+        # which is the single source of truth for distribution maths.
+        current_month_tds = float(getattr(monthly_obj, 'current_month_tds', 0.0) or 0.0) if monthly_obj else 0.0
+        ytd_current_tds_only = float(getattr(monthly_obj, 'ytd_tds_deducted', 0.0) or 0.0) if monthly_obj else 0.0
 
-        rem_periods_raw = getattr(monthly_obj, 'remaining_payroll_periods', None)
-        if not rem_periods_raw:
-            rem_periods_raw = period_svc.calculate_remaining_periods(emp, fy, eval_date=eval_date)
-        remaining_months = max(0, rem_periods_raw - 1)
-        projected_monthly_tds = round(remaining_tds_liability / remaining_months, 2) if remaining_months > 0 else 0.0
+        # YTD (current employer only, inc. this month) — for display
+        tds_recovered_ytd = ytd_current_tds_only + current_month_tds
+
+        # Remaining TDS liability = what the engine already computed:
+        #   total_annual_tax - (ytd_current + prev_employer_tds)
+        # Use the engine's pre-computed value directly so it never diverges.
+        eng_remaining = float(getattr(monthly_obj, 'remaining_annual_tax_liability', 0.0) or 0.0) if monthly_obj else 0.0
+        # remaining_annual_tax_liability from the engine = total_annual_tax - (ytd + prev_tds),
+        # BEFORE dividing by remaining periods.  This is exactly what the PDF should display.
+        remaining_tds_liability = eng_remaining if eng_remaining > 0 else max(0.0, total_annual_tax - prev_employer_tds_pdf - ytd_current_tds_only)
+
+        # Remaining months = remaining_payroll_periods from the engine (INCLUDES current month).
+        # For an October-1 joiner evaluating October, this is 6 (Oct–Mar).
+        eng_rem_periods = int(getattr(monthly_obj, 'remaining_payroll_periods', 0) or 0) if monthly_obj else 0
+        if eng_rem_periods <= 0:
+            eng_rem_periods = period_svc.calculate_remaining_periods(emp, fy, eval_date=eval_date)
+        remaining_months = max(1, eng_rem_periods)  # display value matches the divisor used in monthly_tds
+
+        # Monthly TDS = the engine's authoritative current_month_tds (= remaining / remaining_periods)
+        projected_monthly_tds = current_month_tds
 
         tax_rows = [
             (inc['head'], inc['annual'], 0.0, inc['exempt'], inc['taxable'])
@@ -2056,11 +2101,12 @@ else:
                 investments.append(('Housing Loan - Interest (24b)', decl.decl_24b_self_interest))
 
             if decl.decl_hra_annual_rent > 0:
+                rent_from_dt = joining_date if (joining_date and fy and fy.start_date and joining_date > fy.start_date) else (fy.start_date if fy else None)
                 hra_declarations.append({
                     'type': 'HRA - Rent Payments',
-                    'from_date': fy.start_date.strftime('%d-%b-%Y') if fy and fy.start_date else '',
+                    'from_date': rent_from_dt.strftime('%d-%b-%Y') if rent_from_dt else '',
                     'to_date': fy.end_date.strftime('%d-%b-%Y') if fy and fy.end_date else '',
-                    'rent_month': round(decl.decl_hra_annual_rent / 12.0, 2),
+                    'rent_month': round(decl.decl_hra_annual_rent / float(total_fy_months or 12), 2),
                     'metro': 'Y' if decl.decl_hra_is_metro else 'N'
                 })
 
@@ -2110,6 +2156,7 @@ else:
             'cess': cess_val,
             'total_annual_tax': total_annual_tax,
             'current_month_tds': current_month_tds,
+            'prev_employer_tds': prev_employer_tds_pdf,
             'tds_recovered_ytd': tds_recovered_ytd,
             'remaining_tds_liability': remaining_tds_liability,
             'remaining_months': remaining_months,

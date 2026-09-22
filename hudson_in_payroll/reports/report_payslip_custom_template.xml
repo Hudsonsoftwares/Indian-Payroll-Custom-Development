@@ -232,17 +232,26 @@
                             </tr>
                             <tr>
                                 <td style="padding: 2px 4px; font-weight: bold;">Total TDS Liability: ₹ <t t-esc="'{:,.2f}'.format(pdata.get('total_annual_tax', 0.0))"/></td>
-                                <td style="padding: 2px 4px; font-weight: bold; text-align: right;">TDS Deducted: ₹ <t t-esc="'{:,.2f}'.format(pdata.get('current_month_tds', 0.0))"/></td>
+                                <td style="padding: 2px 4px; font-weight: bold; text-align: right;">TDS Deducted (This Month): ₹ <t t-esc="'{:,.2f}'.format(pdata.get('current_month_tds', 0.0))"/></td>
                             </tr>
-                            <tr>
+                            <tr t-if="pdata.get('prev_employer_tds', 0.0) &gt; 0">
+                                <td style="padding: 2px 4px; font-weight: bold; color: #5a3e00;">Prev. Employer TDS (Form 12B): ₹ <t t-esc="'{:,.2f}'.format(pdata.get('prev_employer_tds', 0.0))"/></td>
+                                <td style="padding: 2px 4px; font-weight: bold; text-align: right;">TDS Recovered YTD (Current Empl.): ₹ <t t-esc="'{:,.2f}'.format(pdata['tds_recovered_ytd'])"/></td>
+                            </tr>
+                            <tr t-else="">
                                 <td style="padding: 2px 4px; font-weight: bold;">TDS Recovered YTD (inc. current): ₹ <t t-esc="'{:,.2f}'.format(pdata['tds_recovered_ytd'])"/></td>
                                 <td style="padding: 2px 4px; font-weight: bold; text-align: right;">Remaining TDS Liability: ₹ <t t-esc="'{:,.2f}'.format(pdata['remaining_tds_liability'])"/></td>
+                            </tr>
+                            <tr t-if="pdata.get('prev_employer_tds', 0.0) &gt; 0">
+                                <td style="padding: 2px 4px; font-weight: bold;">Remaining TDS Liability: ₹ <t t-esc="'{:,.2f}'.format(pdata['remaining_tds_liability'])"/></td>
+                                <td style="padding: 2px 4px; font-weight: bold; text-align: right;"></td>
                             </tr>
                             <tr style="border-top: 1px solid #eef2f5; font-weight: bold; background: #eef4f8;">
                                 <td style="padding: 2px 4px;">Remaining Months: <t t-esc="pdata['remaining_months']"/> Months</td>
                                 <td style="padding: 2px 4px; text-align: right; color: #003366;">Projected Monthly TDS: ₹ <t t-esc="'{:,.2f}'.format(pdata['projected_monthly_tds'])"/></td>
                             </tr>
                         </table>
+
                     </td>
                 </tr>
             </table>

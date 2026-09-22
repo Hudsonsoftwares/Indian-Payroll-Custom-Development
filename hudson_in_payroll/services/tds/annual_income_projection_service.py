@@ -6,7 +6,7 @@ from ..base import BaseStatutoryService
 
 from .tds_parameter_service import TdsParameterService
 from .salary_projection_service import SalaryProjectionService
-from .previous_employer_income_service import PreviousEmployerIncomeService
+from .previous_employer_income_service import PreviousEmployerIncomeService, PreviousEmployerIncomeResult
 from .other_income_aggregation_service import OtherIncomeAggregationService
 from .regime_routing_service import RegimeRoutingService
 
@@ -154,6 +154,33 @@ class AnnualIncomeProjectionService(BaseStatutoryService):
         prev_emp_svc = PreviousEmployerIncomeService(self.env)
         prev_emp_inc = prev_emp_svc.aggregate_previous_employer_income(employee, financial_year)
 
+        _logger.warning(
+            "[ANNUAL_PROJ] prev_emp_inc | taxable_salary=%s | tds_deducted=%s | has_declaration=%s",
+            prev_emp_inc.taxable_salary, prev_emp_inc.tds_deducted, prev_emp_inc.has_declaration
+        )
+
+        # Safety net: if the service returned 0 / no declaration, do one final direct read
+        # from tds.employee.income.declaration so the value is NEVER silently dropped from GTI.
+        if not prev_emp_inc.has_declaration or prev_emp_inc.taxable_salary == 0.0:
+            _direct = self.env['tds.employee.income.declaration'].sudo().search([
+                ('employee_id', '=', employee.id),
+                ('financial_year_id', '=', financial_year.id),
+            ], limit=1)
+            if _direct and (_direct.prev_employer_taxable_gross or _direct.prev_employer_tds):
+                _logger.warning(
+                    "[ANNUAL_PROJ] Safety fallback: direct inc_decl found | "
+                    "prev_gross=%s | tds=%s",
+                    float(_direct.prev_employer_taxable_gross or 0.0),
+                    float(_direct.prev_employer_tds or 0.0)
+                )
+                prev_emp_inc = PreviousEmployerIncomeResult(
+                    taxable_salary=float(_direct.prev_employer_taxable_gross or 0.0),
+                    tds_deducted=float(_direct.prev_employer_tds or 0.0),
+                    pt_deducted=float(_direct.prev_employer_pt or 0.0),
+                    pf_contributed=float(_direct.prev_employer_pf or 0.0),
+                    has_declaration=True
+                )
+
         # 5. Aggregate Other Non-Payroll Income (Regime-aware HP loss set-off)
         other_inc_svc = OtherIncomeAggregationService(self.env)
         other_inc_agg = other_inc_svc.aggregate_other_income(employee, financial_year, regime_code=regime_code, eval_date=eval_date)
@@ -162,6 +189,11 @@ class AnnualIncomeProjectionService(BaseStatutoryService):
         current_employer_income = salary_proj.total_projected_current_salary
         prev_emp_income = prev_emp_inc.taxable_salary
         other_income_val = other_inc_agg.total_other_income
+
+        _logger.warning(
+            "[ANNUAL_PROJ] GTI | current_employer=%.2f | prev_employer=%.2f | other=%.2f",
+            current_employer_income, prev_emp_income, other_income_val
+        )
 
         projected_annual_salary = current_employer_income + prev_emp_income
         gross_total_income = projected_annual_salary + other_income_val

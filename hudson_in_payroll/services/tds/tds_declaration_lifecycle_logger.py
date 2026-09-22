@@ -53,7 +53,7 @@ class TdsDeclarationLifecycleLogger:
         ytd_tds=0.0,
         annual_tax=0.0,
         remaining_tax=0.0,
-        remaining_periods=12,
+        remaining_periods=None,
         current_month_tds=0.0,
         service_method=None
     ):
@@ -294,7 +294,7 @@ Reason:
         ytd_tds=0.0,
         annual_tax=0.0,
         remaining_tax=0.0,
-        remaining_periods=12,
+        remaining_periods=None,
         current_month_tds=0.0,
         source_type='DECLARATION_LINE',
         contract_id=None,
@@ -325,8 +325,9 @@ Reason:
         config_pct = float(configured_percentage or 0.0)
         statutory_ceiling = float(calculated_ceiling or (sal_base * (config_pct / 100.0)))
 
-        m_basic = float(monthly_basic or (annual_b / 12.0 if annual_b > 0 else 0.0))
-        m_da = float(monthly_da or (annual_d / 12.0 if annual_d > 0 else 0.0))
+        div_m = float(remaining_periods or 12.0)
+        m_basic = float(monthly_basic or (annual_b / div_m if annual_b > 0 else 0.0))
+        m_da = float(monthly_da or (annual_d / div_m if annual_d > 0 else 0.0))
 
         within_ceiling = declared_amt <= statutory_ceiling
         cap_applied_str = "YES" if declared_amt > statutory_ceiling else "NO"
@@ -464,7 +465,7 @@ Reason:
         ytd_tds=0.0,
         annual_tax=0.0,
         remaining_tax=0.0,
-        remaining_periods=12,
+        remaining_periods=None,
         current_month_tds=0.0,
         source_type='DECLARATION_LINE',
         taxable_income_after=0.0
@@ -612,7 +613,7 @@ Current Month TDS        : ₹{float(current_month_tds or 0.0):,.2f}
         ytd_tds=0.0,
         annual_tax=0.0,
         remaining_tax=0.0,
-        remaining_periods=12,
+        remaining_periods=None,
         current_month_tds=0.0,
         chapter_6a_amount=0.0
     ):

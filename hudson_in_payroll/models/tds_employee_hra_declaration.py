@@ -226,10 +226,18 @@ class TdsEmployeeHraDeclaration(models.Model):
             else:
                 rec.tax_regime_id = False
 
-    @api.depends('annual_rent_paid')
+    @api.depends('annual_rent_paid', 'rent_period_from', 'rent_period_to', 'employee_id', 'financial_year_id')
     def _compute_monthly_rent(self):
         for rec in self:
-            rec.monthly_rent_paid = (rec.annual_rent_paid or 0.0) / 12.0
+            months = 0
+            if rec.rent_period_from and rec.rent_period_to:
+                months = (rec.rent_period_to.year - rec.rent_period_from.year) * 12 + (rec.rent_period_to.month - rec.rent_period_from.month) + 1
+            if months <= 0 and rec.employee_id and rec.financial_year_id:
+                from ..services.tds.payroll_period_service import PayrollPeriodService
+                period_svc = PayrollPeriodService(self.env)
+                months = period_svc.calculate_total_periods_in_fy(rec.employee_id, rec.financial_year_id)
+            divisor = float(max(1, min(12, months or 12)))
+            rec.monthly_rent_paid = (rec.annual_rent_paid or 0.0) / divisor
 
     @api.depends('annual_rent_paid')
     def _compute_is_pan_required(self):

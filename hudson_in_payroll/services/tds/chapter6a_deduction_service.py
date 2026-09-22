@@ -412,8 +412,11 @@ permitted_status=%s""",
 
                     contract_obj = sal_svc._get_employee_contract(employee) if hasattr(sal_svc, '_get_employee_contract') else False
                     c_id = getattr(contract_obj, 'id', 'N/A') if contract_obj else 'N/A'
-                    m_b = float(getattr(contract_obj, 'basic_salary', 0.0) or 0.0) if contract_obj else (annual_b / 12.0)
-                    m_d = float(getattr(contract_obj, 'da', 0.0) or getattr(contract_obj, 'da_amount', 0.0) or 0.0) if contract_obj else (annual_d / 12.0)
+                    from .payroll_period_service import PayrollPeriodService
+                    _period_svc = PayrollPeriodService(self.env)
+                    _emp_periods = _period_svc.calculate_total_periods_in_fy(employee, fy, eval_date=eval_date) if (employee and fy) else 12.0
+                    m_b = float(getattr(contract_obj, 'basic_salary', 0.0) or 0.0) if contract_obj else (annual_b / float(_emp_periods or 12))
+                    m_d = float(getattr(contract_obj, 'da', 0.0) or getattr(contract_obj, 'da_amount', 0.0) or 0.0) if contract_obj else (annual_d / float(_emp_periods or 12))
 
                     # Note: 80CCD(2) dedicated statutory trace is logged by declaration-level trigger in tds.employee.declaration._compute_totals()
                     pass
@@ -588,8 +591,11 @@ TOTAL_CHAPTER6A_DEDUCTIONS_SO_FAR=%s""",
 
             contract_obj = sal_svc._get_employee_contract(employee) if hasattr(sal_svc, '_get_employee_contract') else False
             c_id = getattr(contract_obj, 'id', 'N/A') if contract_obj else 'N/A'
-            m_b = float(getattr(contract_obj, 'basic_salary', 0.0) or 0.0) if contract_obj else (annual_b / 12.0)
-            m_d = float(getattr(contract_obj, 'da', 0.0) or getattr(contract_obj, 'da_amount', 0.0) or 0.0) if contract_obj else (annual_d / 12.0)
+            from .payroll_period_service import PayrollPeriodService
+            _period_svc = PayrollPeriodService(self.env)
+            _emp_periods = _period_svc.calculate_total_periods_in_fy(employee, fy, eval_date=eval_date) if (employee and fy) else 12.0
+            m_b = float(getattr(contract_obj, 'basic_salary', 0.0) or 0.0) if contract_obj else (annual_b / float(_emp_periods or 12))
+            m_d = float(getattr(contract_obj, 'da', 0.0) or getattr(contract_obj, 'da_amount', 0.0) or 0.0) if contract_obj else (annual_d / float(_emp_periods or 12))
             
             # Note: 80CCD(2) dedicated statutory trace is logged by declaration-level trigger in tds.employee.declaration._compute_totals()
             pass

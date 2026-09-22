@@ -20,23 +20,52 @@ class PayrollPeriodService(BaseStatutoryService):
     def _resolve_employee_joining_date(self, employee):
         """
         Resolves employee's joining date or first employment start date.
+        Supports employee helper methods, Odoo 19 hr.version, version_id, contract_date_start, date_start, and all employee joining fields.
         """
         if not employee:
             return None
-        for fname in ('joining_date', 'date_of_joining', 'hds_in_doj', 'first_contract_date', 'contract_date_start'):
+
+        # Check if employee has dedicated joining date helper method
+        if hasattr(employee, '_get_employee_joining_date'):
+            try:
+                emp_join = employee._get_employee_joining_date()
+                if emp_join:
+                    return fields.Date.from_string(emp_join) if isinstance(emp_join, str) else emp_join
+            except Exception:
+                pass
+
+        for fname in ('contract_date_start', 'joining_date', 'date_of_joining', 'hds_in_doj',
+                      'first_contract_date', 'hds_in_esic_joining_date', 'hds_in_pf_joining_date', 'date_start'):
             val = getattr(employee, fname, None)
             if val:
                 return fields.Date.from_string(val) if isinstance(val, str) else val
-        # Check employee contract
-        contract = False
-        if hasattr(employee, 'contract_id') and employee.contract_id:
-            contract = employee.contract_id
-        elif hasattr(employee, 'contract_ids') and employee.contract_ids:
+
+        # Check employee contract (hr.version in Odoo 19 or legacy hr.contract)
+        contract = getattr(employee, 'version_id', False) or getattr(employee, 'contract_id', False)
+        if not contract and hasattr(employee, 'contract_ids') and employee.contract_ids:
             open_contracts = employee.contract_ids.filtered(lambda c: getattr(c, 'state', False) == 'open')
             contract = open_contracts[0] if open_contracts else employee.contract_ids[0]
-        if contract and getattr(contract, 'date_start', None):
-            val = contract.date_start
-            return fields.Date.from_string(val) if isinstance(val, str) else val
+        if not contract:
+            ContractModel = self.env.get('hr.version') or self.env.get('hr.contract')
+            if ContractModel is not None:
+                contracts = ContractModel.search([('employee_id', '=', employee.id)])
+                if contracts:
+                    open_contracts = contracts.filtered(lambda c: getattr(c, 'state', False) == 'open')
+                    contract = open_contracts[0] if open_contracts else contracts[0]
+
+        if contract:
+            for dfname in ('contract_date_start', 'date_start', 'date_version'):
+                val = getattr(contract, dfname, None)
+                if val:
+                    return fields.Date.from_string(val) if isinstance(val, str) else val
+
+        # Fallback: check earliest payslip date for this employee
+        first_slip = self.env['hr.payslip'].search([
+            ('employee_id', '=', employee.id),
+        ], order='date_from asc', limit=1)
+        if first_slip and first_slip.date_from:
+            return fields.Date.from_string(first_slip.date_from)
+
         return None
 
     def _resolve_employee_departure_date(self, employee):
@@ -49,20 +78,31 @@ class PayrollPeriodService(BaseStatutoryService):
             val = getattr(employee, fname, None)
             if val:
                 return fields.Date.from_string(val) if isinstance(val, str) else val
-        contract = False
-        if hasattr(employee, 'contract_id') and employee.contract_id:
-            contract = employee.contract_id
-        elif hasattr(employee, 'contract_ids') and employee.contract_ids:
+
+        contract = getattr(employee, 'version_id', False) or getattr(employee, 'contract_id', False)
+        if not contract and hasattr(employee, 'contract_ids') and employee.contract_ids:
             open_contracts = employee.contract_ids.filtered(lambda c: getattr(c, 'state', False) == 'open')
             contract = open_contracts[0] if open_contracts else employee.contract_ids[0]
-        if contract and getattr(contract, 'date_end', None):
-            val = contract.date_end
-            return fields.Date.from_string(val) if isinstance(val, str) else val
+        if not contract:
+            ContractModel = self.env.get('hr.version') or self.env.get('hr.contract')
+            if ContractModel is not None:
+                contracts = ContractModel.search([('employee_id', '=', employee.id)])
+                if contracts:
+                    open_contracts = contracts.filtered(lambda c: getattr(c, 'state', False) == 'open')
+                    contract = open_contracts[0] if open_contracts else contracts[0]
+
+        if contract:
+            for dfname in ('contract_date_end', 'date_end'):
+                val = getattr(contract, dfname, None)
+                if val:
+                    return fields.Date.from_string(val) if isinstance(val, str) else val
+
         return None
 
     def calculate_remaining_periods(self, employee, financial_year, eval_date=None):
         """
         Calculates remaining payroll periods in Financial Year (inclusive of current month).
+        Always respects employee joining date rather than assuming 12 months.
 
         :param employee: hr.employee record
         :param financial_year: tds.financial.year record
@@ -77,6 +117,11 @@ class PayrollPeriodService(BaseStatutoryService):
         fy_end = financial_year.end_date if financial_year else None
 
         if not fy_start or not fy_end:
+            joining_date = self._resolve_employee_joining_date(employee)
+            if joining_date and eval_date:
+                ed = fields.Date.from_string(eval_date) if isinstance(eval_date, str) else eval_date
+                rem = (12 - ed.month + 1) if ed else 12
+                return max(1, rem)
             return 12
 
         if eval_date > fy_end:
@@ -103,6 +148,26 @@ class PayrollPeriodService(BaseStatutoryService):
             join_fy_idx = min(12, max(1, join_elapsed))
         else:
             join_fy_idx = 1
+
+        # If joining date was not resolved on employee/contract, but employee declared previous employer income:
+        if join_fy_idx == 1 and employee and financial_year:
+            from .previous_employer_income_service import PreviousEmployerIncomeService
+            prev_svc = PreviousEmployerIncomeService(self.env)
+            prev_res = prev_svc.aggregate_previous_employer_income(employee, financial_year)
+            if prev_res.has_declaration and (prev_res.taxable_salary > 0 or prev_res.tds_deducted > 0):
+                earliest_slip = self.env['hr.payslip'].search([
+                    ('employee_id', '=', employee.id),
+                    ('date_from', '>=', fy_start),
+                    ('date_to', '<=', fy_end)
+                ], order='date_from asc', limit=1)
+                if earliest_slip and earliest_slip.date_from:
+                    s_date = fields.Date.from_string(earliest_slip.date_from)
+                    join_elapsed = (s_date.year - fy_start_year) * 12 + (s_date.month - fy_start_month) + 1
+                    join_fy_idx = min(12, max(1, join_elapsed))
+                elif eval_date:
+                    ed = fields.Date.from_string(eval_date) if isinstance(eval_date, str) else eval_date
+                    join_elapsed = (ed.year - fy_start_year) * 12 + (ed.month - fy_start_month) + 1
+                    join_fy_idx = min(12, max(1, join_elapsed))
 
         # Effective start index for remaining periods:
         # If eval_date is earlier than joining date, countdown starts from joining month.
@@ -131,13 +196,19 @@ class PayrollPeriodService(BaseStatutoryService):
         )
         return remaining_periods
 
-    def calculate_total_periods_in_fy(self, employee, financial_year):
+    def calculate_total_periods_in_fy(self, employee, financial_year, eval_date=None):
         """
         Calculates total employment months for the employee in this Financial Year.
         - Existing employee (joined on/before FY start): 12 months (or up to departure date).
         - Mid-year joiner (joined after FY start): count of months from joining month to FY end (or departure date).
         """
         if not financial_year or not financial_year.start_date or not financial_year.end_date:
+            joining_date = self._resolve_employee_joining_date(employee)
+            if joining_date:
+                ed = fields.Date.from_string(eval_date) if eval_date and isinstance(eval_date, str) else (eval_date or fields.Date.today())
+                if ed and joining_date > ed:
+                    rem = 12 - joining_date.month + 1 if joining_date.month <= 3 else 12 - (joining_date.month - 3) + 1
+                    return max(1, min(12, rem))
             return 12
 
         fy_start = financial_year.start_date
@@ -153,6 +224,26 @@ class PayrollPeriodService(BaseStatutoryService):
             join_fy_idx = min(12, max(1, join_elapsed))
         else:
             join_fy_idx = 1
+
+        # If joining date was not resolved on employee/contract, check if previous employer income is declared
+        if join_fy_idx == 1 and employee and financial_year:
+            from .previous_employer_income_service import PreviousEmployerIncomeService
+            prev_svc = PreviousEmployerIncomeService(self.env)
+            prev_res = prev_svc.aggregate_previous_employer_income(employee, financial_year)
+            if prev_res.has_declaration and (prev_res.taxable_salary > 0 or prev_res.tds_deducted > 0):
+                earliest_slip = self.env['hr.payslip'].search([
+                    ('employee_id', '=', employee.id),
+                    ('date_from', '>=', fy_start),
+                    ('date_to', '<=', fy_end)
+                ], order='date_from asc', limit=1)
+                if earliest_slip and earliest_slip.date_from:
+                    s_date = fields.Date.from_string(earliest_slip.date_from)
+                    join_elapsed = (s_date.year - fy_start_year) * 12 + (s_date.month - fy_start_month) + 1
+                    join_fy_idx = min(12, max(1, join_elapsed))
+                elif eval_date:
+                    ed = fields.Date.from_string(eval_date) if isinstance(eval_date, str) else eval_date
+                    join_elapsed = (ed.year - fy_start_year) * 12 + (ed.month - fy_start_month) + 1
+                    join_fy_idx = min(12, max(1, join_elapsed))
 
         departure_date = self._resolve_employee_departure_date(employee)
         if departure_date and departure_date < fy_end:

@@ -24,10 +24,10 @@
                             <field name="company_id" groups="base.group_multi_company"/>
                         </group>
                         <group>
-                            <field name="contract_id"/>
-                            <field name="struct_id"/>
-                            <field name="current_wage" widget="monetary"/>
-                            <field name="current_employer_cost_monthly" widget="monetary"/>
+                            <field name="contract_id" readonly="1" force_save="1"/>
+                            <field name="struct_id" readonly="1" force_save="1"/>
+                            <field name="current_wage" widget="monetary" readonly="1" force_save="1"/>
+                            <field name="current_employer_cost_monthly" widget="monetary" readonly="1" force_save="1"/>
                         </group>
                     </group>
 
@@ -144,11 +144,11 @@
 
                     <group>
                         <group string="Salary Summary">
-                            <field name="current_wage" string="Current Gross" widget="monetary"/>
-                            <field name="revised_wage" string="Revised Gross" class="fw-bold text-success" widget="monetary"/>
-                            <field name="wage_difference" string="Difference" class="fw-bold" widget="monetary"/>
-                            <field name="preview_old_ctc" string="Current Employer Cost" widget="monetary"/>
-                            <field name="preview_new_ctc" string="Estimated Employer Cost" class="fw-bold text-primary" widget="monetary"/>
+                            <field name="current_wage" string="Current Gross" widget="monetary" readonly="1" force_save="1"/>
+                            <field name="revised_wage" string="Revised Gross" class="fw-bold text-success" widget="monetary" readonly="1" force_save="1"/>
+                            <field name="wage_difference" string="Difference" class="fw-bold" widget="monetary" readonly="1" force_save="1"/>
+                            <field name="preview_old_ctc" string="Current Employer Cost" widget="monetary" readonly="1" force_save="1"/>
+                            <field name="preview_new_ctc" string="Estimated Employer Cost" class="fw-bold text-primary" widget="monetary" readonly="1" force_save="1"/>
                         </group>
                         <group string="Provident Fund (EPF &amp; EPS)" invisible="not preview_show_pf">
                             <field name="preview_old_epf_wage" widget="monetary"/>
