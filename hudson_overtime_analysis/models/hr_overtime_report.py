@@ -22,7 +22,7 @@ class HrOvertimeReport(models.Model):
                 SELECT
                     att.id as id,
                     att.employee_id as employee_id,
-                    v.department_id as department_id,
+                    COALESCE(v.department_id, emp.department_id) as department_id,
                     att.date as date,
                     att.worked_hours as worked_hours,
                     att.expected_hours as expected_hours,

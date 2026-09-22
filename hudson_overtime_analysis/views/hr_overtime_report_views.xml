@@ -57,10 +57,19 @@
         </field>
     </record>
 
-    <!-- Menu Item -->
+    <!-- Attendance Reporting Menu Item -->
     <menuitem id="menu_hr_attendance_overtime_reporting"
               name="Overtime Analysis"
               parent="hr_attendance.menu_hr_attendance_reporting"
               action="action_hr_overtime_report"
               sequence="20"/>
+
+    <!-- Payroll Reporting Menu Item -->
+    <menuitem id="menu_hr_payroll_overtime_reporting"
+              name="Overtime Analysis"
+              parent="hudson_payroll_base.menu_hr_payroll_reporting"
+              action="action_hr_overtime_report"
+              sequence="45"
+              groups="hudson_payroll_base.group_payroll_user"/>
 </odoo>
+

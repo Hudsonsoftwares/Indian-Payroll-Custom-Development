@@ -71,6 +71,10 @@ class HdsPayrollDashboard(models.Model):
     esic_employer_liability = fields.Monetary(string="Employer ESIC Liability", currency_field='currency_id', compute='_compute_dashboard_metrics')
     lwf_employer_liability = fields.Monetary(string="Employer LWF Liability", currency_field='currency_id', compute='_compute_dashboard_metrics')
     total_employer_statutory_liability = fields.Monetary(string="Total Employer Statutory Liability", currency_field='currency_id', compute='_compute_dashboard_metrics')
+    epf_ee_liability = fields.Monetary(string="Employee EPF Liability", currency_field='currency_id', compute='_compute_dashboard_metrics')
+    esic_ee_liability = fields.Monetary(string="Employee ESIC Liability", currency_field='currency_id', compute='_compute_dashboard_metrics')
+    lwf_total_liability = fields.Monetary(string="Total LWF Liability", currency_field='currency_id', compute='_compute_dashboard_metrics')
+    total_statutory_liability = fields.Monetary(string="Total Statutory Compliance Liability", currency_field='currency_id', compute='_compute_dashboard_metrics')
 
     # 6. Statutory Compliance & Identifier Status
     epf_complete_count = fields.Integer(string="EPF Complete UAN Count", compute='_compute_dashboard_metrics')
@@ -281,12 +285,12 @@ class HdsPayrollDashboard(models.Model):
                 rec.final_settlement_approved_count = 0
                 rec.final_settlement_paid_count = 0
 
-            # Payslips and Payroll Financial Metrics for period (Company-aware, Paid/Done Slips Only - Excluding Draft)
+            # Payslips and Payroll Financial Metrics for period (Company-aware, Non-cancelled Slips with Deduplication)
             company_domain = [('company_id', 'in', self.env.companies.ids)]
             period_domain = [
                 ('date_from', '<=', month_end),
                 ('date_to', '>=', month_start),
-                ('state', 'in', ('paid', 'done')),
+                ('state', '!=', 'cancel'),
             ] + company_domain
             all_slips = self.env['hr.payslip'].search(period_domain)
 
@@ -318,8 +322,11 @@ class HdsPayrollDashboard(models.Model):
             tot_basic = 0.0
             tot_tds = 0.0
             tot_epf = 0.0
+            tot_ee_epf = 0.0
             tot_esi = 0.0
+            tot_ee_esi = 0.0
             tot_pt = 0.0
+            tot_lwf = 0.0
             tot_er_epf = 0.0
             tot_er_epf_share = 0.0
             tot_er_eps = 0.0
@@ -380,6 +387,7 @@ class HdsPayrollDashboard(models.Model):
 
                     # EPF Statutory Liabilities (Combined EE + ER for compliance records)
                     if code in ('PF', 'EPF', 'EE_PF'):
+                        tot_ee_epf += amt
                         tot_epf += amt
                     elif code in ('EMPLOYER_EPF', 'ER_PF'):
                         tot_epf += amt
@@ -408,21 +416,26 @@ class HdsPayrollDashboard(models.Model):
 
                     # ESIC Statutory Liabilities (Combined EE + ER)
                     if code in ('ESIC_EE', 'EE_ESI'):
+                        tot_ee_esi += amt
                         tot_esi += amt
                     elif code in ('ESIC_ER', 'ER_ESI'):
                         tot_esi += amt
                     elif code == 'ESI' and 'ESIC_EE' not in codes and 'ESIC_ER' not in codes:
+                        tot_ee_esi += round(amt * 0.75 / 4.0, 2)
                         tot_esi += amt
 
                     # Employer ESIC Share Only (3.25% contribution)
                     if code in ('ESIC_ER', 'ER_ESI'):
                         slip_er_esic += amt
                     elif code == 'ESI' and 'ESIC_EE' not in codes and 'ESIC_ER' not in codes:
-                        slip_er_esic += amt
+                        slip_er_esic += round(amt * 3.25 / 4.0, 2)
 
-                    # Employer LWF Share Only
+                    # LWF Share
+                    if code in ('LWF_EE', 'EE_LWF', 'LWF'):
+                        tot_lwf += amt
                     if code in ('LWF_ER', 'ER_LWF'):
                         slip_er_lwf += amt
+                        tot_lwf += amt
 
                     # Employer Cost Contribution (Employer EPF, EDLI, EPF Admin, Employer ESIC, Employer LWF)
                     if getattr(rule, 'hds_in_contributes_to_employer_cost', False):
@@ -453,8 +466,11 @@ class HdsPayrollDashboard(models.Model):
             rec.fte_count = float(len(slips)) if slips else float(tot_emp)
             rec.tds_this_month = tot_tds
             rec.epf_total_liability = tot_epf
+            rec.epf_ee_liability = tot_ee_epf
             rec.esic_total_liability = tot_esi
+            rec.esic_ee_liability = tot_ee_esi
             rec.pt_total_liability = tot_pt
+            rec.lwf_total_liability = tot_lwf
             rec.epf_employer_liability = tot_er_epf
             rec.epf_er_share_amount = tot_er_epf_share
             rec.epf_er_eps_amount = tot_er_eps
@@ -463,18 +479,24 @@ class HdsPayrollDashboard(models.Model):
             rec.esic_employer_liability = tot_er_esic
             rec.lwf_employer_liability = tot_er_lwf
             rec.total_employer_statutory_liability = tot_er_epf + tot_er_edli + tot_er_admin + tot_er_esic + tot_er_lwf
+            rec.total_statutory_liability = tot_tds + tot_epf + tot_esi + tot_pt + tot_lwf
 
             # YTD TDS computation for FY
             fy_start = rec.financial_year_id.start_date if rec.financial_year_id else date(year, 4, 1)
             ytd_slips = self.env['hr.payslip'].search([
                 ('date_from', '>=', fy_start),
                 ('date_to', '<=', month_end),
-                ('state', 'in', ('done', 'paid'))
-            ])
+                ('state', '!=', 'cancel'),
+            ] + company_domain)
+            ytd_slips_by_emp_period = {}
+            for ys in ytd_slips.sorted(key=lambda s: (state_priority.get(s.state, 0), s.id), reverse=True):
+                key = (ys.employee_id.id, ys.date_from)
+                if key not in ytd_slips_by_emp_period:
+                    ytd_slips_by_emp_period[key] = ys
             ytd_tds_val = 0.0
-            for ys in ytd_slips:
+            for ys in ytd_slips_by_emp_period.values():
                 for line in ys.line_ids:
-                    if (line.code or '').upper() in ('TDS', 'INCOME_TAX', 'IT'):
+                    if (line.code or '').upper() in ('TDS', 'INCOME_TAX', 'IT', 'HDS_IN_TDS'):
                         ytd_tds_val += abs(float(line.total or 0.0))
             rec.tds_ytd_total = ytd_tds_val
 
@@ -1113,26 +1135,43 @@ class HdsPayrollDashboard(models.Model):
                 <!-- 5. STATUTORY & TAX CARD SECTION -->
                 <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 18px; margin-bottom: 22px;">
 
-                    <!-- Statutory Compliance Card (Employer Share Only) -->
+                    <!-- Statutory Compliance Card (Employer Share & TDS) -->
                     <div class="hds-dash-card" style="padding: 18px;">
                         <div class="hds-text-primary" style="font-size: 14px; font-weight: 700; margin-bottom: 12px; border-bottom: 1px solid var(--hds-row-border); padding-bottom: 8px; display: flex; align-items: center; justify-content: space-between;">
                             <span style="display: flex; align-items: center; gap: 8px;">
-                                <i class="fa fa-shield" style="color: #4ade80;"/> Statutory Compliance Summary (Employer Share)
+                                <i class="fa fa-shield" style="color: #4ade80;"/> Statutory Compliance Summary
                             </span>
                             <span role="button" tabindex="0" onclick="window.hdsCardClick &amp;&amp; window.hdsCardClick(this, 'total_employer_statutory')" data-card-type="total_employer_statutory" class="o_hds_dashboard_card_clickable" style="cursor: pointer; font-size: 11px; padding: 3px 10px; border-radius: 12px; background: rgba(74, 222, 128, 0.15); color: #4ade80; font-weight: 700; display: inline-flex; align-items: center; gap: 4px;" title="Open employee-wise Employer Cost List View">
                                 View Employee List &rarr;
                             </span>
                         </div>
                         <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; font-size: 12px;">
+                            <!-- TDS Card: Main Value Current Month TDS, Sub-metric YTD TDS -->
+                            <div role="button" tabindex="0" onclick="window.hdsCardClick &amp;&amp; window.hdsCardClick(this, 'tds_this_month')" data-card-type="tds_this_month" class="hds-subcard o_hds_dashboard_card_clickable" style="text-decoration: none; display: block; padding: 12px; cursor: pointer;">
+                                <div class="hds-text-muted" style="font-size: 11px; font-weight: 600;">TDS (Sec 192)</div>
+                                <div class="hds-text-primary" style="font-weight: 700; font-size: 14px; margin-top: 2px; color: #818cf8;">{currency_symbol} {rec.tds_this_month:,.2f}</div>
+                                <div style="margin-top: 6px; padding-top: 6px; border-top: 1px dashed var(--hds-row-border); font-size: 10px;">
+                                    <span style="color: var(--hds-text-muted);">YTD TDS:</span> <b style="color: #818cf8;">{currency_symbol} {rec.tds_ytd_total:,.2f}</b>
+                                </div>
+                                <div style="color: #818cf8; font-size: 10px; font-weight: 600; margin-top: 5px;">🟣 Deposit by 7th &bull; <u>View</u></div>
+                            </div>
+                            <!-- Employer ESIC Share (3.25%) - No employee share shown -->
+                            <div role="button" tabindex="0" onclick="window.hdsCardClick &amp;&amp; window.hdsCardClick(this, 'esic_liability')" data-card-type="esic_liability" class="hds-subcard o_hds_dashboard_card_clickable" style="text-decoration: none; display: block; padding: 12px; cursor: pointer;">
+                                <div class="hds-text-muted" style="font-size: 11px; font-weight: 600;">Employer ESIC Share (3.25%)</div>
+                                <div class="hds-text-primary" style="font-weight: 700; font-size: 14px; margin-top: 2px; color: #38bdf8;">{currency_symbol} {rec.esic_employer_liability:,.2f}</div>
+                                <div style="color: #38bdf8; font-size: 10px; font-weight: 600; margin-top: 6px;">🟢 3.25% Employer Contribution &bull; <u>View</u></div>
+                            </div>
+                            <!-- Employer EPF (12%) -->
                             <div role="button" tabindex="0" onclick="window.hdsCardClick &amp;&amp; window.hdsCardClick(this, 'epf_liability')" data-card-type="epf_liability" class="hds-subcard o_hds_dashboard_card_clickable" style="text-decoration: none; display: block; padding: 12px; cursor: pointer;">
                                 <div class="hds-text-muted" style="font-size: 11px; font-weight: 600;">Employer EPF (12%)</div>
-                                <div class="hds-text-primary" style="font-weight: 700; font-size: 14px; margin-top: 2px;">{currency_symbol} {rec.epf_employer_liability:,.2f}</div>
+                                <div class="hds-text-primary" style="font-weight: 700; font-size: 14px; margin-top: 2px; color: #4ade80;">{currency_symbol} {rec.epf_employer_liability:,.2f}</div>
                                 <div style="margin-top: 6px; padding-top: 6px; border-top: 1px dashed var(--hds-row-border); display: grid; grid-template-columns: 1fr 1fr; gap: 4px 6px; font-size: 10px;">
                                     <div><span style="color: var(--hds-text-muted);">EPF (3.67%):</span> <b style="color: #38bdf8;">{currency_symbol} {rec.epf_er_share_amount:,.2f}</b></div>
                                     <div><span style="color: var(--hds-text-muted);">EPS (8.33%):</span> <b style="color: #818cf8;">{currency_symbol} {rec.epf_er_eps_amount:,.2f}</b></div>
                                 </div>
                                 <div style="color: #4ade80; font-size: 10px; font-weight: 600; margin-top: 5px;">🟢 12% PF Contribution &bull; <u>View</u></div>
                             </div>
+                            <!-- EDLI & Admin (1.0%) -->
                             <div role="button" tabindex="0" onclick="window.hdsCardClick &amp;&amp; window.hdsCardClick(this, 'edli_admin_liability')" data-card-type="edli_admin_liability" class="hds-subcard o_hds_dashboard_card_clickable" style="text-decoration: none; display: block; padding: 12px; cursor: pointer;">
                                 <div class="hds-text-muted" style="font-size: 11px; font-weight: 600;">EDLI &amp; Admin (1.0%)</div>
                                 <div class="hds-text-primary" style="font-weight: 700; font-size: 14px; margin-top: 2px;">{currency_symbol} {(rec.epf_er_edli_amount + rec.epf_er_admin_amount):,.2f}</div>
@@ -1142,24 +1181,27 @@ class HdsPayrollDashboard(models.Model):
                                 </div>
                                 <div style="color: #fbbf24; font-size: 10px; font-weight: 600; margin-top: 5px;">🟡 0.5% EDLI + Admin &bull; <u>View</u></div>
                             </div>
-                            <div role="button" tabindex="0" onclick="window.hdsCardClick &amp;&amp; window.hdsCardClick(this, 'esic_liability')" data-card-type="esic_liability" class="hds-subcard o_hds_dashboard_card_clickable" style="text-decoration: none; display: block; padding: 12px; cursor: pointer;">
-                                <div class="hds-text-muted" style="font-size: 11px; font-weight: 600;">Employer ESIC Share</div>
-                                <div class="hds-text-primary" style="font-weight: 700; font-size: 14px; margin-top: 2px;">{currency_symbol} {rec.esic_employer_liability:,.2f}</div>
-                                <div style="color: #4ade80; font-size: 10px; font-weight: 600; margin-top: 4px;">🟢 3.25% Contribution &bull; <u>View</u></div>
+                            <!-- Employer LWF Share -->
+                            <div role="button" tabindex="0" onclick="window.hdsCardClick &amp;&amp; window.hdsCardClick(this, 'lwf_liability')" data-card-type="lwf_liability" class="hds-subcard o_hds_dashboard_card_clickable" style="text-decoration: none; display: block; padding: 12px; cursor: pointer; grid-column: span 2;">
+                                <div style="display: flex; justify-content: space-between; align-items: center;">
+                                    <div>
+                                        <div class="hds-text-muted" style="font-size: 11px; font-weight: 600;">Employer LWF Share</div>
+                                        <div class="hds-text-primary" style="font-weight: 700; font-size: 14px; margin-top: 2px;">{currency_symbol} {rec.lwf_employer_liability:,.2f}</div>
+                                    </div>
+                                    <div style="text-align: right;">
+                                        <div style="color: #4ade80; font-size: 10px; font-weight: 600;">🟢 State LWF Rule &bull; <u>View</u></div>
+                                    </div>
+                                </div>
                             </div>
-                            <div role="button" tabindex="0" onclick="window.hdsCardClick &amp;&amp; window.hdsCardClick(this, 'lwf_liability')" data-card-type="lwf_liability" class="hds-subcard o_hds_dashboard_card_clickable" style="text-decoration: none; display: block; padding: 12px; cursor: pointer;">
-                                <div class="hds-text-muted" style="font-size: 11px; font-weight: 600;">Employer LWF Share</div>
-                                <div class="hds-text-primary" style="font-weight: 700; font-size: 14px; margin-top: 2px;">{currency_symbol} {rec.lwf_employer_liability:,.2f}</div>
-                                <div style="color: #4ade80; font-size: 10px; font-weight: 600; margin-top: 4px;">🟢 State LWF Rule &bull; <u>View</u></div>
-                            </div>
+                            <!-- Total Statutory Liability Footer -->
                             <div role="button" tabindex="0" onclick="window.hdsCardClick &amp;&amp; window.hdsCardClick(this, 'total_employer_statutory')" data-card-type="total_employer_statutory" class="hds-subcard o_hds_dashboard_card_clickable" style="text-decoration: none; display: block; padding: 12px; cursor: pointer; grid-column: span 2;">
                                 <div style="display: flex; justify-content: space-between; align-items: center;">
                                     <div>
-                                        <div class="hds-text-muted" style="font-size: 11px; font-weight: 600;">Total Employer Statutory</div>
-                                        <div class="hds-text-primary" style="font-weight: 700; font-size: 15px; margin-top: 2px; color: #c084fc;">{currency_symbol} {rec.total_employer_statutory_liability:,.2f}</div>
+                                        <div class="hds-text-muted" style="font-size: 11px; font-weight: 600;">Total Statutory Compliance Liability</div>
+                                        <div class="hds-text-primary" style="font-weight: 700; font-size: 16px; margin-top: 2px; color: #c084fc;">{currency_symbol} {(rec.total_employer_statutory_liability + rec.tds_this_month):,.2f}</div>
                                     </div>
                                     <div style="text-align: right;">
-                                        <div style="color: #c084fc; font-size: 10px; font-weight: 600;">🟣 EPF + EDLI/Admin + ESIC + LWF</div>
+                                        <div style="color: #c084fc; font-size: 10px; font-weight: 600;">🟣 Employer Share ({currency_symbol} {rec.total_employer_statutory_liability:,.2f}) + TDS ({currency_symbol} {rec.tds_this_month:,.2f})</div>
                                         <div style="color: var(--hds-text-muted); font-size: 10px; margin-top: 2px;">Click to view employee list &rarr;</div>
                                     </div>
                                 </div>
@@ -1284,21 +1326,22 @@ class HdsPayrollDashboard(models.Model):
         month_name = calendar.month_name[m_num]
         active_emps = self.env['hr.employee'].search([('active', '=', True)])
 
-        # 1. Statutory Compliance (Employer Share) Dedicated List View
-        if card_type in ('epf_liability', 'esic_liability', 'lwf_liability', 'total_employer_statutory', 'edli_admin_liability'):
+        # 1. Statutory Compliance Dedicated List View
+        if card_type in ('epf_liability', 'esic_liability', 'lwf_liability', 'total_employer_statutory', 'edli_admin_liability', 'total_statutory'):
             list_view = self.env.ref('hudson_in_payroll.view_hr_payslip_list_employer_statutory', raise_if_not_found=False)
             views = [[list_view.id, 'list'], [False, 'form']] if list_view else [[False, 'list'], [False, 'form']]
             title_map = {
-                'epf_liability': f"Statutory Compliance — Employer EPF (12%) ({month_name} {year})",
+                'epf_liability': f"Statutory Compliance — EPF (12%) ({month_name} {year})",
                 'edli_admin_liability': f"Statutory Compliance — EDLI & EPF Admin (1%) ({month_name} {year})",
-                'esic_liability': f"Statutory Compliance — Employer ESIC Share ({month_name} {year})",
-                'lwf_liability': f"Statutory Compliance — Employer LWF Share ({month_name} {year})",
+                'esic_liability': f"Statutory Compliance — ESIC (4%) ({month_name} {year})",
+                'lwf_liability': f"Statutory Compliance — LWF Share ({month_name} {year})",
                 'total_employer_statutory': f"Statutory Compliance Summary — Employer Share ({month_name} {year})",
+                'total_statutory': f"Total Statutory Compliance Summary ({month_name} {year})",
             }
             period_domain = [
                 ('date_from', '<=', month_end),
                 ('date_to', '>=', month_start),
-                ('state', 'in', ('paid', 'done')),
+                ('state', '!=', 'cancel'),
             ]
             if 'company_id' in self.env['hr.payslip']._fields:
                 period_domain.append(('company_id', 'in', self.env.companies.ids))
@@ -1324,7 +1367,7 @@ class HdsPayrollDashboard(models.Model):
             period_domain = [
                 ('date_from', '<=', month_end),
                 ('date_to', '>=', month_start),
-                ('state', 'in', ('paid', 'done')),
+                ('state', '!=', 'cancel'),
             ]
             if 'company_id' in self.env['hr.payslip']._fields:
                 period_domain.append(('company_id', 'in', self.env.companies.ids))
@@ -1547,7 +1590,10 @@ class HdsPayrollDashboard(models.Model):
         Fetches structured records for the clicked dashboard card to display inline
         on the current page without navigating to a new page.
         """
-        rec = self.browse(dashboard_id) if dashboard_id else self.search([], limit=1)
+        if isinstance(dashboard_id, str) and not card_type:
+            card_type = dashboard_id
+            dashboard_id = self.id if self else None
+        rec = self.browse(dashboard_id) if (isinstance(dashboard_id, int) and dashboard_id) else (self if self and len(self) == 1 else self.search([], limit=1))
         today = fields.Date.today()
         m_num = int(month_num or (rec.payroll_month_num if rec else today.month) or today.month)
 
@@ -1864,8 +1910,8 @@ class HdsPayrollDashboard(models.Model):
                 {'key': 'action', 'label': 'Action'}
             ]
 
-        # 10. EPF Status / Missing / Liability
-        elif card_type in ('epf_status', 'epf_missing', 'epf_complete', 'epf_liability'):
+        # 10. EPF Status / Missing
+        elif card_type in ('epf_status', 'epf_missing', 'epf_complete'):
             from ..services.compliance.statutory_compliance_service import StatutoryComplianceValidationService
             comp_service = StatutoryComplianceValidationService(self.env)
             epf_emps = active_emps.filtered(lambda e: getattr(e, 'hds_in_epf_applicable', False))
@@ -1897,8 +1943,60 @@ class HdsPayrollDashboard(models.Model):
                 })
             badge = f"{len(rows)} Employees Missing UAN"
 
-        # 11. ESIC Status / Missing / Liability
-        elif card_type in ('esic_status', 'esic_missing', 'esic_complete', 'esic_liability'):
+        # Dedicated EPF Contribution & Liability Drilldown
+        elif card_type in ('epf_liability', 'edli_admin_liability'):
+            title = f"EPF Contribution & Statutory Liability — {month_name} {year}"
+            period_slips = self.env['hr.payslip'].search([
+                ('date_from', '<=', month_end),
+                ('date_to', '>=', month_start),
+                ('state', '!=', 'cancel'),
+            ], order='id desc')
+            seen_emp = set()
+            slips = []
+            for s in period_slips:
+                if s.employee_id.id not in seen_emp:
+                    seen_emp.add(s.employee_id.id)
+                    slips.append(s)
+            columns = [
+                {'key': 'employee', 'label': 'Employee'},
+                {'key': 'basic', 'label': 'Basic / PF Wage'},
+                {'key': 'ee_epf', 'label': 'EE Share (12%)'},
+                {'key': 'er_epf', 'label': 'ER Share (12%)'},
+                {'key': 'edli_admin', 'label': 'Admin & EDLI (1%)'},
+                {'key': 'total', 'label': 'Total EPF Dues'},
+                {'key': 'action', 'label': 'Action'}
+            ]
+            for s in slips:
+                ee_p = 0.0
+                er_p = 0.0
+                admin_edli = 0.0
+                basic_w = 0.0
+                for l in s.line_ids:
+                    c = (l.code or '').upper()
+                    amt = abs(float(l.total or 0.0))
+                    if c == 'BASIC': basic_w = amt
+                    elif c in ('PF', 'EPF', 'EE_PF'): ee_p += amt
+                    elif c in ('EMPLOYER_EPF', 'ER_PF', 'EPS', 'EPF_SHARE'): er_p += amt
+                    elif c in ('EDLI', 'EPF_ADMIN', 'EDLI_ADMIN'): admin_edli += amt
+                if ee_p > 0 or er_p > 0 or admin_edli > 0:
+                    rows.append({
+                        'id': s.id,
+                        'model': 'hr.payslip',
+                        'cells': {
+                            'employee': s.employee_id.name if s.employee_id else '-',
+                            'basic': f"{currency_symbol} {basic_w:,.2f}",
+                            'ee_epf': f"{currency_symbol} {ee_p:,.2f}",
+                            'er_epf': f"{currency_symbol} {er_p:,.2f}",
+                            'edli_admin': f"{currency_symbol} {admin_edli:,.2f}",
+                            'total': f"<b>{currency_symbol} {(ee_p + er_p + admin_edli):,.2f}</b>",
+                            'action': 'View Payslip'
+                        },
+                        'action_label': 'View Payslip'
+                    })
+            badge = f"{len(rows)} Employees with EPF"
+
+        # 11. ESIC Status / Missing
+        elif card_type in ('esic_status', 'esic_missing', 'esic_complete'):
             from ..services.compliance.statutory_compliance_service import StatutoryComplianceValidationService
             comp_service = StatutoryComplianceValidationService(self.env)
             esic_emps = active_emps.filtered(lambda e: getattr(e, 'hds_in_esic_applicable', False))
@@ -1929,6 +2027,51 @@ class HdsPayrollDashboard(models.Model):
                     'action_label': 'Update ESIC'
                 })
             badge = f"{len(rows)} Employees Missing IP"
+
+        # Dedicated Employer ESIC (3.25%) Drilldown
+        elif card_type == 'esic_liability':
+            title = f"Statutory Compliance — Employer ESIC Share (3.25%) — {month_name} {year}"
+            period_slips = self.env['hr.payslip'].search([
+                ('date_from', '<=', month_end),
+                ('date_to', '>=', month_start),
+                ('state', '!=', 'cancel'),
+            ], order='id desc')
+            seen_emp = set()
+            slips = []
+            for s in period_slips:
+                if s.employee_id.id not in seen_emp:
+                    seen_emp.add(s.employee_id.id)
+                    slips.append(s)
+            columns = [
+                {'key': 'employee', 'label': 'Employee'},
+                {'key': 'wage', 'label': 'Gross / ESIC Wage'},
+                {'key': 'er_esic', 'label': 'Employer ESIC (3.25%)'},
+                {'key': 'state', 'label': 'Status'},
+                {'key': 'action', 'label': 'Action'}
+            ]
+            for s in slips:
+                er_e = 0.0
+                for l in s.line_ids:
+                    c = (l.code or '').upper()
+                    amt = abs(float(l.total or 0.0))
+                    if c in ('ESIC_ER', 'ER_ESI'): er_e += amt
+                    elif c == 'ESI':
+                        er_e += round(amt * 3.25 / 4.0, 2)
+                gross_w = float(getattr(s, 'gross_amount', None) or getattr(s, 'gross_wage', 0.0) or 0.0)
+                if er_e > 0:
+                    rows.append({
+                        'id': s.id,
+                        'model': 'hr.payslip',
+                        'cells': {
+                            'employee': s.employee_id.name if s.employee_id else '-',
+                            'wage': f"{currency_symbol} {gross_w:,.2f}",
+                            'er_esic': f"<b style='color: #38bdf8;'>{currency_symbol} {er_e:,.2f}</b>",
+                            'state': s.state.title(),
+                            'action': 'View Payslip'
+                        },
+                        'action_label': 'View Payslip'
+                    })
+            badge = f"{len(rows)} Employees with Employer ESIC"
 
         # 12. LWF Status
         elif card_type in ('lwf_status', 'lwf_missing', 'lwf_complete'):
@@ -2048,36 +2191,153 @@ class HdsPayrollDashboard(models.Model):
             columns = [{'key': 'name', 'label': 'Employee'}, {'key': 'dept', 'label': 'Department'}, {'key': 'action', 'label': 'Action'}]
             rows = [{'id': e.id, 'model': 'hr.employee', 'cells': {'name': e.name, 'dept': e.department_id.name if e.department_id else '-', 'action': 'Add Contact'}, 'action_label': 'Add Contact'} for e in missing]
 
-        # 16. TDS Withholding / YTD / PT Liability
-        elif card_type in ('tds_this_month', 'tds_withholding', 'tds_ytd', 'pt_liability'):
-            title = "TDS Withholding Slips" if 'tds' in card_type else f"Professional Tax (PT) Liabilities — {month_name} {year}"
-            slips = self.env['hr.payslip'].search([
+        # 16. TDS Withholding (Section 192)
+        elif card_type in ('tds_this_month', 'tds_withholding', 'tds_ytd'):
+            title = f"TDS Withholding Slips (Income Tax Sec 192) — {month_name} {year}"
+            period_slips = self.env['hr.payslip'].search([
                 ('date_from', '<=', month_end),
                 ('date_to', '>=', month_start),
                 ('state', '!=', 'cancel'),
             ], order='id desc')
-            badge = f"{len(slips)} Payslips"
+            seen_emp = set()
+            slips = []
+            for s in period_slips:
+                if s.employee_id.id not in seen_emp:
+                    seen_emp.add(s.employee_id.id)
+                    slips.append(s)
             columns = [
                 {'key': 'employee', 'label': 'Employee'},
-                {'key': 'number', 'label': 'Slip Ref'},
+                {'key': 'regime', 'label': 'Tax Regime'},
                 {'key': 'gross', 'label': 'Gross Wage'},
-                {'key': 'net', 'label': 'Net Wage'},
-                {'key': 'state', 'label': 'State'},
+                {'key': 'tds', 'label': 'Monthly TDS Deducted'},
+                {'key': 'state', 'label': 'Status'},
                 {'key': 'action', 'label': 'Action'}
             ]
-            rows = [{
-                'id': s.id,
-                'model': 'hr.payslip',
-                'cells': {
-                    'employee': s.employee_id.name if s.employee_id else '-',
-                    'number': s.number or s.name or 'Draft',
-                    'gross': f"{currency_symbol} {float(getattr(s, 'gross_amount', None) or getattr(s, 'gross_wage', 0.0) or 0.0):,.2f}",
-                    'net': f"<b>{currency_symbol} {float(getattr(s, 'net_amount', None) or getattr(s, 'net_wage', 0.0) or 0.0):,.2f}</b>",
-                    'state': s.state,
-                    'action': 'View Payslip'
-                },
-                'action_label': 'View Payslip'
-            } for s in slips]
+            rows = []
+            for s in slips:
+                emp = s.employee_id
+                regime = (getattr(emp, 'hds_in_tax_regime', 'new') or 'new').title()
+                tds_amt = 0.0
+                for l in s.line_ids:
+                    if (l.code or '').upper() in ('TDS', 'INCOME_TAX', 'IT', 'HDS_IN_TDS'):
+                        tds_amt += abs(float(l.total or 0.0))
+                gross_w = float(getattr(s, 'gross_amount', None) or getattr(s, 'gross_wage', 0.0) or 0.0)
+                if tds_amt > 0 or len(slips) <= 10:
+                    rows.append({
+                        'id': s.id,
+                        'model': 'hr.payslip',
+                        'cells': {
+                            'employee': emp.name if emp else '-',
+                            'regime': f'<span class="badge bg-secondary">{regime}</span>',
+                            'gross': f"{currency_symbol} {gross_w:,.2f}",
+                            'tds': f"<b style='color: #818cf8;'>{currency_symbol} {tds_amt:,.2f}</b>",
+                            'state': s.state.title(),
+                            'action': 'View Payslip'
+                        },
+                        'action_label': 'View Payslip'
+                    })
+            badge = f"{len([r for r in rows if '0.00' not in r['cells']['tds']])} Employees with TDS"
+
+        # 17. Professional Tax (PT)
+        elif card_type == 'pt_liability':
+            title = f"Professional Tax (PT) Liabilities — {month_name} {year}"
+            period_slips = self.env['hr.payslip'].search([
+                ('date_from', '<=', month_end),
+                ('date_to', '>=', month_start),
+                ('state', '!=', 'cancel'),
+            ], order='id desc')
+            seen_emp = set()
+            slips = []
+            for s in period_slips:
+                if s.employee_id.id not in seen_emp:
+                    seen_emp.add(s.employee_id.id)
+                    slips.append(s)
+            columns = [
+                {'key': 'employee', 'label': 'Employee'},
+                {'key': 'gross', 'label': 'Gross Wage'},
+                {'key': 'pt', 'label': 'PT Deducted'},
+                {'key': 'state', 'label': 'Status'},
+                {'key': 'action', 'label': 'Action'}
+            ]
+            rows = []
+            for s in slips:
+                pt_amt = 0.0
+                for l in s.line_ids:
+                    if (l.code or '').upper() in ('PT', 'PROF_TAX'):
+                        pt_amt += abs(float(l.total or 0.0))
+                gross_w = float(getattr(s, 'gross_amount', None) or getattr(s, 'gross_wage', 0.0) or 0.0)
+                if pt_amt > 0 or len(slips) <= 10:
+                    rows.append({
+                        'id': s.id,
+                        'model': 'hr.payslip',
+                        'cells': {
+                            'employee': s.employee_id.name if s.employee_id else '-',
+                            'gross': f"{currency_symbol} {gross_w:,.2f}",
+                            'pt': f"<b style='color: #fbbf24;'>{currency_symbol} {pt_amt:,.2f}</b>",
+                            'state': s.state.title(),
+                            'action': 'View Payslip'
+                        },
+                        'action_label': 'View Payslip'
+                    })
+            badge = f"{len(rows)} Payslips"
+
+        # 18. Total Statutory Compliance Liability Summary
+        elif card_type in ('total_statutory', 'total_employer_statutory'):
+            title = f"Total Statutory Compliance Breakdown — {month_name} {year}"
+            period_slips = self.env['hr.payslip'].search([
+                ('date_from', '<=', month_end),
+                ('date_to', '>=', month_start),
+                ('state', '!=', 'cancel'),
+            ], order='id desc')
+            seen_emp = set()
+            slips = []
+            for s in period_slips:
+                if s.employee_id.id not in seen_emp:
+                    seen_emp.add(s.employee_id.id)
+                    slips.append(s)
+            columns = [
+                {'key': 'employee', 'label': 'Employee'},
+                {'key': 'epf', 'label': 'EPF Total'},
+                {'key': 'esic', 'label': 'ESIC Total (4%)'},
+                {'key': 'tds', 'label': 'TDS (Sec 192)'},
+                {'key': 'pt_lwf', 'label': 'PT & LWF'},
+                {'key': 'total', 'label': 'Total Statutory'},
+                {'key': 'action', 'label': 'Action'}
+            ]
+            rows = []
+            for s in slips:
+                s_epf = 0.0
+                s_esi = 0.0
+                s_tds = 0.0
+                s_pt_lwf = 0.0
+                for l in s.line_ids:
+                    c = (l.code or '').upper()
+                    amt = abs(float(l.total or 0.0))
+                    if c in ('PF', 'EPF', 'EE_PF', 'EMPLOYER_EPF', 'ER_PF', 'EPS', 'EPF_SHARE', 'EDLI', 'EPF_ADMIN', 'EDLI_ADMIN'):
+                        s_epf += amt
+                    elif c in ('ESIC_EE', 'EE_ESI', 'ESIC_ER', 'ER_ESI', 'ESI'):
+                        s_esi += amt
+                    elif c in ('TDS', 'INCOME_TAX', 'IT', 'HDS_IN_TDS'):
+                        s_tds += amt
+                    elif c in ('PT', 'PROF_TAX', 'LWF_EE', 'LWF_ER', 'LWF'):
+                        s_pt_lwf += amt
+                s_tot = s_epf + s_esi + s_tds + s_pt_lwf
+                if s_tot > 0 or len(slips) <= 10:
+                    rows.append({
+                        'id': s.id,
+                        'model': 'hr.payslip',
+                        'cells': {
+                            'employee': s.employee_id.name if s.employee_id else '-',
+                            'epf': f"{currency_symbol} {s_epf:,.2f}",
+                            'esic': f"{currency_symbol} {s_esi:,.2f}",
+                            'tds': f"{currency_symbol} {s_tds:,.2f}",
+                            'pt_lwf': f"{currency_symbol} {s_pt_lwf:,.2f}",
+                            'total': f"<b style='color: #c084fc;'>{currency_symbol} {s_tot:,.2f}</b>",
+                            'action': 'View Payslip'
+                        },
+                        'action_label': 'View Payslip'
+                    })
+            badge = f"{len(rows)} Employees with Statutory Dues"
 
         # Fallback
         else:

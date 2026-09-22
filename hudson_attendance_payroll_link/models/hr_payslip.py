@@ -23,14 +23,19 @@ class HrPayslip(models.Model):
         calendar = contract.resource_calendar_id or contract.employee_id.resource_calendar_id or contract.company_id.resource_calendar_id
         tz = pytz.timezone(calendar.tz or 'UTC') if calendar else pytz.UTC
         
-        day_from = datetime.combine(fields.Date.from_string(date_from), time.min)
-        day_to = datetime.combine(fields.Date.from_string(date_to), time.max)
+        # Localize day boundaries to contract/calendar timezone
+        dt_from_local = tz.localize(datetime.combine(fields.Date.from_string(date_from), time.min))
+        dt_to_local = tz.localize(datetime.combine(fields.Date.from_string(date_to), time.max))
         
-        # 2. Query all attendances in the period
+        # Convert to naive UTC datetimes for database queries (check_in stored in UTC in DB)
+        utc_day_from = dt_from_local.astimezone(pytz.UTC).replace(tzinfo=None)
+        utc_day_to = dt_to_local.astimezone(pytz.UTC).replace(tzinfo=None)
+        
+        # 2. Query all attendances in the period (using UTC boundaries so early morning shifts on 1st are included)
         attendances = self.env['hr.attendance'].search([
             ('employee_id', '=', contract.employee_id.id),
-            ('check_in', '>=', day_from),
-            ('check_in', '<=', day_to),
+            ('check_in', '>=', utc_day_from),
+            ('check_in', '<=', utc_day_to),
         ])
         
         # Group attendances by their local check_in date
@@ -44,8 +49,8 @@ class HrPayslip(models.Model):
         regularizations = self.env['hudson.attendance.regularization'].search([
             ('employee_id', '=', contract.employee_id.id),
             ('state', '=', 'applied'),
-            ('attendance_id.check_in', '>=', day_from),
-            ('attendance_id.check_in', '<=', day_to),
+            ('attendance_id.check_in', '>=', utc_day_from),
+            ('attendance_id.check_in', '<=', utc_day_to),
         ])
         
         regularized_dates = set()
@@ -60,7 +65,7 @@ class HrPayslip(models.Model):
         
         if calendar:
             day_leave_intervals = contract.employee_id.list_leaves(
-                day_from, day_to, calendar=calendar
+                dt_from_local, dt_to_local, calendar=calendar
             )
             for day, hours, leave in day_leave_intervals:
                 # Only individual employee leaves (having holiday_id or resource_id) populate leave hours
@@ -80,8 +85,8 @@ class HrPayslip(models.Model):
             holiday_leaves = self.env['resource.calendar.leaves'].search([
                 ('calendar_id', 'in', [calendar.id, False]),
                 ('resource_id', '=', False),
-                ('date_from', '<=', day_to),
-                ('date_to', '>=', day_from),
+                ('date_from', '<=', utc_day_to),
+                ('date_to', '>=', utc_day_from),
             ])
             for hl in holiday_leaves:
                 if getattr(hl, 'is_mandatory', True):
@@ -227,10 +232,16 @@ class HrPayslip(models.Model):
 
     def action_view_attendance_discrepancy(self):
         self.ensure_one()
+        calendar = self.contract_id.resource_calendar_id or self.employee_id.resource_calendar_id or self.company_id.resource_calendar_id
+        tz = pytz.timezone(calendar.tz or 'UTC') if calendar else pytz.UTC
+        dt_from_local = tz.localize(datetime.combine(fields.Date.from_string(self.date_from), time.min))
+        dt_to_local = tz.localize(datetime.combine(fields.Date.from_string(self.date_to), time.max))
+        utc_day_from = dt_from_local.astimezone(pytz.UTC).replace(tzinfo=None)
+        utc_day_to = dt_to_local.astimezone(pytz.UTC).replace(tzinfo=None)
         domain = [
             ('employee_id', '=', self.employee_id.id),
-            ('check_in', '>=', datetime.combine(fields.Date.from_string(self.date_from), time.min)),
-            ('check_in', '<=', datetime.combine(fields.Date.from_string(self.date_to), time.max)),
+            ('check_in', '>=', utc_day_from),
+            ('check_in', '<=', utc_day_to),
         ]
         return {
             'name': _('Attendances'),
