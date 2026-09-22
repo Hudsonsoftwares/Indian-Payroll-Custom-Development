@@ -212,6 +212,10 @@
                                     <td style="padding: 2px 4px; text-align: right;"><t t-esc="'{:,.2f}'.format(ded['amount'])"/></td>
                                 </tr>
                             </t>
+                            <tr t-if="pdata.get('total_tax_deductions', 0) &gt; 0" style="background: #fdfdfe; border-top: 1px solid #000000; font-weight: bold;">
+                                <td style="padding: 2px 4px;">Total Allowable Deductions</td>
+                                <td style="padding: 2px 4px; text-align: right;">(<t t-esc="'{:,.2f}'.format(pdata['total_tax_deductions'])"/>)</td>
+                            </tr>
                             <tr style="background: #f8f9fa; font-weight: bold; border-top: 1px solid #000000;">
                                 <td style="padding: 2px 4px;">Income Chargeable to Tax</td>
                                 <td style="padding: 2px 4px; text-align: right;"><t t-esc="'{:,.2f}'.format(pdata['net_taxable_income'])"/></td>

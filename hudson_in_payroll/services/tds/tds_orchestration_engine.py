@@ -155,12 +155,17 @@ month=%s""",
         # Step 4: Regime Routing & Deduction Calculation
         if debug_enabled:
             _logger.warning("Before DeductionCalculationService")
+        gross_salary_income = getattr(annual_projection, 'projected_annual_salary', None)
+        if gross_salary_income is None and regime_context and hasattr(regime_context, 'gross_salary_income'):
+            gross_salary_income = regime_context.gross_salary_income
+
         deduction_svc = DeductionCalculationService(self.env)
         deduction_calc = deduction_svc.calculate_deductions(
             employee=employee,
             financial_year=financial_year,
             regime_context=regime_context,
-            eval_date=eval_date
+            eval_date=eval_date,
+            gross_salary_income=gross_salary_income
         )
         if debug_enabled:
             _logger.warning(

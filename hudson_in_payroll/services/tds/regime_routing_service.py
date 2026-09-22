@@ -12,9 +12,11 @@ class RegimeCalculationContext:
     prepared for downstream Phase 5 (Taxable Income Service) and Phase 6 (Tax Calculation Service).
     """
     def __init__(self, regime_code, gross_total_income, standard_deduction_limit,
-                 permitted_categories, prohibited_categories, pipeline_slots):
+                 permitted_categories, prohibited_categories, pipeline_slots,
+                 gross_salary_income=None):
         self.regime_code = regime_code
         self.gross_total_income = gross_total_income
+        self.gross_salary_income = gross_salary_income if gross_salary_income is not None else gross_total_income
         self.standard_deduction_limit = standard_deduction_limit
         self.permitted_categories = permitted_categories
         self.prohibited_categories = prohibited_categories
@@ -41,7 +43,7 @@ class RegimeRoutingService(BaseStatutoryService):
         '80ccd2', '57iia', '80cch', 'other'
     }
 
-    def prepare_regime_context(self, employee, financial_year, regime_code, gross_total_income, eval_date=None):
+    def prepare_regime_context(self, employee, financial_year, regime_code, gross_total_income, eval_date=None, gross_salary_income=None):
         """
         Prepares the statutory execution context pipeline for the selected Tax Regime.
 
@@ -50,6 +52,7 @@ class RegimeRoutingService(BaseStatutoryService):
         :param regime_code: str ('old' or 'new')
         :param gross_total_income: float (Gross Total Income projected in Phase 4)
         :param eval_date: Date (optional)
+        :param gross_salary_income: float (Gross Salary Income projected in Phase 4)
         :return: RegimeCalculationContext
         """
         tds_param_svc = TdsParameterService(self.env)
@@ -98,5 +101,6 @@ class RegimeRoutingService(BaseStatutoryService):
             standard_deduction_limit=std_deduction_limit,
             permitted_categories=permitted_categories,
             prohibited_categories=prohibited_categories,
-            pipeline_slots=pipeline_slots
+            pipeline_slots=pipeline_slots,
+            gross_salary_income=gross_salary_income
         )

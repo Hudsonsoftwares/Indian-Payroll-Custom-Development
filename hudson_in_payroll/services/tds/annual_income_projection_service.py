@@ -229,7 +229,8 @@ GTI = Projected Annual Salary + Other Income
             financial_year=financial_year,
             regime_code=regime_code,
             gross_total_income=gross_total_income,
-            eval_date=eval_date
+            eval_date=eval_date,
+            gross_salary_income=projected_annual_salary
         )
 
         return AnnualIncomeProjectionResult(

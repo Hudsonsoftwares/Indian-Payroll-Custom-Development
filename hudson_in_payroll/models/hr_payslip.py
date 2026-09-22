@@ -2021,41 +2021,125 @@ else:
             ('state', '!=', 'rejected')
         ], order='id desc', limit=1)
 
-        std_ded = getattr(deduct, 'standard_deduction', 50000.0) if deduct else 50000.0
-        tax_comp_deductions = [
-            {'name': 'Standard Deduction [u/s 16(ia)]', 'amount': std_ded},
-        ]
+        std_ded = getattr(deduct, 'standard_deduction', 0.0) if deduct else 0.0
+        if not std_ded and not is_new_regime:
+            std_ded = 50000.0
+        elif not std_ded and is_new_regime:
+            std_ded = 75000.0
 
-        if not is_new_regime:
-            sec_80c = getattr(deduct, 'c6a_80c_eligible', 0.0) if deduct else 0.0
-            sec_80d = getattr(deduct, 'c6a_80d_eligible', 0.0) if deduct else 0.0
-            sec_80ccd1b = getattr(deduct, 'c6a_80ccd1b_eligible', 0.0) if deduct else 0.0
-            sec_24b = getattr(deduct, 'home_loan_interest_24b', 0.0) if deduct else 0.0
+        c6a = getattr(deduct, 'chapter_6a_deductions', None) if deduct else None
 
-            if decl:
-                if not sec_80c:
-                    sec_80c = min(150000.0, getattr(decl, 'decl_80c_total_declared', 0.0) or 0.0)
-                if not sec_80d:
-                    sec_80d = getattr(decl, 'decl_80d_total_declared', 0.0) or 0.0
-                if not sec_80ccd1b:
-                    sec_80ccd1b = getattr(decl, 'decl_80ccd1b_nps', 0.0) or 0.0
-                if not sec_24b:
-                    sec_24b = getattr(decl, 'decl_24b_self_interest', 0.0) or 0.0
+        if is_new_regime:
+            # New Tax Regime (Section 115BAC) Applicable Deductions Breakdown
+            sec_80ccd2 = float(getattr(deduct, 'employer_nps_80ccd2', 0.0) or 0.0) if deduct else 0.0
+            if not sec_80ccd2 and decl:
+                sec_80ccd2 = float(getattr(decl, 'decl_80ccd2_employer_nps', 0.0) or (next((l.declared_amount for l in getattr(decl, 'declaration_line_ids', []) if l.category == '80ccd2'), 0.0)) or 0.0)
 
-            if sec_80c > 0:
-                tax_comp_deductions.append({'name': 'Section 80C (PPF/LIC/EPF/etc)', 'amount': sec_80c})
-            if sec_80d > 0:
-                tax_comp_deductions.append({'name': 'Section 80D (Health Insurance)', 'amount': sec_80d})
-            if sec_80ccd1b > 0:
-                tax_comp_deductions.append({'name': 'Section 80CCD(1B) (NPS)', 'amount': sec_80ccd1b})
+            sec_80cch = float(getattr(c6a, 'section_80cch', 0.0) or 0.0) if c6a else 0.0
+            if not sec_80cch and decl:
+                sec_80cch = float(getattr(decl, 'decl_80cch_agniveer', 0.0) or (next((l.declared_amount for l in getattr(decl, 'declaration_line_ids', []) if l.category == '80cch'), 0.0)) or 0.0)
+
+            fam_pension = float(getattr(deduct, 'family_pension_57iia', 0.0) or 0.0) if deduct else 0.0
+            if not fam_pension and decl:
+                fam_pension = float(getattr(decl, 'decl_57iia_family_pension', 0.0) or (next((l.declared_amount for l in getattr(decl, 'declaration_line_ids', []) if l.category == '57iia'), 0.0)) or 0.0)
+
+            tax_comp_deductions = [
+                {'name': 'Standard Deduction [u/s 16(ia)]', 'amount': std_ded},
+                {'name': 'Employer NPS Contribution [Section 124]', 'amount': sec_80ccd2},
+                {'name': 'Agniveer Corpus Fund [Section 80CCH]', 'amount': sec_80cch},
+                {'name': 'Family Pension Deduction [Section 57(iia)]', 'amount': fam_pension},
+            ]
+            other_ded = float(getattr(deduct, 'other_approved_deductions', 0.0) or 0.0) if deduct else 0.0
+            if other_ded > 0:
+                tax_comp_deductions.append({'name': 'Other Approved Deductions', 'amount': other_ded})
+        else:
+            # Old Tax Regime Applicable Deductions & Exemptions Breakdown
+            tax_comp_deductions = [
+                {'name': 'Standard Deduction [u/s 16(ia)]', 'amount': std_ded},
+            ]
+            hra_ex = float(getattr(deduct, 'hra_exemption', 0.0) or 0.0) if deduct else 0.0
+            if hra_ex > 0:
+                tax_comp_deductions.append({'name': 'HRA Exemption [Sec 10(13A)]', 'amount': hra_ex})
+
+            lta_ex = float(getattr(deduct, 'lta_exemption', 0.0) or 0.0) if deduct else 0.0
+            if lta_ex > 0:
+                tax_comp_deductions.append({'name': 'LTA Exemption [Sec 10(5)]', 'amount': lta_ex})
+
+            sec_24b = float(getattr(deduct, 'home_loan_interest_24b', 0.0) or 0.0) if deduct else 0.0
+            if not sec_24b and decl:
+                sec_24b = float(getattr(decl, 'decl_24b_self_interest', 0.0) or 0.0)
             if sec_24b > 0:
                 tax_comp_deductions.append({'name': 'Section 24(b) (Home Loan Interest)', 'amount': sec_24b})
-        else:
-            sec_80ccd2 = getattr(deduct, 'c6a_80ccd2_eligible', 0.0) if deduct else 0.0
-            if sec_80ccd2 > 0:
-                tax_comp_deductions.append({'name': 'Employer NPS Contribution — Section 124', 'amount': sec_80ccd2})
 
-        net_taxable_income = getattr(tax_inc, 'net_taxable_income', max(0.0, gti_taxable - sum(d['amount'] for d in tax_comp_deductions)))
+            sec_80eea = float(getattr(deduct, 'section_80eea_deduction', getattr(c6a, 'section_80eea', 0.0)) or 0.0) if deduct else 0.0
+            if sec_80eea > 0:
+                tax_comp_deductions.append({'name': 'Section 80EEA (First-Time Home Buyer)', 'amount': sec_80eea})
+
+            sec_80c = float(getattr(c6a, 'section_80c', 0.0) or 0.0) if c6a else 0.0
+            if not sec_80c and decl:
+                sec_80c = min(150000.0, float(getattr(decl, 'decl_80c_total_declared', 0.0) or 0.0))
+            if sec_80c > 0:
+                tax_comp_deductions.append({'name': 'Section 80C (PPF/LIC/EPF/etc)', 'amount': sec_80c})
+
+            sec_80d = float(getattr(c6a, 'section_80d', 0.0) or 0.0) if c6a else 0.0
+            if not sec_80d and decl:
+                sec_80d = float(getattr(decl, 'decl_80d_total_declared', 0.0) or 0.0)
+            if sec_80d > 0:
+                tax_comp_deductions.append({'name': 'Section 80D (Health Insurance)', 'amount': sec_80d})
+
+            sec_80ccd1b = float(getattr(c6a, 'section_80ccd1b', 0.0) or 0.0) if c6a else 0.0
+            if not sec_80ccd1b and decl:
+                sec_80ccd1b = float(getattr(decl, 'decl_80ccd1b_nps', 0.0) or 0.0)
+            if sec_80ccd1b > 0:
+                tax_comp_deductions.append({'name': 'Section 80CCD(1B) (NPS)', 'amount': sec_80ccd1b})
+
+            sec_80ccd2 = float(getattr(deduct, 'employer_nps_80ccd2', 0.0) or 0.0) if deduct else 0.0
+            if not sec_80ccd2 and decl:
+                sec_80ccd2 = float(getattr(decl, 'decl_80ccd2_employer_nps', 0.0) or 0.0)
+            if sec_80ccd2 > 0:
+                tax_comp_deductions.append({'name': 'Employer NPS Contribution [Section 124]', 'amount': sec_80ccd2})
+
+            sec_80e = float(getattr(c6a, 'section_80e', 0.0) or 0.0) if c6a else 0.0
+            if sec_80e > 0:
+                tax_comp_deductions.append({'name': 'Section 80E (Education Loan)', 'amount': sec_80e})
+
+            sec_80g = float(getattr(c6a, 'section_80g', 0.0) or 0.0) if c6a else 0.0
+            if sec_80g > 0:
+                tax_comp_deductions.append({'name': 'Section 80G (Donations)', 'amount': sec_80g})
+
+            sec_80tta = float(getattr(c6a, 'section_80tta_80ttb', 0.0) or 0.0) if c6a else 0.0
+            if sec_80tta > 0:
+                tax_comp_deductions.append({'name': 'Section 80TTA/TTB (Savings Interest)', 'amount': sec_80tta})
+
+            sec_80dd = float(getattr(c6a, 'section_80dd', 0.0) or 0.0) if c6a else 0.0
+            if sec_80dd > 0:
+                tax_comp_deductions.append({'name': 'Section 80DD (Disabled Dependent)', 'amount': sec_80dd})
+
+            sec_80u = float(getattr(c6a, 'section_80u', 0.0) or 0.0) if c6a else 0.0
+            if sec_80u > 0:
+                tax_comp_deductions.append({'name': 'Section 80U (Person with Disability)', 'amount': sec_80u})
+
+            sec_80gg = float(getattr(c6a, 'section_80gg', 0.0) or 0.0) if c6a else 0.0
+            if sec_80gg > 0:
+                tax_comp_deductions.append({'name': 'Section 80GG (Rent Paid)', 'amount': sec_80gg})
+
+            fam_pension = float(getattr(deduct, 'family_pension_57iia', 0.0) or 0.0) if deduct else 0.0
+            if fam_pension > 0:
+                tax_comp_deductions.append({'name': 'Family Pension Deduction [Sec 57(iia)]', 'amount': fam_pension})
+
+            sec_80cch = float(getattr(c6a, 'section_80cch', 0.0) or 0.0) if c6a else 0.0
+            if sec_80cch > 0:
+                tax_comp_deductions.append({'name': 'Agniveer Corpus Fund [Sec 80CCH]', 'amount': sec_80cch})
+
+            other_ded = float(getattr(deduct, 'other_approved_deductions', 0.0) or 0.0) if deduct else 0.0
+            if other_ded > 0:
+                tax_comp_deductions.append({'name': 'Other Approved Deductions', 'amount': other_ded})
+
+        total_tax_deductions = sum(d['amount'] for d in tax_comp_deductions)
+        if deduct and getattr(deduct, 'total_allowable_deductions', 0.0) > 0:
+            total_tax_deductions = max(total_tax_deductions, float(deduct.total_allowable_deductions))
+
+        net_taxable_income = getattr(tax_inc, 'net_taxable_income', max(0.0, gti_taxable - total_tax_deductions))
         base_tax = getattr(slab, 'base_tax_liability', 0.0) if slab else 0.0
         tax_after_rebate = getattr(rebate, 'tax_after_rebate', base_tax) if rebate else base_tax
         rebate_applied = getattr(rebate, 'rebate_applied', 0.0) if rebate else 0.0
@@ -2150,6 +2234,7 @@ else:
             'tax_rows': tax_rows,
             'tax_comp_income': tax_comp_income,
             'tax_comp_deductions': tax_comp_deductions,
+            'total_tax_deductions': total_tax_deductions,
             'gti_annual': gti_annual,
             'gti_exempt': gti_exempt,
             'gti_taxable': gti_taxable,

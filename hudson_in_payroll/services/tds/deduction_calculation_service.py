@@ -59,7 +59,7 @@ class DeductionCalculationService(BaseStatutoryService):
     - New Regime: Standard Deduction (₹75k for FY 2025-26 under Finance Act 2025) + Employer NPS 80CCD(2) + Family Pension 57(iia). Prohibits Old Regime deductions.
     """
 
-    def calculate_deductions(self, employee, financial_year, regime_context=None, eval_date=None):
+    def calculate_deductions(self, employee, financial_year, regime_context=None, eval_date=None, gross_salary_income=None):
         """
         Master method for calculating statutory deductions.
 
@@ -67,6 +67,7 @@ class DeductionCalculationService(BaseStatutoryService):
         :param financial_year: tds.financial.year record
         :param regime_context: RegimeCalculationContext DTO (optional)
         :param eval_date: Date (optional)
+        :param gross_salary_income: float (Gross Salary Income projected in Phase 4)
         :return: DeductionSummary
         """
         if not employee:
@@ -76,7 +77,16 @@ class DeductionCalculationService(BaseStatutoryService):
 
         eval_date = eval_date or fields.Date.today()
         regime_code = (regime_context.regime_code if regime_context else 'new').lower()
-        gross_payroll = regime_context.gross_total_income if regime_context else 0.0
+
+        # Resolve salary income for Section 16(ia) standard deduction cap.
+        # Section 16(ia) standard deduction is strictly deductible from income under the head 'Salaries',
+        # and CANNOT be set off against other heads of income (e.g. interest, house property).
+        if gross_salary_income is not None:
+            gross_payroll = float(gross_salary_income)
+        elif regime_context and hasattr(regime_context, 'gross_salary_income') and regime_context.gross_salary_income is not None:
+            gross_payroll = float(regime_context.gross_salary_income)
+        else:
+            gross_payroll = float(regime_context.gross_total_income) if regime_context else 0.0
 
         # 1. Calculate Standard Deduction via StandardDeductionService
         std_svc = StandardDeductionService(self.env)
@@ -322,6 +332,12 @@ remarks=%s""",
                     lta_res.block_period,
                     lta_res.remarks
                 )
+
+        # Statutory Section 16(ia) Rule:
+        # Standard deduction applies strictly against salary chargeable under 'Salaries'
+        # (i.e. gross salary minus Section 10 exemptions like HRA and LTA).
+        net_salary_available = max(0.0, gross_payroll - hra_exemption - lta_exemption)
+        standard_deduction = min(standard_deduction, net_salary_available)
 
         if regime_code == 'old':
             total_allowable_deductions = (
