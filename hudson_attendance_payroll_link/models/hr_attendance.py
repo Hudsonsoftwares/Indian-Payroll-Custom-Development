@@ -141,8 +141,8 @@ class HrAttendance(models.Model):
             local_check_in = pytz.utc.localize(att.check_in).astimezone(tz) if att.check_in.tzinfo is None else att.check_in.astimezone(tz)
             local_now = datetime.now(tz)
             
-            # Calculate check-in age to avoid flagging active night shifts
-            age_seconds = (datetime.now() - att.check_in).total_seconds()
+            # Calculate check-in age in UTC to avoid flagging active night shifts
+            age_seconds = (fields.Datetime.now() - att.check_in).total_seconds()
             
             # If the check_in is older than 14 hours and its localized date is strictly before today
             if age_seconds > 14 * 3600 and local_check_in.date() < local_now.date():
