@@ -235,3 +235,26 @@ Tax Plus Final Surcharge    : ₹{tax_plus_surcharge:,.2f}
                 DummySurcharge(20000000.0, 50000000.0, 25.0, 'old'),
                 DummySurcharge(50000000.0, 0.0, 37.0, 'old'),
             ]
+        class DummySurcharge:
+            def __init__(self, income_from, income_to, surcharge_rate, regime_code):
+                self.income_from = income_from
+                self.income_to = income_to
+                self.surcharge_rate = surcharge_rate
+                self.regime_code = regime_code
+
+        regime_code = (regime_code or 'new').lower()
+        if regime_code == 'new':
+            return [
+                DummySurcharge(0.0, 5000000.0, 0.0, 'new'),
+                DummySurcharge(5000000.0, 10000000.0, 10.0, 'new'),
+                DummySurcharge(10000000.0, 20000000.0, 15.0, 'new'),
+                DummySurcharge(20000000.0, 0.0, 25.0, 'new'),
+            ]
+        else:
+            return [
+                DummySurcharge(0.0, 5000000.0, 0.0, 'old'),
+                DummySurcharge(5000000.0, 10000000.0, 10.0, 'old'),
+                DummySurcharge(10000000.0, 20000000.0, 15.0, 'old'),
+                DummySurcharge(20000000.0, 50000000.0, 25.0, 'old'),
+                DummySurcharge(50000000.0, 0.0, 37.0, 'old'),
+            ]

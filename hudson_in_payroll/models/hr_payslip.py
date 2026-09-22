@@ -1736,8 +1736,20 @@ else:
 
         # Attendance / Worked Days
         std_days = _calendar.monthrange(self.date_to.year, self.date_to.month)[1] if self.date_to else 30
-        days_worked = sum(w.number_of_days for w in self.worked_days_line_ids if (w.code or '').upper() not in ('UNPAID', 'ABSENT')) if self.worked_days_line_ids else std_days
-        lop_days = sum(w.number_of_days for w in self.worked_days_line_ids if (w.code or '').upper() in ('UNPAID', 'ABSENT')) if self.worked_days_line_ids else 0.0
+        lop_days = sum(
+            w.number_of_days for w in self.worked_days_line_ids
+            if (w.code or '').upper() in ('UNPAID', 'ABSENT', 'SHORTAGE', 'LOP', 'LEAVE_UNPAID')
+        ) if self.worked_days_line_ids else 0.0
+        if hasattr(self, 'total_worked_days') and self.worked_days_line_ids:
+            days_worked = round(float(self.total_worked_days), 2)
+        elif self.worked_days_line_ids:
+            work_days = sum(
+                w.number_of_days for w in self.worked_days_line_ids
+                if (w.code or '').upper() not in ('UNPAID', 'ABSENT', 'SHORTAGE', 'LOP', 'LEAVE_UNPAID')
+            )
+            days_worked = round(max(0.0, work_days - lop_days), 2)
+        else:
+            days_worked = std_days
         lop_rev_days = sum(w.number_of_days for w in self.worked_days_line_ids if 'REV' in (w.code or '').upper()) if self.worked_days_line_ids else 0.0
 
         # Payment Mode — fetched from payslip Many2one (populated from employee)

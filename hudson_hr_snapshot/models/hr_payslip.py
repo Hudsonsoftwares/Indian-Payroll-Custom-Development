@@ -104,9 +104,15 @@ class HrPayslip(models.Model):
 
             # Attendance details
             worked_lines = payslip.worked_days_line_ids
-            working_days = sum(worked_lines.mapped('number_of_days')) if worked_lines else 0.0
-            paid_days = sum(worked_lines.filtered(lambda l: l.code == 'WORK100').mapped('number_of_days')) if worked_lines else 0.0
-            lop_days = sum(worked_lines.filtered(lambda l: l.code == 'UNPAID').mapped('number_of_days')) if worked_lines else 0.0
+            lop_days = sum(worked_lines.filtered(lambda l: (l.code or '').upper() in ('UNPAID', 'ABSENT', 'SHORTAGE', 'LOP', 'LEAVE_UNPAID')).mapped('number_of_days')) if worked_lines else 0.0
+            if hasattr(payslip, 'total_worked_days') and worked_lines:
+                working_days = float(payslip.total_worked_days)
+            elif worked_lines:
+                work_days = sum(worked_lines.filtered(lambda l: (l.code or '').upper() not in ('UNPAID', 'ABSENT', 'SHORTAGE', 'LOP', 'LEAVE_UNPAID')).mapped('number_of_days'))
+                working_days = max(0.0, work_days - lop_days)
+            else:
+                working_days = 0.0
+            paid_days = working_days
 
             vals = {
                 'payslip_id': payslip.id,
