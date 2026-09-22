@@ -343,9 +343,9 @@
                                         <td style="padding: 5px 8px; border: 1px solid #dee2e6; background: #f8f9fa;">Remaining Payroll Periods</td>
                                         <td style="text-align: right; padding: 5px 8px; border: 1px solid #dee2e6;"><t t-esc="r['remaining_periods']"/> month(s)</td>
                                     </tr>
-                                    <!-- Projected Monthly TDS (Normal Phase Benchmark = Annual Tax / 12) -->
+                                    <!-- Projected Monthly TDS -->
                                     <tr>
-                                        <td style="padding: 5px 8px; border: 1px solid #dee2e6; background: #f8f9fa; color: #6c757d;">Projected Monthly TDS (Annual Tax ÷ 12)</td>
+                                        <td style="padding: 5px 8px; border: 1px solid #dee2e6; background: #f8f9fa; color: #6c757d;">Projected Monthly TDS</td>
                                         <td style="text-align: right; padding: 5px 8px; border: 1px solid #dee2e6; color: #6c757d;">INR&#160;<t t-esc="'{:,.2f}'.format(r['projected_monthly_tds'])"/></td>
                                     </tr>
                                     <!-- Recalculation schedule detail: show when January recalculation is active -->

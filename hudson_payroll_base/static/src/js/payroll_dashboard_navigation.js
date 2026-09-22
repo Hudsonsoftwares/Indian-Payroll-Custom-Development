@@ -400,5 +400,136 @@ registry.category("services").add("hds_dashboard_nav_service", hdsDashboardNavSe
             }
         }
     }, true);
+
+    // Dynamic Period Update without Full Window / Browser Reload
+    window.hdsUpdatePeriod = function (monthNum, fyId) {
+        const rootEl = document.querySelector(".o_hds_dashboard_root, [data-hds-dashboard-root]");
+        if (rootEl) {
+            rootEl.style.transition = "opacity 0.15s ease";
+            rootEl.style.opacity = "0.45";
+            rootEl.style.pointerEvents = "none";
+        }
+
+        const rpcService = window.__hds_rpc || rpc;
+        if (!rpcService) {
+            console.warn("[HDS Dashboard] RPC service unavailable for dynamic period update.");
+            return;
+        }
+
+        console.log("[HDS Dashboard] Dynamic period update requested: Month =", monthNum, "FY =", fyId);
+
+        rpcService("/web/dataset/call_kw/hds.payroll.dashboard/set_dashboard_period_and_get_html", {
+            model: "hds.payroll.dashboard",
+            method: "set_dashboard_period_and_get_html",
+            args: [],
+            kwargs: {
+                month_num: monthNum,
+                fy_id: fyId,
+            },
+        }).then(result => {
+            if (result && result.html) {
+                const currentRoot = document.querySelector(".o_hds_dashboard_root, [data-hds-dashboard-root]");
+                if (currentRoot) {
+                    const tempDiv = document.createElement("div");
+                    tempDiv.innerHTML = result.html;
+                    const newRoot = tempDiv.firstElementChild || tempDiv;
+                    newRoot.style.opacity = "0";
+                    newRoot.style.transition = "opacity 0.2s ease";
+                    currentRoot.replaceWith(newRoot);
+                    requestAnimationFrame(() => {
+                        newRoot.style.opacity = "1";
+                    });
+                }
+
+                // Sync top form fields if present in Form View
+                if (result.payroll_month_num) {
+                    const formMonthSelect = document.querySelector("[name='payroll_month_num'] select, select[name='payroll_month_num']");
+                    if (formMonthSelect) formMonthSelect.value = result.payroll_month_num;
+                    const monthToggler = document.querySelector("[name='payroll_month_num'] .o_select_menu_toggler_slot");
+                    const monthMap = {
+                        "1": "January", "2": "February", "3": "March", "4": "April",
+                        "5": "May", "6": "June", "7": "July", "8": "August",
+                        "9": "September", "10": "October", "11": "November", "12": "December"
+                    };
+                    if (monthToggler && monthMap[result.payroll_month_num]) {
+                        monthToggler.textContent = monthMap[result.payroll_month_num];
+                    }
+                }
+
+                if (result.financial_year_name) {
+                    const fyToggler = document.querySelector("[name='financial_year_id'] .o_select_menu_toggler_slot, [name='financial_year_id'] input");
+                    if (fyToggler) {
+                        if (fyToggler.value !== undefined) fyToggler.value = result.financial_year_name;
+                        else fyToggler.textContent = result.financial_year_name;
+                    }
+                }
+
+                // Sync Workforce badge
+                if (result.active_employee_count !== undefined) {
+                    const empBadge = document.querySelector("[name='active_employee_count']");
+                    if (empBadge) empBadge.textContent = result.active_employee_count;
+                }
+
+                console.log("[HDS Dashboard] Dynamic period update completed successfully!");
+            }
+        }).catch(err => {
+            console.error("[HDS Dashboard] set_dashboard_period_and_get_html error:", err);
+            if (rootEl) {
+                rootEl.style.opacity = "1";
+                rootEl.style.pointerEvents = "auto";
+            }
+        });
+    };
+
+    // Auto-update when Payroll Month or Tax Year form view dropdown changes
+    let periodChangeDebounce = null;
+    document.addEventListener("change", function (ev) {
+        const target = ev.target;
+        if (!target) return;
+
+        // Skip internal dashboard selectors (they use explicit onchange)
+        if (target.id === "hds_dashboard_month_picker" || target.id === "hds_dashboard_fy_picker") {
+            return;
+        }
+
+        const isMonth = target.matches("[name='payroll_month_num'] select, select[name='payroll_month_num']") ||
+                        target.closest("[name='payroll_month_num']");
+        const isYear = target.matches("[name='financial_year_id'] select, select[name='financial_year_id']") ||
+                       target.closest("[name='financial_year_id']");
+
+        if (isMonth || isYear) {
+            clearTimeout(periodChangeDebounce);
+            periodChangeDebounce = setTimeout(() => {
+                const monthSelect = document.querySelector("[name='payroll_month_num'] select, select[name='payroll_month_num'], [name='payroll_month_num'] input");
+                const monthVal = monthSelect ? (monthSelect.value || (monthSelect.dataset && monthSelect.dataset.value)) : null;
+
+                const yearSelect = document.querySelector("[name='financial_year_id'] select, select[name='financial_year_id'], [name='financial_year_id'] input");
+                const yearVal = yearSelect ? (yearSelect.value || (yearSelect.dataset && yearSelect.dataset.value)) : null;
+
+                window.hdsUpdatePeriod(monthVal, yearVal);
+            }, 80);
+        }
+    }, true);
+
+    // Support Odoo 19 OWL SelectMenu item selection clicks in FormView
+    document.addEventListener("click", function (ev) {
+        const choiceItem = ev.target.closest(".o_select_menu_menu .dropdown-item, .o_field_selection_menu .dropdown-item, [data-choice-index]");
+        if (choiceItem) {
+            setTimeout(() => {
+                const monthToggler = document.querySelector("[name='payroll_month_num'] .o_select_menu_toggler_slot, [name='payroll_month_num'] button");
+                if (monthToggler) {
+                    const text = monthToggler.textContent.trim();
+                    const monthMap = {
+                        "January": "1", "February": "2", "March": "3", "April": "4",
+                        "May": "5", "June": "6", "July": "7", "August": "8",
+                        "September": "9", "October": "10", "November": "11", "December": "12"
+                    };
+                    if (monthMap[text]) {
+                        window.hdsUpdatePeriod(monthMap[text], null);
+                    }
+                }
+            }, 60);
+        }
+    }, true);
 })();
 

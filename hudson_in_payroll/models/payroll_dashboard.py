@@ -285,22 +285,24 @@ class HdsPayrollDashboard(models.Model):
                 rec.final_settlement_approved_count = 0
                 rec.final_settlement_paid_count = 0
 
-            # Payslips and Payroll Financial Metrics for period (Company-aware, Non-cancelled Slips with Deduplication)
+            # Payslips and Payroll Financial Metrics for period (Company-aware, Confirmed/Paid Slips only)
             company_domain = [('company_id', 'in', self.env.companies.ids)]
             period_domain = [
                 ('date_from', '<=', month_end),
                 ('date_to', '>=', month_start),
-                ('state', '!=', 'cancel'),
+                ('state', 'in', ('done', 'paid')),
             ] + company_domain
             all_slips = self.env['hr.payslip'].search(period_domain)
 
-            # Deduplicate by employee so multiple draft or re-computed slips don't double count
-            state_priority = {'paid': 4, 'done': 3, 'verify': 2, 'draft': 1}
-            latest_slips_by_emp = {}
+            # Deduplicate only if identical employee AND identical pay period (date_from, date_to)
+            # This ensures split payslips (e.g. 1-15 and 16-30) are both fully accounted for
+            state_priority = {'paid': 2, 'done': 1}
+            unique_slips = {}
             for slip in all_slips.sorted(key=lambda s: (state_priority.get(s.state, 0), s.id), reverse=True):
-                if slip.employee_id.id not in latest_slips_by_emp:
-                    latest_slips_by_emp[slip.employee_id.id] = slip
-            slips = self.env['hr.payslip'].browse([s.id for s in latest_slips_by_emp.values()])
+                key = (slip.employee_id.id, slip.date_from, slip.date_to)
+                if key not in unique_slips:
+                    unique_slips[key] = slip
+            slips = self.env['hr.payslip'].browse([s.id for s in unique_slips.values()])
 
             # Unconfirmed slips (Draft & To Validate) - count actual payslips requiring validation for selected month
             unconfirmed_domain = [
@@ -486,7 +488,7 @@ class HdsPayrollDashboard(models.Model):
             ytd_slips = self.env['hr.payslip'].search([
                 ('date_from', '>=', fy_start),
                 ('date_to', '<=', month_end),
-                ('state', '!=', 'cancel'),
+                ('state', 'in', ('done', 'paid')),
             ] + company_domain)
             ytd_slips_by_emp_period = {}
             for ys in ytd_slips.sorted(key=lambda s: (state_priority.get(s.state, 0), s.id), reverse=True):
@@ -606,10 +608,11 @@ class HdsPayrollDashboard(models.Model):
                     ('state', 'in', ('paid', 'done')),
                 ] + company_domain
                 t_all_slips = self.env['hr.payslip'].search(t_domain)
-                t_latest = {}
+                t_unique = {}
                 for s in t_all_slips.sorted(key=lambda s: (state_priority.get(s.state, 0), s.id), reverse=True):
-                    if s.employee_id.id not in t_latest:
-                        t_latest[s.employee_id.id] = s
+                    key = (s.employee_id.id, s.date_from, s.date_to)
+                    if key not in t_unique:
+                        t_unique[key] = s
 
                 t_gross = 0.0
                 t_er_epf = 0.0
@@ -618,7 +621,7 @@ class HdsPayrollDashboard(models.Model):
                 t_er_lwf = 0.0
                 t_worked_days = 0.0
 
-                for s in t_latest.values():
+                for s in t_unique.values():
                     gross_val = float(getattr(s, 'gross_amount', None) or getattr(s, 'gross_wage', 0.0) or 0.0)
                     if not gross_val:
                         for line in s.line_ids:
@@ -669,9 +672,9 @@ class HdsPayrollDashboard(models.Model):
                     'er_esic': t_er_esic,
                     'admin': t_admin,
                     'er_lwf': t_er_lwf,
-                    'emp_count': len(t_latest),
+                    'emp_count': len(set(s.employee_id.id for s in t_unique.values())),
                     'worked_days': t_worked_days,
-                    'avg_days': round(t_worked_days / len(t_latest), 1) if t_latest else 0.0,
+                    'avg_days': round(t_worked_days / max(len(set(s.employee_id.id for s in t_unique.values())), 1), 1) if t_unique else 0.0,
                     'cost': t_cost,
                     'is_current': (t_month == m_num and t_year == year),
                     'date_from': str(t_start),
@@ -753,84 +756,24 @@ class HdsPayrollDashboard(models.Model):
                 pct_epf = (act_epf / act_cost) * 100.0
                 pct_esic = (act_esic / act_cost) * 100.0
                 pct_admin = (act_admin / act_cost) * 100.0
+            trend_breakdown_html = ""
 
-                trend_breakdown_html = f"""
-                <div style="margin-top: 18px; padding-top: 14px; border-top: 1px dashed var(--hds-row-border);">
-                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
-                        <span class="hds-text-primary" style="font-size: 12px; font-weight: 700; display: flex; align-items: center; gap: 6px;">
-                            <i class="fa fa-pie-chart" style="color: #c084fc;"/> {act_m_name} {act_year} Employer Cost Breakdown (CTC)
-                        </span>
-                        <span style="font-size: 11px; font-weight: 700; color: #c084fc;">
-                            Total Payroll Cost: {currency_symbol} {act_cost:,.2f}
-                        </span>
-                    </div>
+            # Live Period Selector Options
+            months_list = [
+                ('1', 'January'), ('2', 'February'), ('3', 'March'), ('4', 'April'),
+                ('5', 'May'), ('6', 'June'), ('7', 'July'), ('8', 'August'),
+                ('9', 'September'), ('10', 'October'), ('11', 'November'), ('12', 'December')
+            ]
+            month_options_html = "".join([
+                f'<option value="{m_val}" {"selected" if str(m_num) == str(m_val) else ""}>{m_lbl}</option>'
+                for m_val, m_lbl in months_list
+            ])
 
-                    <!-- Visual Segmented Ratio Bar -->
-                    <div style="width: 100%; height: 8px; border-radius: 4px; overflow: hidden; display: flex; margin-bottom: 12px; background: var(--hds-track-bg, #374151);">
-                        <div style="width: {pct_gross:.1f}%; background: #7c3aed;" title="Gross Salary: {pct_gross:.1f}%"></div>
-                        <div style="width: {pct_epf:.1f}%; background: #38bdf8;" title="Employer EPF: {pct_epf:.1f}%"></div>
-                        <div style="width: {pct_esic:.1f}%; background: #34d399;" title="Employer ESIC: {pct_esic:.1f}%"></div>
-                        <div style="width: {pct_admin:.1f}%; background: #fbbf24;" title="EDLI &amp; Admin: {pct_admin:.1f}%"></div>
-                    </div>
-
-                    <!-- Breakdown Grid Cards (including Attendance Base) -->
-                    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 10px; font-size: 12px;">
-                        
-                        <!-- 1. Gross Salary -->
-                        <div style="background: rgba(124, 58, 237, 0.08); border-left: 3px solid #8b5cf6; padding: 10px 12px; border-radius: 6px;">
-                            <div style="display: flex; justify-content: space-between; align-items: center;">
-                                <span style="font-size: 11px; color: var(--hds-text-secondary); font-weight: 600;">Gross Salary ({act_emp_count} Emps)</span>
-                                <span style="font-size: 10px; font-weight: 700; color: #8b5cf6;">{pct_gross:.1f}%</span>
-                            </div>
-                            <div style="font-size: 14px; font-weight: 700; color: #a78bfa; margin-top: 3px;">{currency_symbol} {act_gross:,.2f}</div>
-                            <div style="font-size: 10px; color: var(--hds-text-muted); margin-top: 2px;">Basic + HRA + Allowances</div>
-                        </div>
-
-                        <!-- 2. Attendance Base Card -->
-                        <div style="background: rgba(14, 165, 233, 0.08); border-left: 3px solid #0284c7; padding: 10px 12px; border-radius: 6px;">
-                            <div style="display: flex; justify-content: space-between; align-items: center;">
-                                <span style="font-size: 11px; color: var(--hds-text-secondary); font-weight: 600;">Attendance Base</span>
-                                <span style="font-size: 10px; font-weight: 700; color: #0284c7;">{act_avg_days}d / Emp</span>
-                            </div>
-                            <div style="font-size: 14px; font-weight: 700; color: #0284c7; margin-top: 3px;">{act_worked_days:.0f} Worked Days</div>
-                            <div style="font-size: 10px; color: var(--hds-text-muted); margin-top: 2px;">Salaries prorated on worked days</div>
-                        </div>
-
-                        <!-- 3. Employer EPF -->
-                        <div style="background: rgba(56, 189, 248, 0.08); border-left: 3px solid #38bdf8; padding: 10px 12px; border-radius: 6px;">
-                            <div style="display: flex; justify-content: space-between; align-items: center;">
-                                <span style="font-size: 11px; color: var(--hds-text-secondary); font-weight: 600;">Employer EPF Share</span>
-                                <span style="font-size: 10px; font-weight: 700; color: #38bdf8;">{pct_epf:.1f}%</span>
-                            </div>
-                            <div style="font-size: 14px; font-weight: 700; color: #38bdf8; margin-top: 3px;">{currency_symbol} {act_epf:,.2f}</div>
-                            <div style="font-size: 10px; color: var(--hds-text-muted); margin-top: 2px;">PF &amp; Pension Contribution (EPS)</div>
-                        </div>
-
-                        <!-- 4. Employer ESIC -->
-                        <div style="background: rgba(52, 211, 153, 0.08); border-left: 3px solid #34d399; padding: 10px 12px; border-radius: 6px;">
-                            <div style="display: flex; justify-content: space-between; align-items: center;">
-                                <span style="font-size: 11px; color: var(--hds-text-secondary); font-weight: 600;">Employer ESIC Share</span>
-                                <span style="font-size: 10px; font-weight: 700; color: #34d399;">{pct_esic:.1f}%</span>
-                            </div>
-                            <div style="font-size: 14px; font-weight: 700; color: #34d399; margin-top: 3px;">{currency_symbol} {act_esic:,.2f}</div>
-                            <div style="font-size: 10px; color: var(--hds-text-muted); margin-top: 2px;">3.25% Statutory Contribution</div>
-                        </div>
-
-                        <!-- 5. EDLI & Admin -->
-                        <div style="background: rgba(245, 158, 11, 0.08); border-left: 3px solid #f59e0b; padding: 10px 12px; border-radius: 6px;">
-                            <div style="display: flex; justify-content: space-between; align-items: center;">
-                                <span style="font-size: 11px; color: var(--hds-text-secondary); font-weight: 600;">EDLI &amp; Admin Charges</span>
-                                <span style="font-size: 10px; font-weight: 700; color: #f59e0b;">{pct_admin:.1f}%</span>
-                            </div>
-                            <div style="font-size: 14px; font-weight: 700; color: #fbbf24; margin-top: 3px;">{currency_symbol} {act_admin:,.2f}</div>
-                            <div style="font-size: 10px; color: var(--hds-text-muted); margin-top: 2px;">Admin (0.5%) + EDLI (0.5%)</div>
-                        </div>
-
-                    </div>
-                </div>
-                """
-            else:
-                trend_breakdown_html = ""
+            fy_records = self.env['tds.financial.year'].search([], order='start_date desc', limit=10)
+            fy_options_html = "".join([
+                f'<option value="{fy.id}" {"selected" if rec.financial_year_id and rec.financial_year_id.id == fy.id else ""}>{fy.name}</option>'
+                for fy in fy_records
+            ])
 
             if rec.total_net_paid > 0 and rec.total_net_payable > 0:
                 net_status_label = f"Disbursed: {currency_symbol} {rec.total_net_paid:,.2f} &bull; Due: {currency_symbol} {rec.total_net_payable:,.2f}"
@@ -842,6 +785,106 @@ class HdsPayrollDashboard(models.Model):
             rec.dashboard_html = f"""
             <div class="o_hds_dashboard_root" data-hds-dashboard-root="true" data-month-num="{m_num}" data-year="{year}" data-date-from="{month_start}" data-date-to="{month_end}" style="font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; width: 100%; box-sizing: border-box;">
 
+                <style>
+                    .o_hds_dashboard_root {{
+                        --hds-dash-bg: #0f172a;
+                        --hds-card-bg: #1e293b;
+                        --hds-card-border: rgba(255, 255, 255, 0.12);
+                        --hds-text-primary: #f8fafc;
+                        --hds-text-secondary: #cbd5e1;
+                        --hds-text-muted: #94a3b8;
+                        --hds-row-border: rgba(255, 255, 255, 0.08);
+                        --hds-subcard-bg: rgba(15, 23, 42, 0.6);
+                        --hds-subcard-border: rgba(255, 255, 255, 0.08);
+                        --hds-table-head: rgba(15, 23, 42, 0.85);
+                        --hds-table-row-even: rgba(255, 255, 255, 0.02);
+                        --hds-row-hover: rgba(255, 255, 255, 0.05);
+                        box-sizing: border-box !important;
+                    }}
+                    .o_hds_dashboard_root * {{
+                        box-sizing: border-box;
+                    }}
+                    .o_hds_dashboard_root .hds-dash-card {{
+                        background-color: #1e293b !important;
+                        border: 1px solid rgba(255, 255, 255, 0.12) !important;
+                        border-radius: 12px !important;
+                        box-shadow: 0 4px 14px rgba(0, 0, 0, 0.2) !important;
+                        color: #f8fafc !important;
+                    }}
+                    .o_hds_dashboard_root .hds-subcard {{
+                        background-color: rgba(15, 23, 42, 0.6) !important;
+                        border: 1px solid rgba(255, 255, 255, 0.08) !important;
+                        border-radius: 8px !important;
+                        color: #f8fafc !important;
+                    }}
+                    .o_hds_dashboard_root .hds-text-primary {{
+                        color: #f8fafc !important;
+                    }}
+                    .o_hds_dashboard_root .hds-text-secondary {{
+                        color: #cbd5e1 !important;
+                    }}
+                    .o_hds_dashboard_root .hds-text-muted {{
+                        color: #94a3b8 !important;
+                    }}
+                </style>
+
+                <!-- 0. UNIFIED EXECUTIVE PAYROLL CONTROL BANNER (LIVE PERIOD SYNC) -->
+                <div class="hds-dash-card" style="padding: 16px 22px; margin-bottom: 22px; background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%); border: 1px solid rgba(255,255,255,0.14); border-radius: 14px; box-shadow: 0 4px 16px rgba(0,0,0,0.25); display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 16px;">
+                    <!-- Left: Title & Subtitle -->
+                    <div style="display: flex; align-items: center; gap: 14px; min-width: 260px;">
+                        <div style="width: 44px; height: 44px; border-radius: 10px; background: rgba(56, 189, 248, 0.15); border: 1px solid rgba(56, 189, 248, 0.3); display: flex; align-items: center; justify-content: center; font-size: 22px; flex-shrink: 0;">
+                            🇮🇳
+                        </div>
+                        <div>
+                            <div style="display: flex; align-items: center; gap: 8px;">
+                                <h2 style="margin: 0; font-size: 18px; font-weight: 800; color: #ffffff; letter-spacing: -0.3px;">Indian Payroll Dashboard</h2>
+                                <span style="font-size: 11px; background: rgba(56, 189, 248, 0.15); color: #38bdf8; border: 1px solid rgba(56, 189, 248, 0.3); padding: 2px 8px; border-radius: 10px; font-weight: 700;">{month_name} {year}</span>
+                            </div>
+                            <div style="font-size: 11px; color: #94a3b8; margin-top: 3px; font-weight: 500;">
+                                Executive statutory compliance, salary disbursement &amp; data health
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Right: Controls & Counters -->
+                    <div style="display: flex; align-items: center; gap: 14px; flex-wrap: wrap;">
+                        <!-- Month Selector -->
+                        <div style="display: flex; flex-direction: column; gap: 4px;">
+                            <span style="font-size: 10px; font-weight: 700; color: #cbd5e1; text-transform: uppercase; letter-spacing: 0.5px;">
+                                <i class="fa fa-calendar me-1"></i> Payroll Month
+                            </span>
+                            <select id="hds_dashboard_month_picker" onchange="window.hdsUpdatePeriod &amp;&amp; window.hdsUpdatePeriod(this.value, null)" style="background: #0f172a; color: #38bdf8; border: 1px solid #3b82f6; border-radius: 8px; padding: 7px 14px; font-size: 12px; font-weight: 700; cursor: pointer; outline: none; box-shadow: 0 2px 6px rgba(0,0,0,0.2);">
+                                {month_options_html}
+                            </select>
+                        </div>
+
+                        <!-- Tax Year Selector -->
+                        <div style="display: flex; flex-direction: column; gap: 4px;">
+                            <span style="font-size: 10px; font-weight: 700; color: #cbd5e1; text-transform: uppercase; letter-spacing: 0.5px;">
+                                <i class="fa fa-university me-1"></i> Tax Year
+                            </span>
+                            <select id="hds_dashboard_fy_picker" onchange="window.hdsUpdatePeriod &amp;&amp; window.hdsUpdatePeriod(null, this.value)" style="background: #0f172a; color: #c084fc; border: 1px solid #8b5cf6; border-radius: 8px; padding: 7px 14px; font-size: 12px; font-weight: 700; cursor: pointer; outline: none; box-shadow: 0 2px 6px rgba(0,0,0,0.2);">
+                                {fy_options_html}
+                            </select>
+                        </div>
+
+                        <!-- Workforce Counter Badge -->
+                        <div role="button" tabindex="0" onclick="window.hdsCardClick &amp;&amp; window.hdsCardClick(this, 'active_employee_count')" data-card-type="active_employee_count" class="o_hds_dashboard_card_clickable" style="cursor: pointer; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 6px 14px; background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.14); border-radius: 8px; min-width: 70px;">
+                            <span style="font-size: 10px; font-weight: 700; color: #38bdf8; text-transform: uppercase; letter-spacing: 0.5px;">
+                                <i class="fa fa-users me-1"></i> Workforce
+                            </span>
+                            <span style="font-size: 15px; font-weight: 800; color: #ffffff; margin-top: 1px;">
+                                {rec.active_employee_count}
+                            </span>
+                        </div>
+
+                        <!-- Live Sync Indicator Badge -->
+                        <div style="display: flex; align-items: center; gap: 6px; padding: 7px 14px; background: rgba(34, 197, 94, 0.12); border: 1px solid rgba(34, 197, 94, 0.3); border-radius: 20px; font-size: 11px; font-weight: 700; color: #4ade80;">
+                            <span style="width: 7px; height: 7px; border-radius: 50%; background: #4ade80; display: inline-block; box-shadow: 0 0 6px #4ade80;"></span> Live Sync
+                        </div>
+                    </div>
+                </div>
+
                 <!-- 1. PRIMARY KPI CARDS GRID (PAYRUN PALETTE) -->
                 <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 16px; margin-bottom: 22px;">
 
@@ -849,7 +892,7 @@ class HdsPayrollDashboard(models.Model):
                     <div role="button" tabindex="0" onclick="window.hdsCardClick &amp;&amp; window.hdsCardClick(this, 'total_payroll_cost')" data-card-type="total_payroll_cost" data-month-num="{m_num}" data-year="{year}" data-date-from="{month_start}" data-date-to="{month_end}" class="hds-dash-card o_hds_dashboard_card_clickable" style="text-decoration: none; display: block; padding: 18px; border-top: 4px solid #c084fc !important; cursor: pointer;">
                         <div style="display: flex; justify-content: space-between; align-items: center;">
                             <span class="small fw-semibold text-uppercase" style="color: #c084fc !important; font-size: 11px; letter-spacing: 0.5px;">
-                                <i class="fa fa-briefcase me-1"/> Total Payroll Cost
+                                <i class="fa fa-briefcase me-1"></i> Total Payroll Cost
                             </span>
                             <span style="font-size: 11px; color: #c084fc; font-weight: 600;">View Details &darr;</span>
                         </div>
@@ -865,7 +908,7 @@ class HdsPayrollDashboard(models.Model):
                     <div role="button" tabindex="0" onclick="window.hdsCardClick &amp;&amp; window.hdsCardClick(this, 'total_net_pay')" data-card-type="total_net_pay" data-month-num="{m_num}" data-year="{year}" data-date-from="{month_start}" data-date-to="{month_end}" class="hds-dash-card o_hds_dashboard_card_clickable" style="text-decoration: none; display: block; padding: 18px; border-top: 4px solid #4ade80 !important; cursor: pointer;">
                         <div style="display: flex; justify-content: space-between; align-items: center;">
                             <span class="small fw-semibold text-uppercase" style="color: #4ade80 !important; font-size: 11px; letter-spacing: 0.5px;">
-                                <i class="fa fa-credit-card me-1"/> Total Net Salary
+                                <i class="fa fa-credit-card me-1"></i> Total Net Salary
                             </span>
                             <span style="font-size: 11px; color: #4ade80; font-weight: 600;">Disbursement &darr;</span>
                         </div>
@@ -881,7 +924,7 @@ class HdsPayrollDashboard(models.Model):
                     <div role="button" tabindex="0" onclick="window.hdsCardClick &amp;&amp; window.hdsCardClick(this, 'active_employee_count')" data-card-type="active_employee_count" class="hds-dash-card o_hds_dashboard_card_clickable" style="text-decoration: none; display: block; padding: 18px; border-top: 4px solid #38bdf8 !important; cursor: pointer;">
                         <div style="display: flex; justify-content: space-between; align-items: center;">
                             <span class="small fw-semibold text-uppercase" style="color: #38bdf8 !important; font-size: 11px; letter-spacing: 0.5px;">
-                                <i class="fa fa-users me-1"/> Active Employees
+                                <i class="fa fa-users me-1"></i> Active Employees
                             </span>
                             <span style="font-size: 11px; color: #38bdf8; font-weight: 600;">Workforce &darr;</span>
                         </div>
@@ -897,7 +940,7 @@ class HdsPayrollDashboard(models.Model):
                     <div role="button" tabindex="0" onclick="window.hdsCardClick &amp;&amp; window.hdsCardClick(this, 'tds_this_month')" data-card-type="tds_this_month" class="hds-dash-card o_hds_dashboard_card_clickable" style="text-decoration: none; display: block; padding: 18px; border-top: 4px solid #818cf8 !important; cursor: pointer;">
                         <div style="display: flex; justify-content: space-between; align-items: center;">
                             <span class="small fw-semibold text-uppercase" style="color: #818cf8 !important; font-size: 11px; letter-spacing: 0.5px;">
-                                <i class="fa fa-shield me-1"/> TDS This Month
+                                <i class="fa fa-shield me-1"></i> TDS This Month
                             </span>
                             <span style="font-size: 11px; color: #818cf8; font-weight: 600;">TDS Details &darr;</span>
                         </div>
@@ -913,7 +956,7 @@ class HdsPayrollDashboard(models.Model):
                     <div role="button" tabindex="0" onclick="window.hdsCardClick &amp;&amp; window.hdsCardClick(this, 'final_settlements_due')" data-card-type="final_settlements_due" class="hds-dash-card o_hds_dashboard_card_clickable" style="text-decoration: none; display: block; padding: 18px; border-top: 4px solid #f87171 !important; cursor: pointer;">
                         <div style="display: flex; justify-content: space-between; align-items: center;">
                             <span class="small fw-semibold text-uppercase" style="color: #f87171 !important; font-size: 11px; letter-spacing: 0.5px;">
-                                <i class="fa fa-user-times me-1"/> Final Settlements Due
+                                <i class="fa fa-user-times me-1"></i> Final Settlements Due
                             </span>
                             <span style="font-size: 11px; color: #f87171; font-weight: 600;">View Due &darr;</span>
                         </div>
@@ -933,7 +976,7 @@ class HdsPayrollDashboard(models.Model):
                 <div class="hds-dash-card" style="padding: 18px; margin-bottom: 22px; background-color: var(--hds-alert-bg) !important; border: 1px solid var(--hds-alert-border) !important;">
                     <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px;">
                         <div style="font-size: 15px; font-weight: 700; color: var(--hds-alert-header); display: flex; align-items: center; gap: 8px;">
-                            <i class="fa fa-exclamation-triangle" style="color: #f87171;"/> Action Required
+                            <i class="fa fa-exclamation-triangle" style="color: #f87171;"></i> Action Required
                         </div>
                         <div class="hds-text-muted" style="font-size: 11px; font-weight: 600;">Immediate HR Verification Required (Click card to view records below)</div>
                     </div>
@@ -942,7 +985,7 @@ class HdsPayrollDashboard(models.Model):
                         <div role="button" tabindex="0" onclick="window.hdsCardClick &amp;&amp; window.hdsCardClick(this, 'missing_pan')" data-card-type="missing_pan" class="hds-subcard o_hds_dashboard_card_clickable" style="text-decoration: none; display: block; padding: 12px 14px; border-left: 4px solid #ef4444 !important; cursor: pointer;">
                             <div style="display: flex; justify-content: space-between; align-items: center;">
                                 <div style="font-size: 12px; font-weight: 700; color: #f87171;">
-                                    <i class="fa fa-id-card me-1"/> {rec.missing_pan_count} Employees Missing PAN
+                                    <i class="fa fa-id-card me-1"></i> {rec.missing_pan_count} Employees Missing PAN
                                 </div>
                                 <span style="font-size: 12px; color: #ef4444; font-weight: 700;">&darr;</span>
                             </div>
@@ -953,7 +996,7 @@ class HdsPayrollDashboard(models.Model):
                         <div role="button" tabindex="0" onclick="window.hdsCardClick &amp;&amp; window.hdsCardClick(this, 'missing_bank')" data-card-type="missing_bank" class="hds-subcard o_hds_dashboard_card_clickable" style="text-decoration: none; display: block; padding: 12px 14px; border-left: 4px solid #f97316 !important; cursor: pointer;">
                             <div style="display: flex; justify-content: space-between; align-items: center;">
                                 <div style="font-size: 12px; font-weight: 700; color: #fb923c;">
-                                    <i class="fa fa-university me-1"/> {rec.missing_bank_count} Employees Missing Bank
+                                    <i class="fa fa-university me-1"></i> {rec.missing_bank_count} Employees Missing Bank
                                 </div>
                                 <span style="font-size: 12px; color: #f97316; font-weight: 700;">&darr;</span>
                             </div>
@@ -964,7 +1007,7 @@ class HdsPayrollDashboard(models.Model):
                         <div role="button" tabindex="0" onclick="window.hdsCardClick &amp;&amp; window.hdsCardClick(this, 'pending_declarations')" data-card-type="pending_declarations" class="hds-subcard o_hds_dashboard_card_clickable" style="text-decoration: none; display: block; padding: 12px 14px; border-left: 4px solid #f59e0b !important; cursor: pointer;">
                             <div style="display: flex; justify-content: space-between; align-items: center;">
                                 <div style="font-size: 12px; font-weight: 700; color: #fbbf24;">
-                                    <i class="fa fa-file-text-o me-1"/> {rec.pending_declarations_count} Declarations Pending
+                                    <i class="fa fa-file-text-o me-1"></i> {rec.pending_declarations_count} Declarations Pending
                                 </div>
                                 <span style="font-size: 12px; color: #f59e0b; font-weight: 700;">&darr;</span>
                             </div>
@@ -975,7 +1018,7 @@ class HdsPayrollDashboard(models.Model):
                         <div role="button" tabindex="0" onclick="window.hdsCardClick &amp;&amp; window.hdsCardClick(this, 'attendance_exceptions')" data-card-type="attendance_exceptions" class="hds-subcard o_hds_dashboard_card_clickable" style="text-decoration: none; display: block; padding: 12px 14px; border-left: 4px solid #8b5cf6 !important; cursor: pointer;">
                             <div style="display: flex; justify-content: space-between; align-items: center;">
                                 <div style="font-size: 12px; font-weight: 700; color: #c084fc;">
-                                    <i class="fa fa-file-text-o me-1"/> {rec.unconfirmed_slips_count} Payslips to Validate
+                                    <i class="fa fa-file-text-o me-1"></i> {rec.unconfirmed_slips_count} Payslips to Validate
                                 </div>
                                 <span style="font-size: 12px; color: #8b5cf6; font-weight: 700;">&darr;</span>
                             </div>
@@ -995,7 +1038,7 @@ class HdsPayrollDashboard(models.Model):
                     <div class="hds-dash-card" style="padding: 18px;">
                         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; border-bottom: 1px solid var(--hds-row-border); padding-bottom: 8px;">
                             <div class="hds-text-primary" style="font-size: 14px; font-weight: 700; display: flex; align-items: center; gap: 8px;">
-                                <i class="fa fa-user-plus" style="color: #818cf8;"/> New Joiners ({month_name})
+                                <i class="fa fa-user-plus" style="color: #818cf8;"></i> New Joiners ({month_name})
                             </div>
                             <span role="button" tabindex="0" onclick="window.hdsCardClick &amp;&amp; window.hdsCardClick(this, 'new_joiners')" data-card-type="new_joiners" class="o_hds_dashboard_card_clickable" style="font-size: 11px; font-weight: 700; color: #818cf8; background: rgba(129, 140, 248, 0.15); border: 1px solid rgba(129, 140, 248, 0.3); padding: 4px 10px; border-radius: 12px; display: inline-flex; align-items: center; gap: 4px; cursor: pointer;">
                                 Count: {rec.new_joiners_count} &darr;
@@ -1019,7 +1062,7 @@ class HdsPayrollDashboard(models.Model):
                     <!-- Employee Data Health Card -->
                     <div class="hds-dash-card" style="padding: 18px;">
                         <div class="hds-text-primary" style="font-size: 14px; font-weight: 700; margin-bottom: 15px; border-bottom: 1px solid var(--hds-row-border); padding-bottom: 8px; display: flex; align-items: center; gap: 8px;">
-                            <i class="fa fa-heartbeat" style="color: #4ade80;"/> Employee Data Health
+                            <i class="fa fa-heartbeat" style="color: #4ade80;"></i> Employee Data Health
                         </div>
                         <div style="display: flex; flex-direction: column; gap: 14px;">
 
@@ -1075,7 +1118,7 @@ class HdsPayrollDashboard(models.Model):
                 <div class="hds-dash-card" style="padding: 18px; margin-bottom: 22px;">
                     <div style="font-size: 14px; font-weight: 700; margin-bottom: 12px; border-bottom: 1px solid var(--hds-row-border); padding-bottom: 8px; display: flex; justify-content: space-between; align-items: center;">
                         <span class="hds-text-primary">
-                            <i class="fa fa-shield me-1" style="color: #38bdf8;"/> Statutory Identifier Compliance
+                            <i class="fa fa-shield me-1" style="color: #38bdf8;"></i> Statutory Identifier Compliance
                         </span>
                         <span class="hds-text-muted" style="font-size: 12px; font-weight: 600;">Active Workforce: {rec.active_employee_count} Employees</span>
                     </div>
@@ -1132,106 +1175,134 @@ class HdsPayrollDashboard(models.Model):
                     </div>
                 </div>
 
-                <!-- 5. STATUTORY & TAX CARD SECTION -->
-                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 18px; margin-bottom: 22px;">
-
-                    <!-- Statutory Compliance Card (Employer Share & TDS) -->
-                    <div class="hds-dash-card" style="padding: 18px;">
-                        <div class="hds-text-primary" style="font-size: 14px; font-weight: 700; margin-bottom: 12px; border-bottom: 1px solid var(--hds-row-border); padding-bottom: 8px; display: flex; align-items: center; justify-content: space-between;">
-                            <span style="display: flex; align-items: center; gap: 8px;">
-                                <i class="fa fa-shield" style="color: #4ade80;"/> Statutory Compliance Summary
+                <!-- 5. STATUTORY COMPLIANCE & EMPLOYER COST (CTC) UNIFIED BREAKDOWN -->
+                <div class="hds-dash-card" style="padding: 18px; margin-bottom: 22px;">
+                    <div class="hds-text-primary" style="font-size: 14px; font-weight: 700; margin-bottom: 14px; border-bottom: 1px solid var(--hds-row-border); padding-bottom: 10px; display: flex; align-items: center; justify-content: space-between;">
+                        <span style="display: flex; align-items: center; gap: 8px;">
+                            <i class="fa fa-shield" style="color: #4ade80;"></i> Statutory Compliance &amp; Employer Cost (CTC) Summary
+                        </span>
+                        <div style="display: flex; align-items: center; gap: 10px;">
+                            <span style="font-size: 11px; font-weight: 600; color: var(--hds-text-muted);">
+                                Month: {month_name} {year}
                             </span>
                             <span role="button" tabindex="0" onclick="window.hdsCardClick &amp;&amp; window.hdsCardClick(this, 'total_employer_statutory')" data-card-type="total_employer_statutory" class="o_hds_dashboard_card_clickable" style="cursor: pointer; font-size: 11px; padding: 3px 10px; border-radius: 12px; background: rgba(74, 222, 128, 0.15); color: #4ade80; font-weight: 700; display: inline-flex; align-items: center; gap: 4px;" title="Open employee-wise Employer Cost List View">
                                 View Employee List &rarr;
                             </span>
                         </div>
-                        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; font-size: 12px;">
-                            <!-- TDS Card: Main Value Current Month TDS, Sub-metric YTD TDS -->
-                            <div role="button" tabindex="0" onclick="window.hdsCardClick &amp;&amp; window.hdsCardClick(this, 'tds_this_month')" data-card-type="tds_this_month" class="hds-subcard o_hds_dashboard_card_clickable" style="text-decoration: none; display: block; padding: 12px; cursor: pointer;">
-                                <div class="hds-text-muted" style="font-size: 11px; font-weight: 600;">TDS (Sec 192)</div>
-                                <div class="hds-text-primary" style="font-weight: 700; font-size: 14px; margin-top: 2px; color: #818cf8;">{currency_symbol} {rec.tds_this_month:,.2f}</div>
-                                <div style="margin-top: 6px; padding-top: 6px; border-top: 1px dashed var(--hds-row-border); font-size: 10px;">
-                                    <span style="color: var(--hds-text-muted);">YTD TDS:</span> <b style="color: #818cf8;">{currency_symbol} {rec.tds_ytd_total:,.2f}</b>
-                                </div>
-                                <div style="color: #818cf8; font-size: 10px; font-weight: 600; margin-top: 5px;">🟣 Deposit by 7th &bull; <u>View</u></div>
-                            </div>
-                            <!-- Employer ESIC Share (3.25%) - No employee share shown -->
-                            <div role="button" tabindex="0" onclick="window.hdsCardClick &amp;&amp; window.hdsCardClick(this, 'esic_liability')" data-card-type="esic_liability" class="hds-subcard o_hds_dashboard_card_clickable" style="text-decoration: none; display: block; padding: 12px; cursor: pointer;">
-                                <div class="hds-text-muted" style="font-size: 11px; font-weight: 600;">Employer ESIC Share (3.25%)</div>
-                                <div class="hds-text-primary" style="font-weight: 700; font-size: 14px; margin-top: 2px; color: #38bdf8;">{currency_symbol} {rec.esic_employer_liability:,.2f}</div>
-                                <div style="color: #38bdf8; font-size: 10px; font-weight: 600; margin-top: 6px;">🟢 3.25% Employer Contribution &bull; <u>View</u></div>
-                            </div>
-                            <!-- Employer EPF (12%) -->
-                            <div role="button" tabindex="0" onclick="window.hdsCardClick &amp;&amp; window.hdsCardClick(this, 'epf_liability')" data-card-type="epf_liability" class="hds-subcard o_hds_dashboard_card_clickable" style="text-decoration: none; display: block; padding: 12px; cursor: pointer;">
-                                <div class="hds-text-muted" style="font-size: 11px; font-weight: 600;">Employer EPF (12%)</div>
-                                <div class="hds-text-primary" style="font-weight: 700; font-size: 14px; margin-top: 2px; color: #4ade80;">{currency_symbol} {rec.epf_employer_liability:,.2f}</div>
-                                <div style="margin-top: 6px; padding-top: 6px; border-top: 1px dashed var(--hds-row-border); display: grid; grid-template-columns: 1fr 1fr; gap: 4px 6px; font-size: 10px;">
-                                    <div><span style="color: var(--hds-text-muted);">EPF (3.67%):</span> <b style="color: #38bdf8;">{currency_symbol} {rec.epf_er_share_amount:,.2f}</b></div>
-                                    <div><span style="color: var(--hds-text-muted);">EPS (8.33%):</span> <b style="color: #818cf8;">{currency_symbol} {rec.epf_er_eps_amount:,.2f}</b></div>
-                                </div>
-                                <div style="color: #4ade80; font-size: 10px; font-weight: 600; margin-top: 5px;">🟢 12% PF Contribution &bull; <u>View</u></div>
-                            </div>
-                            <!-- EDLI & Admin (1.0%) -->
-                            <div role="button" tabindex="0" onclick="window.hdsCardClick &amp;&amp; window.hdsCardClick(this, 'edli_admin_liability')" data-card-type="edli_admin_liability" class="hds-subcard o_hds_dashboard_card_clickable" style="text-decoration: none; display: block; padding: 12px; cursor: pointer;">
-                                <div class="hds-text-muted" style="font-size: 11px; font-weight: 600;">EDLI &amp; Admin (1.0%)</div>
-                                <div class="hds-text-primary" style="font-weight: 700; font-size: 14px; margin-top: 2px;">{currency_symbol} {(rec.epf_er_edli_amount + rec.epf_er_admin_amount):,.2f}</div>
-                                <div style="margin-top: 6px; padding-top: 6px; border-top: 1px dashed var(--hds-row-border); display: grid; grid-template-columns: 1fr 1fr; gap: 4px 6px; font-size: 10px;">
-                                    <div><span style="color: var(--hds-text-muted);">EDLI (0.5%):</span> <b style="color: #fbbf24;">{currency_symbol} {rec.epf_er_edli_amount:,.2f}</b></div>
-                                    <div><span style="color: var(--hds-text-muted);">Admin (0.5%):</span> <b style="color: #4ade80;">{currency_symbol} {rec.epf_er_admin_amount:,.2f}</b></div>
-                                </div>
-                                <div style="color: #fbbf24; font-size: 10px; font-weight: 600; margin-top: 5px;">🟡 0.5% EDLI + Admin &bull; <u>View</u></div>
-                            </div>
-                            <!-- Employer LWF Share -->
-                            <div role="button" tabindex="0" onclick="window.hdsCardClick &amp;&amp; window.hdsCardClick(this, 'lwf_liability')" data-card-type="lwf_liability" class="hds-subcard o_hds_dashboard_card_clickable" style="text-decoration: none; display: block; padding: 12px; cursor: pointer; grid-column: span 2;">
-                                <div style="display: flex; justify-content: space-between; align-items: center;">
-                                    <div>
-                                        <div class="hds-text-muted" style="font-size: 11px; font-weight: 600;">Employer LWF Share</div>
-                                        <div class="hds-text-primary" style="font-weight: 700; font-size: 14px; margin-top: 2px;">{currency_symbol} {rec.lwf_employer_liability:,.2f}</div>
-                                    </div>
-                                    <div style="text-align: right;">
-                                        <div style="color: #4ade80; font-size: 10px; font-weight: 600;">🟢 State LWF Rule &bull; <u>View</u></div>
-                                    </div>
-                                </div>
-                            </div>
-                            <!-- Total Statutory Liability Footer -->
-                            <div role="button" tabindex="0" onclick="window.hdsCardClick &amp;&amp; window.hdsCardClick(this, 'total_employer_statutory')" data-card-type="total_employer_statutory" class="hds-subcard o_hds_dashboard_card_clickable" style="text-decoration: none; display: block; padding: 12px; cursor: pointer; grid-column: span 2;">
-                                <div style="display: flex; justify-content: space-between; align-items: center;">
-                                    <div>
-                                        <div class="hds-text-muted" style="font-size: 11px; font-weight: 600;">Total Statutory Compliance Liability</div>
-                                        <div class="hds-text-primary" style="font-weight: 700; font-size: 16px; margin-top: 2px; color: #c084fc;">{currency_symbol} {(rec.total_employer_statutory_liability + rec.tds_this_month):,.2f}</div>
-                                    </div>
-                                    <div style="text-align: right;">
-                                        <div style="color: #c084fc; font-size: 10px; font-weight: 600;">🟣 Employer Share ({currency_symbol} {rec.total_employer_statutory_liability:,.2f}) + TDS ({currency_symbol} {rec.tds_this_month:,.2f})</div>
-                                        <div style="color: var(--hds-text-muted); font-size: 10px; margin-top: 2px;">Click to view employee list &rarr;</div>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
                     </div>
 
-                    <!-- Tax & TDS Card -->
-                    <div class="hds-dash-card" style="padding: 18px;">
-                        <div class="hds-text-primary" style="font-size: 14px; font-weight: 700; margin-bottom: 12px; border-bottom: 1px solid var(--hds-row-border); padding-bottom: 8px; display: flex; align-items: center; gap: 8px;">
-                            <i class="fa fa-calculator" style="color: #818cf8;"/> Tax Regime &amp; Declarations Breakdown
+                    <!-- Unified Grid of Statutory & CTC Cost Tiles (All in One Place) -->
+                    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 12px; font-size: 12px;">
+
+                        <!-- 1. Employer EPF (12%) -->
+                        <div role="button" tabindex="0" onclick="window.hdsCardClick &amp;&amp; window.hdsCardClick(this, 'epf_liability')" data-card-type="epf_liability" class="hds-subcard o_hds_dashboard_card_clickable" style="text-decoration: none; display: block; padding: 12px; cursor: pointer; border-left: 3px solid #4ade80 !important;">
+                            <div style="display: flex; justify-content: space-between; align-items: center;">
+                                <span class="hds-text-muted" style="font-size: 11px; font-weight: 600;">Employer EPF (12%)</span>
+                                <span style="font-size: 10px; color: #4ade80; font-weight: 700;">EPF+EPS</span>
+                            </div>
+                            <div class="hds-text-primary" style="font-weight: 700; font-size: 15px; margin-top: 3px; color: #4ade80;">{currency_symbol} {rec.epf_employer_liability:,.2f}</div>
+                            <div style="margin-top: 6px; padding-top: 6px; border-top: 1px dashed var(--hds-row-border); display: grid; grid-template-columns: 1fr 1fr; gap: 4px 6px; font-size: 10px;">
+                                <div><span style="color: var(--hds-text-muted);">EPF (3.67%):</span> <b style="color: #38bdf8;">{currency_symbol} {rec.epf_er_share_amount:,.2f}</b></div>
+                                <div><span style="color: var(--hds-text-muted);">EPS (8.33%):</span> <b style="color: #818cf8;">{currency_symbol} {rec.epf_er_eps_amount:,.2f}</b></div>
+                            </div>
+                            <div style="color: #4ade80; font-size: 10px; font-weight: 600; margin-top: 5px;">🟢 12% PF Contribution &bull; <u>View</u></div>
                         </div>
-                        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; font-size: 12px;">
-                            <div role="button" tabindex="0" onclick="window.hdsCardClick &amp;&amp; window.hdsCardClick(this, 'old_regime')" data-card-type="old_regime" class="hds-subcard o_hds_dashboard_card_clickable" style="text-decoration: none; display: block; padding: 12px; cursor: pointer;">
-                                <div class="hds-text-muted" style="font-size: 11px; font-weight: 600;">Old Regime Opted</div>
-                                <div style="font-weight: 700; font-size: 14px; color: #818cf8; margin-top: 2px;">{rec.old_regime_count} Employees &darr;</div>
+
+                        <!-- 2. EDLI & Admin Charges (1.0%) -->
+                        <div role="button" tabindex="0" onclick="window.hdsCardClick &amp;&amp; window.hdsCardClick(this, 'edli_admin_liability')" data-card-type="edli_admin_liability" class="hds-subcard o_hds_dashboard_card_clickable" style="text-decoration: none; display: block; padding: 12px; cursor: pointer; border-left: 3px solid #fbbf24 !important;">
+                            <div style="display: flex; justify-content: space-between; align-items: center;">
+                                <span class="hds-text-muted" style="font-size: 11px; font-weight: 600;">EDLI &amp; Admin (1.0%)</span>
+                                <span style="font-size: 10px; color: #fbbf24; font-weight: 700;">Charges</span>
                             </div>
-                            <div role="button" tabindex="0" onclick="window.hdsCardClick &amp;&amp; window.hdsCardClick(this, 'new_regime')" data-card-type="new_regime" class="hds-subcard o_hds_dashboard_card_clickable" style="text-decoration: none; display: block; padding: 12px; cursor: pointer;">
-                                <div class="hds-text-muted" style="font-size: 11px; font-weight: 600;">New Regime (115BAC)</div>
-                                <div style="font-weight: 700; font-size: 14px; color: #38bdf8; margin-top: 2px;">{rec.new_regime_count} Employees &darr;</div>
+                            <div class="hds-text-primary" style="font-weight: 700; font-size: 15px; margin-top: 3px; color: #fbbf24;">{currency_symbol} {(rec.epf_er_edli_amount + rec.epf_er_admin_amount):,.2f}</div>
+                            <div style="margin-top: 6px; padding-top: 6px; border-top: 1px dashed var(--hds-row-border); display: grid; grid-template-columns: 1fr 1fr; gap: 4px 6px; font-size: 10px;">
+                                <div><span style="color: var(--hds-text-muted);">EDLI (0.5%):</span> <b style="color: #fbbf24;">{currency_symbol} {rec.epf_er_edli_amount:,.2f}</b></div>
+                                <div><span style="color: var(--hds-text-muted);">Admin (0.5%):</span> <b style="color: #4ade80;">{currency_symbol} {rec.epf_er_admin_amount:,.2f}</b></div>
                             </div>
-                            <div role="button" tabindex="0" onclick="window.hdsCardClick &amp;&amp; window.hdsCardClick(this, 'tds_ytd')" data-card-type="tds_ytd" class="hds-subcard o_hds_dashboard_card_clickable" style="text-decoration: none; display: block; padding: 12px; cursor: pointer;">
-                                <div class="hds-text-muted" style="font-size: 11px; font-weight: 600;">TDS YTD Total</div>
-                                <div class="hds-text-primary" style="font-weight: 700; font-size: 14px; margin-top: 2px;">{currency_symbol} {rec.tds_ytd_total:,.2f} &darr;</div>
+                            <div style="color: #fbbf24; font-size: 10px; font-weight: 600; margin-top: 5px;">🟡 Statutory Admin Fees &bull; <u>View</u></div>
+                        </div>
+
+                        <!-- 3. Employer ESIC Share (3.25%) -->
+                        <div role="button" tabindex="0" onclick="window.hdsCardClick &amp;&amp; window.hdsCardClick(this, 'esic_liability')" data-card-type="esic_liability" class="hds-subcard o_hds_dashboard_card_clickable" style="text-decoration: none; display: block; padding: 12px; cursor: pointer; border-left: 3px solid #38bdf8 !important;">
+                            <div style="display: flex; justify-content: space-between; align-items: center;">
+                                <span class="hds-text-muted" style="font-size: 11px; font-weight: 600;">Employer ESIC Share (3.25%)</span>
+                                <span style="font-size: 10px; color: #38bdf8; font-weight: 700;">ESIC</span>
                             </div>
-                            <div role="button" tabindex="0" onclick="window.hdsCardClick &amp;&amp; window.hdsCardClick(this, 'pending_declarations')" data-card-type="pending_declarations" class="hds-subcard o_hds_dashboard_card_clickable" style="text-decoration: none; display: block; padding: 12px; cursor: pointer;">
-                                <div class="hds-text-muted" style="font-size: 11px; font-weight: 600;">Pending Declarations</div>
-                                <div style="font-weight: 700; font-size: 14px; color: #fbbf24; margin-top: 2px;">{rec.pending_declarations_count} Pending &darr;</div>
+                            <div class="hds-text-primary" style="font-weight: 700; font-size: 15px; margin-top: 3px; color: #38bdf8;">{currency_symbol} {rec.esic_employer_liability:,.2f}</div>
+                            <div style="margin-top: 6px; padding-top: 6px; border-top: 1px dashed var(--hds-row-border); font-size: 10px;">
+                                <span style="color: var(--hds-text-muted);">Eligible Gross Wages:</span> <b style="color: var(--hds-text-primary);">{currency_symbol} {rec.total_gross_pay:,.2f}</b>
+                            </div>
+                            <div style="color: #38bdf8; font-size: 10px; font-weight: 600; margin-top: 5px;">🟢 3.25% Contribution &bull; <u>View</u></div>
+                        </div>
+
+                        <!-- 4. Employer LWF Share -->
+                        <div role="button" tabindex="0" onclick="window.hdsCardClick &amp;&amp; window.hdsCardClick(this, 'lwf_liability')" data-card-type="lwf_liability" class="hds-subcard o_hds_dashboard_card_clickable" style="text-decoration: none; display: block; padding: 12px; cursor: pointer; border-left: 3px solid #a855f7 !important;">
+                            <div style="display: flex; justify-content: space-between; align-items: center;">
+                                <span class="hds-text-muted" style="font-size: 11px; font-weight: 600;">Employer LWF Share</span>
+                                <span style="font-size: 10px; color: #a855f7; font-weight: 700;">LWF</span>
+                            </div>
+                            <div class="hds-text-primary" style="font-weight: 700; font-size: 15px; margin-top: 3px; color: #c084fc;">{currency_symbol} {rec.lwf_employer_liability:,.2f}</div>
+                            <div style="margin-top: 6px; padding-top: 6px; border-top: 1px dashed var(--hds-row-border); font-size: 10px;">
+                                <span style="color: var(--hds-text-muted);">Total LWF (EE+ER):</span> <b style="color: var(--hds-text-primary);">{currency_symbol} {rec.lwf_total_liability:,.2f}</b>
+                            </div>
+                            <div style="color: #c084fc; font-size: 10px; font-weight: 600; margin-top: 5px;">🟢 State Welfare Fund &bull; <u>View</u></div>
+                        </div>
+
+                        <!-- 5. Professional Tax (PT) -->
+                        <div role="button" tabindex="0" onclick="window.hdsCardClick &amp;&amp; window.hdsCardClick(this, 'pt_liability')" data-card-type="pt_liability" class="hds-subcard o_hds_dashboard_card_clickable" style="text-decoration: none; display: block; padding: 12px; cursor: pointer; border-left: 3px solid #06b6d4 !important;">
+                            <div style="display: flex; justify-content: space-between; align-items: center;">
+                                <span class="hds-text-muted" style="font-size: 11px; font-weight: 600;">Professional Tax (PT)</span>
+                                <span style="font-size: 10px; color: #06b6d4; font-weight: 700;">PT</span>
+                            </div>
+                            <div class="hds-text-primary" style="font-weight: 700; font-size: 15px; margin-top: 3px; color: #06b6d4;">{currency_symbol} {rec.pt_total_liability:,.2f}</div>
+                            <div style="margin-top: 6px; padding-top: 6px; border-top: 1px dashed var(--hds-row-border); font-size: 10px;">
+                                <span style="color: var(--hds-text-muted);">Cycle:</span> <b style="color: var(--hds-text-primary);">State Slab Deductions</b>
+                            </div>
+                            <div style="color: #06b6d4; font-size: 10px; font-weight: 600; margin-top: 5px;">🔵 State PT Slab &bull; <u>View</u></div>
+                        </div>
+
+                        <!-- 6. Income Tax TDS (Sec 192) -->
+                        <div role="button" tabindex="0" onclick="window.hdsCardClick &amp;&amp; window.hdsCardClick(this, 'tds_this_month')" data-card-type="tds_this_month" class="hds-subcard o_hds_dashboard_card_clickable" style="text-decoration: none; display: block; padding: 12px; cursor: pointer; border-left: 3px solid #818cf8 !important;">
+                            <div style="display: flex; justify-content: space-between; align-items: center;">
+                                <span class="hds-text-muted" style="font-size: 11px; font-weight: 600;">Income Tax TDS (Sec 192)</span>
+                                <span style="font-size: 10px; color: #818cf8; font-weight: 700;">TDS</span>
+                            </div>
+                            <div class="hds-text-primary" style="font-weight: 700; font-size: 15px; margin-top: 3px; color: #818cf8;">{currency_symbol} {rec.tds_this_month:,.2f}</div>
+                            <div style="margin-top: 6px; padding-top: 6px; border-top: 1px dashed var(--hds-row-border); font-size: 10px;">
+                                <span style="color: var(--hds-text-muted);">FY YTD Total:</span> <b style="color: #818cf8;">{currency_symbol} {rec.tds_ytd_total:,.2f}</b>
+                            </div>
+                            <div style="color: #818cf8; font-size: 10px; font-weight: 600; margin-top: 5px;">🟣 Deposit by 7th &bull; <u>View</u></div>
+                        </div>
+
+                    </div>
+
+                    <!-- Sub-Row: Tax Regime Split & Totals Banner (Consolidated in One Place) -->
+                    <div style="margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--hds-row-border); display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 12px; align-items: center;">
+
+                        <!-- Tax Regime Distribution Pill -->
+                        <div style="display: flex; align-items: center; gap: 12px; background: var(--hds-subcard-bg); padding: 10px 14px; border-radius: 8px; border: 1px solid var(--hds-subcard-border);">
+                            <span class="hds-text-muted" style="font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px;">Tax Regimes:</span>
+                            <div role="button" tabindex="0" onclick="window.hdsCardClick &amp;&amp; window.hdsCardClick(this, 'new_regime')" data-card-type="new_regime" class="o_hds_dashboard_card_clickable" style="cursor: pointer; display: flex; align-items: center; gap: 6px;" title="Filter New Regime Employees">
+                                <span style="font-size: 12px; color: #38bdf8; font-weight: 700;">New (115BAC): {rec.new_regime_count}</span>
+                            </div>
+                            <span style="color: var(--hds-row-border);">&bull;</span>
+                            <div role="button" tabindex="0" onclick="window.hdsCardClick &amp;&amp; window.hdsCardClick(this, 'old_regime')" data-card-type="old_regime" class="o_hds_dashboard_card_clickable" style="cursor: pointer; display: flex; align-items: center; gap: 6px;" title="Filter Old Regime Employees">
+                                <span style="font-size: 12px; color: #818cf8; font-weight: 700;">Old Regime: {rec.old_regime_count}</span>
                             </div>
                         </div>
+
+                        <!-- Combined Grand Totals Banner -->
+                        <div role="button" tabindex="0" onclick="window.hdsCardClick &amp;&amp; window.hdsCardClick(this, 'total_employer_statutory')" data-card-type="total_employer_statutory" class="hds-subcard o_hds_dashboard_card_clickable" style="cursor: pointer; padding: 10px 16px; border-radius: 8px; display: flex; justify-content: space-between; align-items: center; border-left: 4px solid #c084fc !important;">
+                            <div>
+                                <div class="hds-text-muted" style="font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px;">Total Employer Cost (CTC)</div>
+                                <div class="hds-text-primary" style="font-weight: 800; font-size: 16px; color: #c084fc; margin-top: 1px;">{currency_symbol} {rec.total_employer_statutory_liability:,.2f}</div>
+                            </div>
+                            <div style="text-align: right;">
+                                <div class="hds-text-muted" style="font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px;">Total Statutory Liability (Govt Deposit)</div>
+                                <div class="hds-text-primary" style="font-weight: 800; font-size: 16px; color: #4ade80; margin-top: 1px;">{currency_symbol} {(rec.total_employer_statutory_liability + rec.tds_this_month + rec.pt_total_liability):,.2f}</div>
+                            </div>
+                        </div>
+
                     </div>
                 </div>
 
@@ -1239,7 +1310,7 @@ class HdsPayrollDashboard(models.Model):
                 <div class="hds-dash-card" style="padding: 18px;">
                     <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px; border-bottom: 1px solid var(--hds-row-border); padding-bottom: 8px;">
                         <span class="hds-text-primary" style="font-size: 14px; font-weight: 700; display: flex; align-items: center; gap: 8px;">
-                            <i class="fa fa-line-chart" style="color: #c084fc;"/> Historical Payroll Cost Trend (Last 6 Months)
+                            <i class="fa fa-line-chart" style="color: #c084fc;"></i> Historical Payroll Cost Trend (Last 6 Months)
                         </span>
                         <span class="hds-text-muted" style="font-size: 11px; font-weight: 600;">
                             Stacked by Cost Component &bull; Hover for details &bull; Click to view slips
@@ -1248,7 +1319,6 @@ class HdsPayrollDashboard(models.Model):
                     <div style="display: flex; align-items: flex-end; justify-content: space-around; height: 115px; padding: 0 20px;">
                         {trend_bars_html}
                     </div>
-                    {trend_breakdown_html}
                 </div>
 
                 <!-- 7. INLINE DETAILS CONTAINER (LOADS ON CURRENT PAGE) -->
@@ -1257,6 +1327,56 @@ class HdsPayrollDashboard(models.Model):
             </div>
             """
 
+
+    @api.model
+    def set_dashboard_period_and_get_html(self, dashboard_id=None, month_num=None, fy_id=None):
+        """
+        Updates the dashboard singleton with the newly chosen month and/or financial year,
+        recalculates all financial metrics, statutory compliance liabilities, and HTML canvas,
+        and returns the compiled HTML directly so the frontend can dynamically swap the DOM
+        instantly without reloading the browser window.
+        """
+        rec = self.browse(dashboard_id) if dashboard_id else self.search([], limit=1)
+        if not rec:
+            rec = self.create({'name': 'Payroll Dashboard'})
+
+        vals = {}
+        if month_num is not None and str(month_num).strip():
+            clean_m = str(month_num).strip().replace('"', '').replace("'", "")
+            if clean_m.isdigit() and 1 <= int(clean_m) <= 12:
+                vals['payroll_month_num'] = clean_m
+
+        if fy_id is not None and str(fy_id).strip():
+            clean_fy = str(fy_id).strip().replace('"', '').replace("'", "")
+            if clean_fy.isdigit() and int(clean_fy) > 0:
+                vals['financial_year_id'] = int(clean_fy)
+
+        if vals:
+            rec.write(vals)
+
+        self.env.invalidate_all()
+        rec._compute_dashboard_metrics()
+        rec._compute_dashboard_html()
+
+        return {
+            'html': rec.dashboard_html,
+            'payroll_month_num': rec.payroll_month_num,
+            'financial_year_id': rec.financial_year_id.id if rec.financial_year_id else False,
+            'financial_year_name': rec.financial_year_id.name if rec.financial_year_id else '',
+            'active_employee_count': rec.active_employee_count,
+            'total_gross_pay': rec.total_gross_pay,
+            'total_net_pay': rec.total_net_pay,
+            'total_payroll_cost': rec.total_payroll_cost,
+        }
+
+    @api.model
+    def set_dashboard_period(self, dashboard_id=None, month_num=None, fy_id=None):
+        """
+        Updates the dashboard singleton with the newly chosen month and/or financial year,
+        recalculates all financial metrics, statutory compliance liabilities, and HTML canvas,
+        and returns the updated data.
+        """
+        return self.set_dashboard_period_and_get_html(dashboard_id=dashboard_id, month_num=month_num, fy_id=fy_id)
 
     def action_refresh_dashboard(self):
         self.ensure_one()

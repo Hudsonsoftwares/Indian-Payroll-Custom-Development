@@ -7,7 +7,6 @@
         <field name="arch" type="xml">
             <form string="Payroll Dashboard" class="o_hds_payroll_dashboard_form" create="false" delete="false">
                 <header>
-                    <button name="action_refresh_dashboard" string="Refresh Data" type="object" class="btn-primary" icon="fa-refresh"/>
                     <button name="action_view_missing_pan_employees" string="Missing PAN" type="object" class="btn-secondary" icon="fa-id-card"/>
                     <button name="action_view_missing_bank_employees" string="Missing Bank Details" type="object" class="btn-secondary" icon="fa-university"/>
                     <button name="action_view_pending_declarations" string="Pending Declarations" type="object" class="btn-secondary" icon="fa-file-text-o"/>
@@ -197,58 +196,10 @@
                         }
                     </style>
 
-                    <!-- Payrun-Style Executive Control Banner (Flawless in Dark & Light Mode) -->
-                    <div class="o_hds_dash_banner p-3 mb-3 rounded-3 shadow-sm"
-                         style="background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%) !important; border: 1px solid rgba(255,255,255,0.16) !important; color: #ffffff !important;">
-                        <div class="d-flex flex-wrap justify-content-between align-items-center gap-3">
-                            <!-- Left: Title & Subtitle -->
-                            <div class="d-flex flex-column justify-content-center" style="min-width: 250px; flex: 1 1 260px;">
-                                <div class="d-flex align-items-center gap-2">
-                                    <span style="font-size: 22px;">🇮🇳</span>
-                                    <h2 class="mb-0 fw-bold fs-5" style="color: #ffffff !important; letter-spacing: -0.2px;">
-                                        Indian Payroll Dashboard
-                                    </h2>
-                                </div>
-                                <span class="small mt-1" style="color: #94a3b8 !important; font-size: 11px; font-weight: 500;">
-                                    Executive statutory compliance, salary disbursement &amp; data health
-                                </span>
-                            </div>
-
-                            <!-- Right: Controls & Counters -->
-                            <div class="d-flex flex-wrap align-items-center gap-3">
-                                <!-- Month Selector -->
-                                <div class="d-flex flex-column" style="min-width: 135px;">
-                                    <span class="small text-uppercase fw-semibold mb-1" style="color: #cbd5e1 !important; font-size: 10px; letter-spacing: 0.5px;">
-                                        <i class="fa fa-calendar me-1"/> Payroll Month
-                                    </span>
-                                    <field name="payroll_month_num" options="{'no_create': True}" class="oe_inline"/>
-                                </div>
-
-                                <!-- Tax Year Selector -->
-                                <div class="d-flex flex-column" style="min-width: 160px;">
-                                    <span class="small text-uppercase fw-semibold mb-1" style="color: #cbd5e1 !important; font-size: 10px; letter-spacing: 0.5px;">
-                                        <i class="fa fa-university me-1"/> Tax Year
-                                    </span>
-                                    <field name="financial_year_id" options="{'no_create': True}" class="oe_inline"/>
-                                </div>
-
-                                <!-- Quick Live Counter Badges -->
-                                <div class="d-flex align-items-center gap-3 px-3 py-1 rounded-3"
-                                     style="background: rgba(255,255,255,0.08); border: 1px solid rgba(255,255,255,0.16); flex-shrink: 0;">
-                                    <!-- Workforce Pill (Sky Blue) -->
-                                    <div class="d-flex flex-column align-items-center" style="min-width: 65px;">
-                                        <span class="small text-uppercase fw-semibold" style="color: #38bdf8 !important; font-size: 10px; letter-spacing: 0.5px;">
-                                            <i class="fa fa-users me-1"/> Workforce
-                                        </span>
-                                        <span class="fw-bold fs-5 mt-0" style="color: #ffffff !important;">
-                                            <field name="active_employee_count" readonly="1"/>
-                                        </span>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-
+                    <!-- Hidden Model Fields (Bound to Live Controller in Dashboard Canvas) -->
+                    <field name="payroll_month_num" invisible="1"/>
+                    <field name="financial_year_id" invisible="1"/>
+                    <field name="active_employee_count" invisible="1"/>
                     <field name="currency_id" invisible="1"/>
                     <field name="dashboard_html" widget="html" readonly="1" nolabel="1" options="{'sandboxedPreview': False}"/>
                 </sheet>

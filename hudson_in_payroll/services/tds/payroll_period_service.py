@@ -12,9 +12,53 @@ class PayrollPeriodService(BaseStatutoryService):
     Dynamically determines the remaining payroll periods in the Financial Year (including current evaluation month).
     Supports:
     - Standard Financial Year (12 monthly periods April through March)
-    - Mid-year joiners
-    - Early resignations / departures before FY end
+    - Dynamic countdown of remaining periods under Section 192 (12 - eval_fy_idx + 1)
+    - Mid-year joiners (taking employee joining date / contract date_start into account)
+    - Early resignations / departures before FY end (taking departure_date / contract date_end into account)
     """
+
+    def _resolve_employee_joining_date(self, employee):
+        """
+        Resolves employee's joining date or first employment start date.
+        """
+        if not employee:
+            return None
+        for fname in ('joining_date', 'date_of_joining', 'hds_in_doj', 'first_contract_date', 'contract_date_start'):
+            val = getattr(employee, fname, None)
+            if val:
+                return fields.Date.from_string(val) if isinstance(val, str) else val
+        # Check employee contract
+        contract = False
+        if hasattr(employee, 'contract_id') and employee.contract_id:
+            contract = employee.contract_id
+        elif hasattr(employee, 'contract_ids') and employee.contract_ids:
+            open_contracts = employee.contract_ids.filtered(lambda c: getattr(c, 'state', False) == 'open')
+            contract = open_contracts[0] if open_contracts else employee.contract_ids[0]
+        if contract and getattr(contract, 'date_start', None):
+            val = contract.date_start
+            return fields.Date.from_string(val) if isinstance(val, str) else val
+        return None
+
+    def _resolve_employee_departure_date(self, employee):
+        """
+        Resolves employee's departure date, resignation date, or contract end date.
+        """
+        if not employee:
+            return None
+        for fname in ('departure_date', 'end_date', 'resignation_date'):
+            val = getattr(employee, fname, None)
+            if val:
+                return fields.Date.from_string(val) if isinstance(val, str) else val
+        contract = False
+        if hasattr(employee, 'contract_id') and employee.contract_id:
+            contract = employee.contract_id
+        elif hasattr(employee, 'contract_ids') and employee.contract_ids:
+            open_contracts = employee.contract_ids.filtered(lambda c: getattr(c, 'state', False) == 'open')
+            contract = open_contracts[0] if open_contracts else employee.contract_ids[0]
+        if contract and getattr(contract, 'date_end', None):
+            val = contract.date_end
+            return fields.Date.from_string(val) if isinstance(val, str) else val
+        return None
 
     def calculate_remaining_periods(self, employee, financial_year, eval_date=None):
         """
@@ -29,67 +73,97 @@ class PayrollPeriodService(BaseStatutoryService):
         if isinstance(eval_date, str):
             eval_date = fields.Date.from_string(eval_date)
 
-        fy_start = financial_year.start_date
-        fy_end = financial_year.end_date
+        fy_start = financial_year.start_date if financial_year else None
+        fy_end = financial_year.end_date if financial_year else None
 
-        tds_months = int(getattr(financial_year, 'tds_month_division', 0) or 0)
-        if tds_months <= 0:
-            tds_months_param = self.env['ir.config_parameter'].sudo().get_param('hudson_in_payroll.tds_month_division', default=12)
-            try:
-                tds_months = int(tds_months_param)
-                if tds_months <= 0:
-                    tds_months = 12
-            except (ValueError, TypeError):
-                tds_months = 12
+        if not fy_start or not fy_end:
+            return 12
 
-        if eval_date < fy_start:
-            return tds_months
-        elif eval_date > fy_end:
+        if eval_date > fy_end:
             return 1
 
-        # Calculate 1-based FY month index (1 for April, ..., 12 for March)
-        if fy_start:
-            fy_start_year = fy_start.year
-            fy_start_month = fy_start.month
+        fy_start_year = fy_start.year
+        fy_start_month = fy_start.month
+
+        # Calculate 1-based FY month index for eval_date (1 for April, ..., 12 for March)
+        if eval_date < fy_start:
+            eval_fy_idx = 1
+        else:
             eval_year = eval_date.year
             eval_month = eval_date.month
             elapsed_months = (eval_year - fy_start_year) * 12 + (eval_month - fy_start_month) + 1
             eval_fy_idx = min(12, max(1, elapsed_months))
+
+        # Check joining date
+        joining_date = self._resolve_employee_joining_date(employee)
+        if joining_date and joining_date > fy_start:
+            join_year = joining_date.year
+            join_month = joining_date.month
+            join_elapsed = (join_year - fy_start_year) * 12 + (join_month - fy_start_month) + 1
+            join_fy_idx = min(12, max(1, join_elapsed))
         else:
-            eval_m = eval_date.month
-            eval_fy_idx = eval_m - 3 if eval_m >= 4 else eval_m + 9
+            join_fy_idx = 1
 
-        # Configuration-driven redistribution months count (e.g., 3 for final 3 months of FY)
-        dist_months = max(1, min(12, int(getattr(financial_year, 'tds_recalculation_distribution_months', 3) or 3)))
+        # Effective start index for remaining periods:
+        # If eval_date is earlier than joining date, countdown starts from joining month.
+        # Otherwise, starts from current evaluation month (inclusive).
+        start_fy_idx = max(eval_fy_idx, join_fy_idx)
 
-        # Dynamically derive the start FY month index of the redistribution period (final dist_months of FY)
-        recalc_start_fy_idx = 12 - dist_months + 1
+        # Check departure / contract end date
+        departure_date = self._resolve_employee_departure_date(employee)
+        if departure_date and departure_date < fy_end:
+            dep_year = departure_date.year
+            dep_month = departure_date.month
+            dep_elapsed = (dep_year - fy_start_year) * 12 + (dep_month - fy_start_month) + 1
+            dep_fy_idx = min(12, max(1, dep_elapsed))
+            end_fy_idx = min(12, max(start_fy_idx, dep_fy_idx))
+        else:
+            end_fy_idx = 12
 
-        if eval_fy_idx >= recalc_start_fy_idx:
-            # Redistribution Phase: dynamically calculate remaining redistribution months
-            remaining_dist_periods = max(1, 12 - eval_fy_idx + 1)
-            _logger.info(
-                "[PAYROLL PERIOD SERVICE] Financial Year '%s' | Redistribution Active (Final %s months of FY, start FY Index %s) | "
-                "Current Month FY Index: %s | Remaining Redistribution Periods: %s",
-                financial_year.name if financial_year else 'N/A', dist_months, recalc_start_fy_idx,
-                eval_fy_idx, remaining_dist_periods
-            )
-            return remaining_dist_periods
-
-        # Normal Phase (before redistribution period begins): Use standard 12-month division
-        tds_months = int(getattr(financial_year, 'tds_month_division', 0) or 0)
-        if tds_months <= 0:
-            tds_months_param = self.env['ir.config_parameter'].sudo().get_param('hudson_in_payroll.tds_month_division', default=12)
-            try:
-                tds_months = int(tds_months_param)
-                if tds_months <= 0:
-                    tds_months = 12
-            except (ValueError, TypeError):
-                tds_months = 12
+        remaining_periods = max(1, end_fy_idx - start_fy_idx + 1)
 
         _logger.info(
-            "[PAYROLL PERIOD SERVICE] Financial Year '%s' | Normal Phase (FY Index %s < Start %s) | "
-            "Using Constant Divisor = %s for Annual Tax Distribution.",
-            financial_year.name if financial_year else 'N/A', eval_fy_idx, recalc_start_fy_idx, tds_months
+            "[PAYROLL PERIOD SERVICE] Employee '%s' | FY '%s' | Eval FY Index: %s | "
+            "Join FY Index: %s | End FY Index: %s | Remaining Periods: %s",
+            employee.name if employee else 'N/A',
+            financial_year.name if financial_year else 'N/A',
+            eval_fy_idx, join_fy_idx, end_fy_idx, remaining_periods
         )
-        return tds_months
+        return remaining_periods
+
+    def calculate_total_periods_in_fy(self, employee, financial_year):
+        """
+        Calculates total employment months for the employee in this Financial Year.
+        - Existing employee (joined on/before FY start): 12 months (or up to departure date).
+        - Mid-year joiner (joined after FY start): count of months from joining month to FY end (or departure date).
+        """
+        if not financial_year or not financial_year.start_date or not financial_year.end_date:
+            return 12
+
+        fy_start = financial_year.start_date
+        fy_end = financial_year.end_date
+        fy_start_year = fy_start.year
+        fy_start_month = fy_start.month
+
+        joining_date = self._resolve_employee_joining_date(employee)
+        if joining_date and joining_date > fy_start:
+            join_year = joining_date.year
+            join_month = joining_date.month
+            join_elapsed = (join_year - fy_start_year) * 12 + (join_month - fy_start_month) + 1
+            join_fy_idx = min(12, max(1, join_elapsed))
+        else:
+            join_fy_idx = 1
+
+        departure_date = self._resolve_employee_departure_date(employee)
+        if departure_date and departure_date < fy_end:
+            dep_year = departure_date.year
+            dep_month = departure_date.month
+            dep_elapsed = (dep_year - fy_start_year) * 12 + (dep_month - fy_start_month) + 1
+            dep_fy_idx = min(12, max(1, dep_elapsed))
+            end_fy_idx = min(12, max(join_fy_idx, dep_fy_idx))
+        else:
+            end_fy_idx = 12
+
+        total_periods = max(1, end_fy_idx - join_fy_idx + 1)
+        return total_periods
+

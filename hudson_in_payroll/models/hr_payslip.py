@@ -1861,18 +1861,23 @@ else:
         monthly_obj = tds_res.monthly_tds_distribution
 
         contract = self.contract_id or (emp.version_id if hasattr(emp, 'version_id') else False)
-        rem_months = getattr(sal_proj, 'months_remaining', max(0, 12 - len(past_slips)))
+        from ..services.tds.payroll_period_service import PayrollPeriodService
+        period_svc = PayrollPeriodService(self.env)
+        total_fy_months = period_svc.calculate_total_periods_in_fy(emp, fy)
+        rem_periods_count = period_svc.calculate_remaining_periods(emp, fy, eval_date=eval_date)
+
+        rem_months = getattr(sal_proj, 'months_remaining', max(0, rem_periods_count - 1))
 
         b_tot = getattr(sal_proj, 'total_basic', 0.0) if sal_proj else 0.0
         if b_tot == 0.0 and contract:
-            b_tot = ytd_map.get('BASIC', 0.0) + (float(getattr(contract, 'basic_salary', 0.0) or getattr(contract, 'wage', 0.0) or 0.0) * 12.0)
+            b_tot = ytd_map.get('BASIC', 0.0) + (float(getattr(contract, 'basic_salary', 0.0) or getattr(contract, 'wage', 0.0) or 0.0) * total_fy_months)
 
         hra_tot = getattr(sal_proj, 'total_hra', 0.0) if sal_proj else 0.0
         hra_ex = getattr(deduct, 'hra_exemption', 0.0) if deduct else 0.0
 
         da_tot = getattr(sal_proj, 'total_da', 0.0) if sal_proj else 0.0
         if da_tot == 0.0 and contract and getattr(contract, 'da', 0.0):
-            da_tot = ytd_map.get('DA', 0.0) + (float(getattr(contract, 'da', 0.0) or 0.0) * 12.0)
+            da_tot = ytd_map.get('DA', 0.0) + (float(getattr(contract, 'da', 0.0) or 0.0) * total_fy_months)
 
         lta_tot = getattr(sal_proj, 'total_lta', 0.0) if sal_proj else 0.0
         lta_ex = getattr(deduct, 'lta_exemption', 0.0) if deduct else 0.0
@@ -1887,7 +1892,7 @@ else:
             else:
                 val = ytd_val + curr_val + (monthly_val * max(0, rem_months - 1))
             if not past_slips and self.state not in ('done', 'paid'):
-                val = monthly_val * 12.0
+                val = monthly_val * total_fy_months
             return max(0.0, val)
 
         fixed_tot = _get_projected_component('FIXED', 'fixed_allowance')
@@ -2028,7 +2033,9 @@ else:
         tds_recovered_ytd = prior_ytd_tds + current_month_tds
         remaining_tds_liability = max(0.0, total_annual_tax - tds_recovered_ytd)
 
-        rem_periods_raw = getattr(monthly_obj, 'remaining_payroll_periods', 12) if monthly_obj else 12
+        rem_periods_raw = getattr(monthly_obj, 'remaining_payroll_periods', None)
+        if not rem_periods_raw:
+            rem_periods_raw = period_svc.calculate_remaining_periods(emp, fy, eval_date=eval_date)
         remaining_months = max(0, rem_periods_raw - 1)
         projected_monthly_tds = round(remaining_tds_liability / remaining_months, 2) if remaining_months > 0 else 0.0
 

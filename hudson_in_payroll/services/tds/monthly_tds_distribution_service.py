@@ -245,18 +245,18 @@ tds_distribution_months=%s""",
             stored_annual_tax = float(sched.recalculated_annual_tax or 0.0) if sched else total_annual_tax_liability
 
             if not is_recalc_active:
-                # Normal projected phase (before redistribution period begins): Use standard 12-month distribution
-                current_month_tds = round(total_annual_tax_liability / float(tds_months), 2)
-                allocation_source = "NORMAL_PROJECTION"
+                # Dynamic monthly amortization under Section 192 (Remaining Annual Liability / Remaining Payroll Periods)
+                current_dist_m = remaining_periods
+                fresh_m_tds = round(remaining_annual_tax / float(current_dist_m), 2) if current_dist_m > 0 else remaining_annual_tax
+                current_month_tds = fresh_m_tds
+                allocation_source = "DYNAMIC_MONTHLY_AMORTIZATION"
                 schedule_reused = False
-                stored_dist_m = tds_months
-                current_dist_m = tds_months
+                stored_dist_m = remaining_periods
                 stored_m_tds = current_month_tds
-                fresh_m_tds = current_month_tds
-                decision_reason = f"Normal projected phase (FY Index {eval_fy_idx} < Redistribution Start {recalc_start_fy_idx})."
+                decision_reason = f"Dynamic monthly amortization under Section 192 (FY Index {eval_fy_idx} < Redistribution Start {recalc_start_fy_idx}): Remaining Tax ₹{remaining_annual_tax:,.2f} / {remaining_periods} remaining periods."
             else:
                 # Redistribution phase: Dynamically use remaining redistribution months in FY as divisor
-                current_dist_m = max(1, 12 - eval_fy_idx + 1)
+                current_dist_m = remaining_periods
 
                 # Fresh monthly TDS allocation for current month based on remaining liability / remaining redistribution months
                 fresh_m_tds = round(remaining_annual_tax / float(current_dist_m), 2) if current_dist_m > 0 else remaining_annual_tax
@@ -415,7 +415,7 @@ current_month_tds=%s""",
                 int(total_annual_tax_liability) if total_annual_tax_liability == int(total_annual_tax_liability) else total_annual_tax_liability,
                 int(total_tds_paid_so_far) if total_tds_paid_so_far == int(total_tds_paid_so_far) else total_tds_paid_so_far,
                 int(remaining_annual_tax) if remaining_annual_tax == int(remaining_annual_tax) else remaining_annual_tax,
-                current_dist_m if is_recalc_active else 12,
+                current_dist_m,
                 payroll_month_name,
                 current_month_tds
             )
@@ -441,7 +441,7 @@ distribution_months=%s
 current_month_tds=%s""",
                 total_tds_paid_so_far,
                 remaining_annual_tax,
-                current_dist_m if is_recalc_active else 12,
+                current_dist_m,
                 current_month_tds
             )
 
@@ -496,7 +496,7 @@ schedule_reused_recalculated=%s""",
                 f"INR {tax_diff:,.2f}",
                 f"INR {total_tds_paid_so_far:,.2f}",
                 f"INR {remaining_annual_tax:,.2f}",
-                current_dist_m if is_recalc_active else 12,
+                current_dist_m,
                 f"INR {stored_m_tds:,.2f}",
                 f"INR {fresh_m_tds:,.2f}",
                 schedule_status_str
@@ -517,7 +517,7 @@ schedule_reused_recalculated=%s""",
                 f"INR {total_annual_tax_liability:,.2f}",
                 f"INR {total_tds_paid_so_far:,.2f}",
                 f"INR {remaining_annual_tax:,.2f}",
-                current_dist_m if is_recalc_active else 12,
+                current_dist_m,
                 f"INR {stored_m_tds:,.2f}",
                 f"INR {fresh_m_tds:,.2f}",
                 schedule_status_str
@@ -670,7 +670,7 @@ branch_used=%s""",
                 f"{remaining_annual_tax:,.2f}",
                 remaining_periods,
                 f"{current_month_tds:,.2f}",
-                f"{'REDISTRIBUTION_PHASE_DIVISOR' if is_recalc_active else 'NORMAL_12_MONTH_PROJECTION_DIVISOR'} (Divisor Used: {remaining_periods}, Active Schedule Reused: {schedule_reused})"
+                f"{'REDISTRIBUTION_PHASE_DIVISOR' if is_recalc_active else 'DYNAMIC_MONTHLY_AMORTIZATION_DIVISOR'} (Divisor Used: {remaining_periods}, Active Schedule Reused: {schedule_reused})"
             )
 
             return MonthlyTDSDistributionResult(

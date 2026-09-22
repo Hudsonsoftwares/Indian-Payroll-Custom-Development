@@ -216,8 +216,15 @@ class ReportStatutoryTaxCalculation(models.AbstractModel):
             prev_employer_tds = float(getattr(monthly, 'prev_employer_tds', 0.0) or 0.0)
             ytd_tds = float(getattr(monthly, 'ytd_tds_deducted', 0.0) or 0.0)
             remaining_liability = float(getattr(monthly, 'remaining_annual_tax_liability', 0.0) or 0.0)
-            # Remaining Months = Months AFTER current payroll month (12 - months_elapsed)
-            remaining_periods = max(0, 12 - getattr(sal_proj, 'months_elapsed', 1))
+            # Remaining Months = Months AFTER current payroll month according to financial year
+            rem_raw = getattr(monthly, 'remaining_payroll_periods', None)
+            if rem_raw is not None and int(rem_raw) > 0:
+                remaining_periods = max(0, int(rem_raw) - 1)
+            else:
+                from ..services.tds.payroll_period_service import PayrollPeriodService
+                period_svc = PayrollPeriodService(self.env)
+                calc_rem = period_svc.calculate_remaining_periods(employee, financial_year, eval_date=eval_date)
+                remaining_periods = max(0, calc_rem - 1)
             # current_month_tds comes directly from the TDS engine result — DO NOT recompute
             current_month_tds = float(getattr(monthly, 'current_month_tds', 0.0) or 0.0)
             tds_already_deducted = prev_employer_tds + ytd_tds

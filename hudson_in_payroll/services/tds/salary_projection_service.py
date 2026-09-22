@@ -117,22 +117,8 @@ class SalaryProjectionService(BaseStatutoryService):
         # - Projection Months (salary_projection_months) is used ONLY to estimate projected annual income.
         # - Remaining Payroll Periods (remaining_periods) is used ONLY inside MonthlyTDSDistributionService to distribute remaining TDS liability.
         period_svc = PayrollPeriodService(self.env)
+        total_fy_months = period_svc.calculate_total_periods_in_fy(employee, financial_year)
         remaining_periods = period_svc.calculate_remaining_periods(employee, financial_year, eval_date=eval_date)
-
-        if eval_date < fy_start:
-            months_elapsed = 0
-            salary_projection_months = 12
-        elif eval_date > fy_end:
-            months_elapsed = 12
-            salary_projection_months = 0
-        else:
-            fy_start_year = fy_start.year
-            fy_start_month = fy_start.month
-            eval_year = eval_date.year
-            eval_month = eval_date.month
-
-            elapsed_months = (eval_year - fy_start_year) * 12 + (eval_month - fy_start_month) + 1
-            months_elapsed = min(12, max(1, elapsed_months))
 
         # Query paid/confirmed PRIOR payslips for current FY on or before eval_date.
         # Must filter ('date_to', '<=', eval_date) so that future payslips in the FY
@@ -145,7 +131,37 @@ class SalaryProjectionService(BaseStatutoryService):
         ])
 
         paid_months_count = len(payslips)
-        salary_projection_months = max(0, 12 - paid_months_count)
+        # Dynamic projection months based on total employment months in FY minus already paid months
+        salary_projection_months = max(0, total_fy_months - paid_months_count)
+
+        if eval_date < fy_start:
+            months_elapsed = 0
+            months_remaining = total_fy_months
+        elif eval_date > fy_end:
+            months_elapsed = total_fy_months
+            months_remaining = 0
+        else:
+            fy_start_year = fy_start.year
+            fy_start_month = fy_start.month
+            eval_year = eval_date.year
+            eval_month = eval_date.month
+
+            joining_date = period_svc._resolve_employee_joining_date(employee)
+            if joining_date and joining_date > fy_start:
+                join_elapsed = (joining_date.year - fy_start_year) * 12 + (joining_date.month - fy_start_month) + 1
+                join_fy_idx = min(12, max(1, join_elapsed))
+            else:
+                join_fy_idx = 1
+
+            elapsed_months = (eval_year - fy_start_year) * 12 + (eval_month - fy_start_month) + 1
+            eval_fy_idx = min(12, max(1, elapsed_months))
+
+            if eval_fy_idx < join_fy_idx:
+                months_elapsed = 0
+                months_remaining = total_fy_months
+            else:
+                months_elapsed = eval_fy_idx - join_fy_idx + 1
+                months_remaining = max(0, total_fy_months - months_elapsed)
 
         ytd_basic = 0.0
         ytd_da = 0.0

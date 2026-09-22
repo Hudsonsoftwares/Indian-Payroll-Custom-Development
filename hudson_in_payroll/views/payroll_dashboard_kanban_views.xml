@@ -111,9 +111,6 @@
                                 <button type="object" name="action_view_pending_declarations" class="btn btn-sm btn-outline-primary flex-grow-1 text-truncate" title="View Pending Tax Declarations">
                                     <i class="fa fa-file-text-o me-1"/> Decl (<field name="pending_declarations_count"/>)
                                 </button>
-                                <button type="object" name="action_refresh_dashboard" class="btn btn-sm btn-light border" title="Recalculate live dashboard metrics">
-                                    <i class="fa fa-refresh text-secondary"/>
-                                </button>
                             </div>
 
                         </div>

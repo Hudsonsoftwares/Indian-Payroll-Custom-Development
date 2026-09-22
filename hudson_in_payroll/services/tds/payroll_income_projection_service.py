@@ -75,22 +75,40 @@ class PayrollIncomeProjectionService(BaseStatutoryService):
         fy_start = financial_year.start_date
         fy_end = financial_year.end_date
 
-        # Determine elapsed and remaining months in the Financial Year (April = 1, March = 12)
+        # Determine elapsed and remaining months in the Financial Year
+        from .payroll_period_service import PayrollPeriodService
+        period_svc = PayrollPeriodService(self.env)
+        total_fy_months = period_svc.calculate_total_periods_in_fy(employee, financial_year)
+        remaining_periods = period_svc.calculate_remaining_periods(employee, financial_year, eval_date=eval_date)
+
         if eval_date < fy_start:
-            months_remaining = 12
+            months_remaining = total_fy_months
             months_elapsed = 0
         elif eval_date > fy_end:
             months_remaining = 0
-            months_elapsed = 12
+            months_elapsed = total_fy_months
         else:
             fy_start_year = fy_start.year
             fy_start_month = fy_start.month
             eval_year = eval_date.year
             eval_month = eval_date.month
 
+            joining_date = period_svc._resolve_employee_joining_date(employee)
+            if joining_date and joining_date > fy_start:
+                join_elapsed = (joining_date.year - fy_start_year) * 12 + (joining_date.month - fy_start_month) + 1
+                join_fy_idx = min(12, max(1, join_elapsed))
+            else:
+                join_fy_idx = 1
+
             elapsed = (eval_year - fy_start_year) * 12 + (eval_month - fy_start_month) + 1
-            months_elapsed = min(12, max(1, elapsed))
-            months_remaining = max(0, 12 - months_elapsed)
+            eval_fy_idx = min(12, max(1, elapsed))
+
+            if eval_fy_idx < join_fy_idx:
+                months_elapsed = 0
+                months_remaining = total_fy_months
+            else:
+                months_elapsed = eval_fy_idx - join_fy_idx + 1
+                months_remaining = max(0, total_fy_months - months_elapsed)
 
         # Query confirmed/paid payslips for current FY
         payslips = self.env['hr.payslip'].search([
@@ -145,7 +163,9 @@ class PayrollIncomeProjectionService(BaseStatutoryService):
         monthly_da = (contract.da_amount if hasattr(contract, 'da_amount') else 0.0) or (earnings_breakdown['da'] / months_elapsed if months_elapsed > 0 else 0.0)
         monthly_other = (earnings_breakdown['other_allowances'] / months_elapsed) if months_elapsed > 0 else 0.0
 
-        projected_remaining_earnings = (monthly_base_wage + monthly_hra + monthly_da + monthly_other) * months_remaining
+        paid_slips_cnt = len(payslips)
+        projection_multiplier = max(0, total_fy_months - paid_slips_cnt)
+        projected_remaining_earnings = (monthly_base_wage + monthly_hra + monthly_da + monthly_other) * projection_multiplier
         total_projected_payroll = ytd_paid_earnings + projected_remaining_earnings
 
         return PayrollIncomeProjectionResult(
