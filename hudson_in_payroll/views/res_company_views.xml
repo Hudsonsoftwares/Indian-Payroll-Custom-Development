@@ -13,7 +13,7 @@
                         <group string="Tax Deducted at Source (TDS)">
                             <field name="hds_in_tds_applicable"/>
                             <field name="hds_in_tan" placeholder="e.g. ABCD12345E" required="hds_in_tds_applicable"/>
-                            <field name="hds_in_default_tax_regime" required="hds_in_tds_applicable"/>
+                            <field name="hds_in_default_tax_regime" widget="radio" options="{'horizontal': true}" required="hds_in_tds_applicable"/>
                             <field name="hds_in_default_tax_year" placeholder="Select Default Tax Year"/>
                         </group>
 

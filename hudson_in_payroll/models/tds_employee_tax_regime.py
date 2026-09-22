@@ -96,6 +96,28 @@ class TdsEmployeeTaxRegime(models.Model):
             reg_name = rec.regime_id.name if rec.regime_id else 'Regime'
             rec.name = f"{emp_name} - {fy_name} [{reg_name}]"
 
+    @api.constrains('regime_id', 'employee_id')
+    def _check_company_regime_policy(self):
+        """
+        Enforce Company Tax Regime Policy:
+        - If Company policy is 'new', only New Tax Regime is permitted.
+        - If Company policy is 'old', only Old Tax Regime is permitted.
+        - If Company policy is 'flexible', employee can select either New or Old.
+        """
+        for rec in self:
+            company = rec.company_id or (rec.employee_id and rec.employee_id.company_id) or self.env.company
+            policy = getattr(company, 'hds_in_default_tax_regime', 'flexible')
+            if policy == 'new' and rec.regime_code != 'new':
+                raise ValidationError(_(
+                    "Company policy mandates the New Tax Regime (Section 115BAC) for all employees. "
+                    "Individual selection of the Old Tax Regime is prohibited."
+                ))
+            elif policy == 'old' and rec.regime_code != 'old':
+                raise ValidationError(_(
+                    "Company policy mandates the Old Tax Regime for all employees. "
+                    "Individual selection of the New Tax Regime is prohibited."
+                ))
+
     @api.constrains('regime_id', 'employee_id', 'financial_year_id')
     def _check_tax_regime_locking(self):
         """

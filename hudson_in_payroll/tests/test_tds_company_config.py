@@ -178,3 +178,50 @@ class TestTdsCompanyConfig(common.TransactionCase):
         with self.assertRaises(ValidationError):
             closed_fy.write({'name': 'Attempted Rename'})
 
+    def test_12_company_tax_regime_policies(self):
+        """Test Company Tax Regime policies: NEW, OLD, and FLEXIBLE."""
+        emp = self.env['hr.employee'].create({
+            'name': 'Regime Policy Test Employee',
+            'company_id': self.company.id,
+        })
+        reg_new = self.env['tds.tax.regime'].search([('code', '=', 'new')], limit=1)
+        reg_old = self.env['tds.tax.regime'].search([('code', '=', 'old')], limit=1)
+
+        # 1. Company mandates NEW Regime
+        self.company.write({'hds_in_default_tax_regime': 'new'})
+        emp.invalidate_recordset()
+        self.assertFalse(emp.hds_in_can_choose_regime)
+        self.assertEqual(emp.hds_in_tax_regime, 'new')
+        self.assertTrue(emp.hds_in_is_new_tax_regime)
+
+        # Attempting to change to Old regime on employee raises ValidationError
+        with self.assertRaises(ValidationError):
+            emp.write({'hds_in_current_tax_regime_id': reg_old.id})
+
+        # 2. Company mandates OLD Regime
+        self.company.write({'hds_in_default_tax_regime': 'old'})
+        emp.invalidate_recordset()
+        self.assertFalse(emp.hds_in_can_choose_regime)
+        self.assertEqual(emp.hds_in_tax_regime, 'old')
+        self.assertFalse(emp.hds_in_is_new_tax_regime)
+
+        # Attempting to change to New regime on employee raises ValidationError
+        with self.assertRaises(ValidationError):
+            emp.write({'hds_in_current_tax_regime_id': reg_new.id})
+
+        # 3. Company allows FLEXIBLE regime choice
+        self.company.write({'hds_in_default_tax_regime': 'flexible'})
+        emp.invalidate_recordset()
+        self.assertTrue(emp.hds_in_can_choose_regime)
+
+        # Employee can choose Old regime
+        emp.write({'hds_in_current_tax_regime_id': reg_old.id})
+        emp.invalidate_recordset()
+        self.assertEqual(emp.hds_in_tax_regime, 'old')
+
+        # Employee can choose New regime
+        emp.write({'hds_in_current_tax_regime_id': reg_new.id})
+        emp.invalidate_recordset()
+        self.assertEqual(emp.hds_in_tax_regime, 'new')
+
+

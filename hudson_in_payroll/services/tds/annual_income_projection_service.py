@@ -57,6 +57,9 @@ class AnnualIncomeProjectionService(BaseStatutoryService):
         Selected regime is retrieved from the authoritative tds.employee.tax.regime record,
         with fallback to tds.employee.declaration header if master record is absent.
         """
+        company = employee.company_id or self.env.company
+        policy = getattr(company, 'hds_in_default_tax_regime', 'flexible')
+
         decl_rec = self.env['tds.employee.declaration'].sudo().search([
             ('employee_id', '=', employee.id),
             ('financial_year_id', '=', financial_year.id)
@@ -72,7 +75,17 @@ class AnnualIncomeProjectionService(BaseStatutoryService):
         regime_rec_id = regime_rec.id if found_master else 'None'
         
         reason_default = "N/A"
-        if found_master:
+        if policy == 'new':
+            resolved_code = 'new'
+            default_regime = self.env['tds.tax.regime'].search([('code', '=', 'new')], limit=1)
+            resolved_name = default_regime.name if default_regime else 'New Tax Regime (Section 115BAC)'
+            reason_default = "Company TDS configuration mandates New Tax Regime (Section 115BAC) for all employees."
+        elif policy == 'old':
+            resolved_code = 'old'
+            default_regime = self.env['tds.tax.regime'].search([('code', '=', 'old')], limit=1)
+            resolved_name = default_regime.name if default_regime else 'Old Tax Regime'
+            reason_default = "Company TDS configuration mandates Old Tax Regime for all employees."
+        elif found_master:
             resolved_code = regime_rec.regime_id.code.lower()
             resolved_name = regime_rec.regime_id.name
         elif decl_rec and decl_rec.tax_regime_id:

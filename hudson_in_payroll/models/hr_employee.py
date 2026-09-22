@@ -1050,6 +1050,22 @@ class HrEmployee(models.Model):
         help="Employee selected Tax Regime ('new' or 'old') for the current Financial Year."
     )
 
+    hds_in_company_tax_regime = fields.Selection(
+        related='company_id.hds_in_default_tax_regime',
+        string="Company Tax Regime Policy",
+        readonly=True,
+    )
+    hds_in_can_choose_regime = fields.Boolean(
+        string="Can Choose Regime",
+        compute='_compute_hds_in_can_choose_regime',
+    )
+
+    @api.depends('company_id.hds_in_default_tax_regime')
+    def _compute_hds_in_can_choose_regime(self):
+        for emp in self:
+            comp = emp.company_id or self.env.company
+            emp.hds_in_can_choose_regime = (comp.hds_in_default_tax_regime == 'flexible')
+
     @api.depends_context('company')
     def _compute_current_fy_regime(self):
         today = fields.Date.today()
@@ -1078,25 +1094,45 @@ class HrEmployee(models.Model):
                 for r in all_regs:
                     reg_map[(r.employee_id.id, r.financial_year_id.id)] = r
 
+        reg_new = self.env['tds.tax.regime'].sudo().search([('code', '=', 'new')], limit=1)
+        reg_old = self.env['tds.tax.regime'].sudo().search([('code', '=', 'old')], limit=1)
+
         for emp in self:
             fy = fy_map.get(emp.id) if emp.id else False
             emp.hds_in_current_fy_id = fy
             company = emp.company_id or self.env.company
-            default_regime = company.hds_in_default_tax_regime or 'new'
-            if fy and emp.id:
-                rec = reg_map.get((emp.id, fy.id))
-                reg_id = rec.regime_id if rec else False
-                emp.hds_in_current_tax_regime_id = reg_id
-                code = reg_id.code if reg_id else default_regime
-                emp.hds_in_is_new_tax_regime = (code == 'new')
-                emp.hds_in_tax_regime = code
+            policy = company.hds_in_default_tax_regime or 'new'
+
+            if policy == 'new':
+                emp.hds_in_current_tax_regime_id = reg_new
+                emp.hds_in_is_new_tax_regime = True
+                emp.hds_in_tax_regime = 'new'
+            elif policy == 'old':
+                emp.hds_in_current_tax_regime_id = reg_old
+                emp.hds_in_is_new_tax_regime = False
+                emp.hds_in_tax_regime = 'old'
             else:
-                emp.hds_in_current_tax_regime_id = False
-                emp.hds_in_is_new_tax_regime = (default_regime == 'new')
-                emp.hds_in_tax_regime = default_regime
+                # Flexible policy: Respect employee-level selection
+                if fy and emp.id:
+                    rec = reg_map.get((emp.id, fy.id))
+                    reg_id = rec.regime_id if rec else False
+                    emp.hds_in_current_tax_regime_id = reg_id
+                    code = reg_id.code if reg_id else 'new'
+                    emp.hds_in_is_new_tax_regime = (code == 'new')
+                    emp.hds_in_tax_regime = code
+                else:
+                    emp.hds_in_current_tax_regime_id = False
+                    emp.hds_in_is_new_tax_regime = True
+                    emp.hds_in_tax_regime = 'new'
 
     def _inverse_hds_in_tax_regime(self):
         for emp in self:
+            company = emp.company_id or self.env.company
+            policy = company.hds_in_default_tax_regime or 'new'
+            if policy in ('new', 'old'):
+                raise ValidationError(_(
+                    "Company policy mandates the %s Tax Regime for all employees. Individual regime selection cannot be altered."
+                ) % ('New' if policy == 'new' else 'Old'))
             if emp.hds_in_tax_regime:
                 regime = self.env['tds.tax.regime'].sudo().search([('code', '=', emp.hds_in_tax_regime)], limit=1)
                 if regime:
@@ -1180,6 +1216,12 @@ class HrEmployee(models.Model):
 
         for emp in self:
             company = emp.company_id or self.env.company
+            policy = company.hds_in_default_tax_regime or 'new'
+            if policy in ('new', 'old'):
+                raise ValidationError(_(
+                    "Company policy mandates the %s Tax Regime for all employees. Individual regime selection cannot be altered."
+                ) % ('New' if policy == 'new' else 'Old'))
+
             fy = company.hds_in_default_tax_year or default_fy_fallback
             if not fy:
                 raise ValidationError(_("No active Financial Year configuration exists. Please configure Default Tax Year under Payroll Settings or generate the active Financial Year using the Roll-Over Wizard."))

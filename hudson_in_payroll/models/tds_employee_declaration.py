@@ -2748,6 +2748,18 @@ is_within_8_years=%s""",
         Defaults to company default regime if explicit selection not found.
         """
         for rec in self:
+            company = rec.company_id or (rec.employee_id and rec.employee_id.company_id) or self.env.company
+            policy = getattr(company, 'hds_in_default_tax_regime', 'flexible')
+
+            if policy == 'new':
+                reg_new = self.env['tds.tax.regime'].sudo().search([('code', '=', 'new')], limit=1)
+                rec.tax_regime_id = reg_new
+                continue
+            elif policy == 'old':
+                reg_old = self.env['tds.tax.regime'].sudo().search([('code', '=', 'old')], limit=1)
+                rec.tax_regime_id = reg_old
+                continue
+
             if rec.employee_id and rec.financial_year_id:
                 reg_record = self.env['tds.employee.tax.regime'].sudo().search([
                     ('employee_id', '=', rec.employee_id.id),
@@ -2758,7 +2770,7 @@ is_within_8_years=%s""",
                     continue
 
             # Fallback to default regime master
-            default_reg = self.env['tds.tax.regime'].search([('is_default', '=', True)], limit=1)
+            default_reg = self.env['tds.tax.regime'].search([('code', '=', 'new')], limit=1) or self.env['tds.tax.regime'].search([('is_default', '=', True)], limit=1)
             rec.tax_regime_id = default_reg.id if default_reg else False
 
     @api.depends('tax_regime_id')
@@ -2768,6 +2780,13 @@ is_within_8_years=%s""",
 
     def _inverse_regime_choice_id(self):
         for rec in self:
+            company = rec.company_id or (rec.employee_id and rec.employee_id.company_id) or self.env.company
+            policy = getattr(company, 'hds_in_default_tax_regime', 'flexible')
+            if policy in ('new', 'old'):
+                raise ValidationError(_(
+                    "Company policy mandates the %s Tax Regime for all employees. Individual selection is disabled."
+                ) % ('New' if policy == 'new' else 'Old'))
+
             if rec.employee_id and rec.financial_year_id and rec.regime_choice_id:
                 rec.tax_regime_id = rec.regime_choice_id
                 reg_record = self.env['tds.employee.tax.regime'].sudo().search([

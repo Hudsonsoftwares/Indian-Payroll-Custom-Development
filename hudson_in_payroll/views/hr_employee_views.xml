@@ -245,8 +245,16 @@
                     <group>
                         <group string="Tax Period &amp; Regime">
                             <field name="hds_in_is_new_tax_regime" invisible="1"/>
+                            <field name="hds_in_can_choose_regime" invisible="1"/>
+                            <field name="hds_in_company_tax_regime" invisible="1"/>
                             <field name="hds_in_current_fy_id" readonly="1" options="{'no_open': True}"/>
-                            <field name="hds_in_current_tax_regime_id" widget="radio" options="{'horizontal': true}"/>
+                            <field name="hds_in_current_tax_regime_id" widget="radio" options="{'horizontal': true}" readonly="not hds_in_can_choose_regime"/>
+                            <div class="alert alert-info py-1 px-2 mt-1 mb-0 small" invisible="hds_in_can_choose_regime or hds_in_company_tax_regime != 'new'">
+                                <i class="fa fa-lock me-1"/><strong>Company Policy:</strong> Mandated New Tax Regime (Sec 115BAC). Individual selection locked.
+                            </div>
+                            <div class="alert alert-warning py-1 px-2 mt-1 mb-0 small" invisible="hds_in_can_choose_regime or hds_in_company_tax_regime != 'old'">
+                                <i class="fa fa-lock me-1"/><strong>Company Policy:</strong> Mandated Old Tax Regime. Individual selection locked.
+                            </div>
                         </group>
                         <group string="Tax Deductions &amp; Liability Summary">
                             <field name="hds_in_decl_total_declared" widget="monetary"/>

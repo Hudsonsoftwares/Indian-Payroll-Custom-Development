@@ -204,10 +204,14 @@ class ResCompany(models.Model):
         selection=[
             ('new', 'New Regime'),
             ('old', 'Old Regime'),
+            ('flexible', 'Flexible (Employee Choice)'),
         ],
         string="Default Tax Regime",
         default='new',
-        help="Determines the default tax regime assigned to newly created employees."
+        help="Company Tax Regime policy:\n"
+             "- New Regime: Mandates New Tax Regime (Section 115BAC) for all employees.\n"
+             "- Old Regime: Mandates Old Tax Regime for all employees.\n"
+             "- Flexible: Allows individual employees to choose their preferred tax regime."
     )
     hds_in_default_tax_year = fields.Many2one(
         'tds.financial.year',

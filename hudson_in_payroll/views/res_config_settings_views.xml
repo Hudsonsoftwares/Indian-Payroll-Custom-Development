@@ -216,7 +216,18 @@
                                     </div>
                                     <div class="row mt8">
                                         <label for="hds_in_default_tax_regime" class="col-lg-5 o_light_label"/>
-                                        <field name="hds_in_default_tax_regime"/>
+                                        <div class="col-lg-7">
+                                            <field name="hds_in_default_tax_regime" widget="radio" options="{'horizontal': true}"/>
+                                            <div class="text-muted small mt-1" invisible="hds_in_default_tax_regime != 'new'">
+                                                <i class="fa fa-lock me-1 text-info"/>All employees are mandated to follow the <strong>New Tax Regime</strong> (Sec 115BAC). Individual selection is locked.
+                                            </div>
+                                            <div class="text-muted small mt-1" invisible="hds_in_default_tax_regime != 'old'">
+                                                <i class="fa fa-lock me-1 text-info"/>All employees are mandated to follow the <strong>Old Tax Regime</strong>. Individual selection is locked.
+                                            </div>
+                                            <div class="text-muted small mt-1" invisible="hds_in_default_tax_regime != 'flexible'">
+                                                <i class="fa fa-check-circle me-1 text-success"/><strong>Flexible Mode:</strong> Allows choosing New or Old Regime individually at the employee level.
+                                            </div>
+                                        </div>
                                     </div>
                                     <div class="row mt8">
                                         <label for="hds_in_default_tax_year" class="col-lg-5 o_light_label"/>
