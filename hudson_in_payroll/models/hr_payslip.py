@@ -1969,26 +1969,6 @@ else:
         if prev_emp_val > 0:
             tax_comp_income.append({'head': 'Previous Employer Salary (Form 12B)', 'annual': prev_emp_val, 'exempt': 0.0, 'taxable': prev_emp_val})
 
-        oth_inc_val = getattr(oth_inc, 'total_other_income', 0.0) if oth_inc else 0.0
-        if oth_inc_val > 0:
-            tax_comp_income.append({'head': 'Declared Other Income', 'annual': oth_inc_val, 'exempt': 0.0, 'taxable': oth_inc_val})
-
-        # Derive display GTI from the income list.
-        # Then override with engine's authoritative gross_total_income to capture any engine-side
-        # components that may differ from the display list (e.g., engine resolves prev employer
-        # income from a different path or captures additional components).
-        gti_annual = sum(i['annual'] for i in tax_comp_income)
-        gti_exempt = sum(i['exempt'] for i in tax_comp_income)
-        gti_taxable = sum(i['taxable'] for i in tax_comp_income)
-        # Override with engine GTI if it's larger (engine is the source of truth for tax computation)
-        engine_gti = float(getattr(proj, 'gross_total_income', 0.0) or 0.0) if proj else 0.0
-        engine_net_taxable = float(getattr(tax_inc, 'net_taxable_income', 0.0) or 0.0) if tax_inc else 0.0
-        if engine_gti > gti_annual + 0.01:
-            # Engine has more income than the display list — adjust the display totals
-            gap = engine_gti - gti_annual
-            gti_annual = engine_gti
-            gti_taxable = gti_annual - gti_exempt
-
         # Resolve Tax Regime
         regime_code = 'new'
         regime_name = 'New Tax Regime (115BAC)'
@@ -2015,11 +1995,53 @@ else:
         regime_display = 'New Tax Regime (115BAC)' if is_new_regime else 'Old Tax Regime'
         regime_header = 'NEW REGIME' if is_new_regime else 'OLD REGIME'
 
-        # Deductions
         decl = self.env['tds.employee.declaration'].search([
             ('employee_id', '=', emp.id),
             ('state', '!=', 'rejected')
         ], order='id desc', limit=1)
+
+        oth_inc_val = getattr(oth_inc, 'total_other_income', 0.0) if oth_inc else 0.0
+        fp_gross = float(getattr(oth_inc, 'family_pension_gross', 0.0) or 0.0) if oth_inc else 0.0
+        fp_ded = float(getattr(oth_inc, 'family_pension_deduction', 0.0) or 0.0) if oth_inc else 0.0
+        fp_net = float(getattr(oth_inc, 'family_pension_net', 0.0) or 0.0) if oth_inc else 0.0
+        if not fp_gross and decl:
+            fp_gross = float(getattr(decl, 'decl_57iia_family_pension', 0.0) or (next((l.declared_amount for l in getattr(decl, 'declaration_line_ids', []) if l.category == '57iia'), 0.0)) or 0.0)
+            if fp_gross > 0:
+                fp_ded = min(fp_gross / 3.0, 25000.0 if is_new_regime else 15000.0)
+                fp_net = max(0.0, fp_gross - fp_ded)
+
+        if fp_gross > 0:
+            tax_comp_income.append({
+                'head': 'Family Pension Income [Sec 57(iia)]',
+                'annual': fp_gross,
+                'exempt': fp_ded,
+                'taxable': fp_net
+            })
+            remaining_other = max(0.0, oth_inc_val - fp_net)
+            if remaining_other > 0:
+                tax_comp_income.append({
+                    'head': 'Declared Other Income',
+                    'annual': remaining_other,
+                    'exempt': 0.0,
+                    'taxable': remaining_other
+                })
+        elif oth_inc_val > 0:
+            tax_comp_income.append({'head': 'Declared Other Income', 'annual': oth_inc_val, 'exempt': 0.0, 'taxable': oth_inc_val})
+
+        # Derive display GTI from the income list.
+        # Then override with engine's authoritative gross_total_income to capture any engine-side
+        # components that may differ from the display list (e.g., engine resolves prev employer
+        # income from a different path or captures additional components).
+        gti_annual = sum(i['annual'] for i in tax_comp_income)
+        gti_exempt = sum(i['exempt'] for i in tax_comp_income)
+        gti_taxable = sum(i['taxable'] for i in tax_comp_income)
+        # Override with engine GTI if it's larger (engine is the source of truth for tax computation)
+        engine_gti = float(getattr(proj, 'gross_total_income', 0.0) or 0.0) if proj else 0.0
+        engine_net_taxable = float(getattr(tax_inc, 'net_taxable_income', 0.0) or 0.0) if tax_inc else 0.0
+        if engine_gti > gti_taxable + 0.01:
+            # Engine has more income than the display list — adjust the display totals
+            gap = engine_gti - gti_taxable
+            gti_taxable = engine_gti
 
         std_ded = getattr(deduct, 'standard_deduction', 0.0) if deduct else 0.0
         if not std_ded and not is_new_regime:
@@ -2047,9 +2069,8 @@ else:
                 {'name': 'Standard Deduction [u/s 16(ia)]', 'amount': std_ded},
                 {'name': 'Employer NPS Contribution [Section 124]', 'amount': sec_80ccd2},
                 {'name': 'Agniveer Corpus Fund [Section 80CCH]', 'amount': sec_80cch},
-                {'name': 'Family Pension Deduction [Section 57(iia)]', 'amount': fam_pension},
             ]
-            other_ded = float(getattr(deduct, 'other_approved_deductions', 0.0) or 0.0) if deduct else 0.0
+            other_ded = max(0.0, float(getattr(deduct, 'other_approved_deductions', 0.0) or 0.0) - sec_80cch)
             if other_ded > 0:
                 tax_comp_deductions.append({'name': 'Other Approved Deductions', 'amount': other_ded})
         else:
@@ -2135,9 +2156,10 @@ else:
             if other_ded > 0:
                 tax_comp_deductions.append({'name': 'Other Approved Deductions', 'amount': other_ded})
 
-        total_tax_deductions = sum(d['amount'] for d in tax_comp_deductions)
         if deduct and getattr(deduct, 'total_allowable_deductions', 0.0) > 0:
-            total_tax_deductions = max(total_tax_deductions, float(deduct.total_allowable_deductions))
+            total_tax_deductions = float(deduct.total_allowable_deductions)
+        else:
+            total_tax_deductions = sum(d['amount'] for d in tax_comp_deductions)
 
         net_taxable_income = getattr(tax_inc, 'net_taxable_income', max(0.0, gti_taxable - total_tax_deductions))
         base_tax = getattr(slab, 'base_tax_liability', 0.0) if slab else 0.0

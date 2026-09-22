@@ -3099,13 +3099,14 @@ is_within_8_years=%s""",
                 return item['field_name']
         return None
 
-    def _sync_all_declaration_lines(self, method_name='write', write_vals=None):
+    def _sync_all_declaration_lines(self, method_name='write', write_vals=None, pre_deleted_lines=None):
         """
         Metadata-driven intent-aware synchronization of header decl_* fields and child declaration_line_ids.
         - Preserves positive child declaration line items entered directly in the audit grid.
         - Syncs positive child line amounts to scalar header fields.
         - Detects explicit header/line clear operations from write_vals payload and safely unlinks cleared categories.
         - Prevents accidental resurrection of stale declared amounts when a user intentionally clears a section.
+        - Safely uses pre_deleted_lines cache to resolve deleted record attributes without MissingError.
         """
         if self.env.context.get('no_line_sync'):
             return
@@ -3142,9 +3143,15 @@ is_within_8_years=%s""",
                             for item in DECLARATION_BUSINESS_REGISTRY:
                                 line_cleared_fields.add(item['field_name'])
                         elif c_type in (2, 3):
-                            l_rec = self.env['tds.employee.declaration.line'].browse(cmd[1])
-                            if l_rec:
-                                target_f = self._resolve_declaration_field_for_line(l_rec.category, l_rec.description)
+                            cat, desc = False, False
+                            if pre_deleted_lines and cmd[1] in pre_deleted_lines:
+                                cat, desc = pre_deleted_lines[cmd[1]]
+                            else:
+                                l_rec = self.env['tds.employee.declaration.line'].browse(cmd[1]).exists()
+                                if l_rec:
+                                    cat, desc = l_rec.category, l_rec.description
+                            if cat:
+                                target_f = self._resolve_declaration_field_for_line(cat, desc)
                                 if target_f:
                                     line_cleared_fields.add(target_f)
                         elif c_type in (0, 1) and len(cmd) >= 3 and isinstance(cmd[2], dict):
@@ -3152,9 +3159,14 @@ is_within_8_years=%s""",
                             cmd_cat = c_dict.get('category')
                             cmd_desc = c_dict.get('description')
                             if not cmd_cat and c_type == 1 and cmd[1]:
-                                l_rec = self.env['tds.employee.declaration.line'].browse(cmd[1])
-                                cmd_cat = l_rec.category if l_rec else False
-                                cmd_desc = cmd_desc or (l_rec.description if l_rec else False)
+                                if pre_deleted_lines and cmd[1] in pre_deleted_lines:
+                                    cmd_cat, cmd_desc_cached = pre_deleted_lines[cmd[1]]
+                                    cmd_desc = cmd_desc or cmd_desc_cached
+                                else:
+                                    l_rec = self.env['tds.employee.declaration.line'].browse(cmd[1]).exists()
+                                    if l_rec:
+                                        cmd_cat = l_rec.category
+                                        cmd_desc = cmd_desc or l_rec.description
                             target_f = self._resolve_declaration_field_for_line(cmd_cat, cmd_desc)
                             if target_f:
                                 if 'declared_amount' in c_dict:
@@ -3166,6 +3178,7 @@ is_within_8_years=%s""",
 
         for rec in self:
             header_updates = {}
+            active_lines = rec.declaration_line_ids.exists().filtered(lambda l: getattr(l, 'active', True))
             for item in DECLARATION_BUSINESS_REGISTRY:
                 cat = item['category']
                 field_name = item['field_name']
@@ -3179,17 +3192,17 @@ is_within_8_years=%s""",
                 # 2. Check existing active child lines for this category & field
                 SINGLE_INSTANCE_CATEGORIES = {'57iia', '80ccd2', '80cch', '80ccd1b', 'hra', 'lta', '24b', '80dd', '80u', '80eea', '80g', '80e'}
                 if cat in SINGLE_INSTANCE_CATEGORIES:
-                    matching_lines = rec.declaration_line_ids.filtered(lambda l: l.category == cat and getattr(l, 'active', True))
+                    matching_lines = active_lines.filtered(lambda l: l.category == cat)
                 elif cat == '80c':
-                    matching_lines = rec.declaration_line_ids.filtered(
-                        lambda l: l.category == '80c' and getattr(l, 'active', True) and rec._match_80c_child_line(l, field_name)
+                    matching_lines = active_lines.filtered(
+                        lambda l: l.category == '80c' and rec._match_80c_child_line(l, field_name)
                     )
                 else:
                     ui_info = DECLARATION_UI_REGISTRY.get(field_name, {})
                     ui_label = ui_info.get('label', field_name)
                     lbl_base = ui_label.split(' (')[0].strip()
-                    matching_lines = rec.declaration_line_ids.filtered(
-                        lambda l: l.category == cat and getattr(l, 'active', True) and l.description and (lbl_base in l.description or field_name in l.description or ui_label in l.description)
+                    matching_lines = active_lines.filtered(
+                        lambda l: l.category == cat and l.description and (lbl_base in l.description or field_name in l.description or ui_label in l.description)
                     )
                 line_val = sum(float(l.declared_amount or 0.0) for l in matching_lines) if matching_lines else 0.0
                 has_approved_proof = any(
@@ -3629,10 +3642,18 @@ is_within_8_years=%s""",
         return records
 
     def write(self, vals):
+        pre_deleted_lines = {}
+        if vals and isinstance(vals, dict) and 'declaration_line_ids' in vals:
+            for cmd in vals.get('declaration_line_ids') or []:
+                if isinstance(cmd, (list, tuple)) and len(cmd) >= 2 and cmd[0] in (1, 2, 3) and cmd[1]:
+                    l_rec = self.env['tds.employee.declaration.line'].browse(cmd[1]).exists()
+                    if l_rec:
+                        pre_deleted_lines[cmd[1]] = (l_rec.category, l_rec.description)
+
         res = super().write(vals)
         if not self.env.context.get('no_line_sync'):
             self._sync_tax_regime()
-            self._sync_all_declaration_lines(method_name='write', write_vals=vals)
+            self._sync_all_declaration_lines(method_name='write', write_vals=vals, pre_deleted_lines=pre_deleted_lines)
         _logger.warning(
             "[HR & ESS DECLARATION PERSISTENCE AUDIT] Write Called on Declaration IDs: %s | Payload Vals: %s",
             self.ids, vals

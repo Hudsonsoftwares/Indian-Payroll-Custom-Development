@@ -353,3 +353,17 @@ declaration_total_approved_amount=%s""",
                     line.declaration_id.total_approved_amount if line.declaration_id else 'N/A'
                 )
         return res
+
+    def unlink(self):
+        line_field_map = []
+        for line in self:
+            if line.declaration_id:
+                target_f = line.declaration_id._resolve_declaration_field_for_line(line.category, line.description)
+                if target_f:
+                    line_field_map.append((line.declaration_id, target_f))
+        res = super(TdsEmployeeDeclarationLine, self).unlink()
+        for decl, target_f in line_field_map:
+            if decl.exists() and hasattr(decl, target_f) and getattr(decl, target_f, 0.0):
+                decl.with_context(no_line_sync=True).sudo().write({target_f: 0.0})
+        return res
+
