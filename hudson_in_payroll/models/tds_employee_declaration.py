@@ -3027,13 +3027,7 @@ is_within_8_years=%s""",
                 post_val = new_line.declared_amount
         else:
             if lines:
-                lines_to_delete = lines.filtered(lambda l: not (
-                    float(getattr(l, 'tax_firm_approved_amount', 0.0) or 0.0) > 0.0 or
-                    float(getattr(l, 'approved_amount', 0.0) or 0.0) > 0.0 or
-                    float(getattr(l, 'verified_amount', 0.0) or 0.0) > 0.0
-                ))
-                if lines_to_delete:
-                    lines_to_delete.sudo().unlink()
+                lines.sudo().unlink()
             post_val = 0.0
 
         read_val = float(getattr(self, python_field_name, 0.0) or 0.0) if hasattr(self, python_field_name) else post_val
@@ -3178,8 +3172,8 @@ is_within_8_years=%s""",
 
         for rec in self:
             header_updates = {}
-            active_lines = rec.declaration_line_ids.exists().filtered(lambda l: getattr(l, 'active', True))
             for item in DECLARATION_BUSINESS_REGISTRY:
+                active_lines = rec.declaration_line_ids.exists().filtered(lambda l: getattr(l, 'active', True))
                 cat = item['category']
                 field_name = item['field_name']
                 alt_field = item.get('alt_field_name')
@@ -3357,14 +3351,7 @@ is_within_8_years=%s""",
                         if cat == '80g' and hasattr(rec, 'decl_80g_category') and rec.decl_80g_category:
                             matched.decl_80g_category = rec.decl_80g_category
                         new_lines.append(matched)
-                    else:
-                        has_proof = (
-                            float(getattr(matched, 'tax_firm_approved_amount', 0.0) or 0.0) > 0.0 or
-                            float(getattr(matched, 'approved_amount', 0.0) or 0.0) > 0.0 or
-                            float(getattr(matched, 'verified_amount', 0.0) or 0.0) > 0.0
-                        )
-                        if has_proof:
-                            new_lines.append(matched)
+                    # When header deduction is cleared (hdr_val == 0.0), do not preserve the line in new_lines
                 else:
                     if hdr_val > 0.0:
                         line_vals = {

@@ -350,8 +350,9 @@ class ReportStatutoryTaxCalculation(models.AbstractModel):
 
             if employer_nps_80ccd2 > 0:
                 deduction_breakdown.append(('Employer NPS Contribution [Section 124]', employer_nps_80ccd2))
-            if family_pension_57iia > 0:
-                deduction_breakdown.append(('Family Pension Deduction [Sec 57(iia)]', family_pension_57iia))
+            # Note: Family Pension Deduction [Sec 57(iia)] is NOT a Chapter VI-A deduction.
+            # It is an intra-head deduction under Income from Other Sources that is already netted
+            # in Section 2 to arrive at Gross Total Income. Do not include it in Section 3 deduction_breakdown.
 
             # ── Other Income breakdown for Section 2 ─────────────────────────
             savings_bank_interest = float(getattr(other_inc, 'savings_interest', 0.0) or 0.0)
@@ -360,11 +361,21 @@ class ReportStatutoryTaxCalculation(models.AbstractModel):
             other_sources_misc = float(getattr(other_inc, 'other_sources_misc', 0.0) or 0.0)
             net_house_property = float(getattr(other_inc, 'net_house_property_income_loss', 0.0) or 0.0)
 
-            family_pension_declared_income = float(getattr(decl, 'decl_57iia_family_pension', 0.0) or 0.0) if decl else 0.0
-            if not family_pension_declared_income and decl:
-                line_57 = next((l for l in getattr(decl, 'declaration_line_ids', []) if l.category == '57iia' and getattr(l, 'active', True)), None)
-                if line_57:
-                    family_pension_declared_income = float(line_57.declared_amount or 0.0)
+            fp_net = float(getattr(other_inc, 'family_pension_net', 0.0) or 0.0)
+            fp_ded = float(getattr(other_inc, 'family_pension_deduction', 0.0) or 0.0)
+            fp_gross = float(getattr(other_inc, 'family_pension_gross', 0.0) or 0.0)
+            family_pension_declared_income = fp_gross
+            if not fp_gross and decl:
+                decl_fp = float(getattr(decl, 'decl_57iia_family_pension', 0.0) or 0.0)
+                if not decl_fp:
+                    line_57 = next((l for l in getattr(decl, 'declaration_line_ids', []) if l.category == '57iia' and getattr(l, 'active', True)), None)
+                    if line_57:
+                        decl_fp = float(line_57.declared_amount or 0.0)
+                if decl_fp > 0:
+                    fp_gross = decl_fp
+                    fp_ded = family_pension_57iia
+                    fp_net = max(0.0, fp_gross - fp_ded)
+                    family_pension_declared_income = fp_gross
 
             other_income_breakdown = []
             if savings_bank_interest > 0:
@@ -375,8 +386,11 @@ class ReportStatutoryTaxCalculation(models.AbstractModel):
                 other_income_breakdown.append(('Dividend Income', dividend_income))
             if other_sources_misc > 0:
                 other_income_breakdown.append(('Other Miscellaneous Income', other_sources_misc))
-            if family_pension_declared_income > 0:
-                other_income_breakdown.append(('Family Pension Income [Sec 57(iia)]', family_pension_declared_income))
+            if fp_gross > 0:
+                fp_label = f"Family Pension Income [Net u/s 57(iia)]"
+                if fp_ded > 0:
+                    fp_label += f" (Gross: ₹{fp_gross:,.2f} - Ded: ₹{fp_ded:,.2f})"
+                other_income_breakdown.append((fp_label, fp_net))
             if net_house_property != 0:
                 other_income_breakdown.append(('Net Income / (Loss) from Let-Out Property', net_house_property))
 

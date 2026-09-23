@@ -2144,9 +2144,7 @@ else:
             if sec_80gg > 0:
                 tax_comp_deductions.append({'name': 'Section 80GG (Rent Paid)', 'amount': sec_80gg})
 
-            fam_pension = float(getattr(deduct, 'family_pension_57iia', 0.0) or 0.0) if deduct else 0.0
-            if fam_pension > 0:
-                tax_comp_deductions.append({'name': 'Family Pension Deduction [Sec 57(iia)]', 'amount': fam_pension})
+            # Note: Family Pension Deduction [Sec 57(iia)] is deducted under Income from Other Sources, not Chapter VI-A.
 
             sec_80cch = float(getattr(c6a, 'section_80cch', 0.0) or 0.0) if c6a else 0.0
             if sec_80cch > 0:
