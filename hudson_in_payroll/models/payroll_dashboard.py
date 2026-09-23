@@ -1283,7 +1283,7 @@ class HdsPayrollDashboard(models.Model):
                         <div style="display: flex; align-items: center; gap: 12px; background: var(--hds-subcard-bg); padding: 10px 14px; border-radius: 8px; border: 1px solid var(--hds-subcard-border);">
                             <span class="hds-text-muted" style="font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px;">Tax Regimes:</span>
                             <div role="button" tabindex="0" onclick="window.hdsCardClick &amp;&amp; window.hdsCardClick(this, 'new_regime')" data-card-type="new_regime" class="o_hds_dashboard_card_clickable" style="cursor: pointer; display: flex; align-items: center; gap: 6px;" title="Filter New Regime Employees">
-                                <span style="font-size: 12px; color: #38bdf8; font-weight: 700;">New (115BAC): {rec.new_regime_count}</span>
+                                <span style="font-size: 12px; color: #38bdf8; font-weight: 700;">New (Sec 202(1)): {rec.new_regime_count}</span>
                             </div>
                             <span style="color: var(--hds-row-border);">&bull;</span>
                             <div role="button" tabindex="0" onclick="window.hdsCardClick &amp;&amp; window.hdsCardClick(this, 'old_regime')" data-card-type="old_regime" class="o_hds_dashboard_card_clickable" style="cursor: pointer; display: flex; align-items: center; gap: 6px;" title="Filter Old Regime Employees">
@@ -1607,7 +1607,7 @@ class HdsPayrollDashboard(models.Model):
         if card_type == 'new_regime':
             return {
                 'type': 'ir.actions.act_window',
-                'name': 'Employees in New Tax Regime (115BAC)',
+                'name': 'Employees in New Tax Regime Income-tax Act, 2025 — Section 202(1)',
                 'res_model': 'hr.employee',
                 'view_mode': 'list,form',
                 'views': [[False, 'list'], [False, 'form']],
@@ -2274,7 +2274,7 @@ class HdsPayrollDashboard(models.Model):
         # 14. Old / New Tax Regimes
         elif card_type in ('old_regime', 'new_regime'):
             regime = 'old' if card_type == 'old_regime' else 'new'
-            regime_title = "Old Tax Regime (With Exemptions)" if regime == 'old' else "New Tax Regime (Section 115BAC)"
+            regime_title = "Old Tax Regime (With Exemptions)" if regime == 'old' else "New Tax Regime Income-tax Act, 2025 — Section 202(1)"
             reg_emps = active_emps.filtered(lambda e: getattr(e, 'hds_in_tax_regime', 'new') == regime)
             title = f"Employees in {regime_title}"
             badge = f"{len(reg_emps)} Employees"

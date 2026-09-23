@@ -227,7 +227,7 @@ class Section80DDDeductionService(BaseStatutoryService):
         reason = ""
 
         if not cond_regime:
-            reason = "Section 80DD Ineligible: Dependent disability deduction is available only under the Old Tax Regime (Section 115BAC)."
+            reason = "Section 80DD Ineligible: Dependent disability deduction is available only under the Old Tax Regime (not permitted under New Tax Regime Income-tax Act, 2025 — Section 202(1))."
         elif not cond_resident:
             reason = res_res.failure_reason
         elif not cond_relationship:

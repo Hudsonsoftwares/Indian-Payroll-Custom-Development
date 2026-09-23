@@ -241,8 +241,15 @@
                                         <td style="padding: 5px 8px; border: 1px solid #dee2e6;">TOTAL ALLOWABLE DEDUCTIONS</td>
                                         <td style="text-align: right; padding: 5px 8px; border: 1px solid #dee2e6;">(<t t-esc="'{:,.2f}'.format(r['total_allowable_deductions'])"/>)</td>
                                     </tr>
+                                    <tr t-if="r.get('rounding_factor') is not None" style="background: #f8f9fa; color: #495057;">
+                                        <td style="padding: 5px 8px; border: 1px solid #dee2e6;">Rounding Factor / Adjustment (Section 516, Income-tax Act, 2025: to nearest ₹10)</td>
+                                        <td style="text-align: right; padding: 5px 8px; border: 1px solid #dee2e6;"><t t-esc="('{:+,.2f}'.format(r['rounding_factor']) if r['rounding_factor'] else '0.00')"/></td>
+                                    </tr>
                                     <tr style="background: #d3f9d8; font-weight: bold; color: #1e6b2e;">
-                                        <td style="padding: 5px 8px; border: 1px solid #dee2e6;">NET CHARGEABLE TAXABLE INCOME</td>
+                                        <td style="padding: 5px 8px; border: 1px solid #dee2e6;">
+                                            NET CHARGEABLE TAXABLE INCOME
+                                            <span style="font-size: 9px; font-weight: normal; color: #1e6b2e; display: block;">(Rounded to nearest ₹10 as per Section 516, Income-tax Act, 2025)</span>
+                                        </td>
                                         <td style="text-align: right; padding: 5px 8px; border: 1px solid #dee2e6;"><t t-esc="'{:,.2f}'.format(r['net_taxable_income'])"/></td>
                                     </tr>
                                 </tbody>
@@ -646,8 +653,12 @@
                                         <td style="padding: 5px 8px; border: 1px solid #dee2e6; background: #f8f9fa; color: #dc3545;">(−) Total Allowable Deductions &amp; Exemptions</td>
                                         <td style="text-align: right; padding: 5px 8px; border: 1px solid #dee2e6; color: #dc3545;">(−&#160;<t t-esc="'{:,.2f}'.format(r['total_allowable_deductions'])"/>)</td>
                                     </tr>
+                                    <tr t-if="r.get('rounding_factor') is not None" style="background: #f8f9fa; color: #495057;">
+                                        <td style="padding: 5px 8px; border: 1px solid #dee2e6;">Rounding Factor / Adjustment (Section 516, Income-tax Act, 2025: to nearest ₹10)</td>
+                                        <td style="text-align: right; padding: 5px 8px; border: 1px solid #dee2e6;"><t t-esc="('{:+,.2f}'.format(r['rounding_factor']) if r['rounding_factor'] else '0.00')"/></td>
+                                    </tr>
                                     <tr style="font-weight: bold; background: #e8edf3;">
-                                        <td style="padding: 5px 8px; border: 1px solid #dee2e6;">Net Chargeable Taxable Income</td>
+                                        <td style="padding: 5px 8px; border: 1px solid #dee2e6;">Net Chargeable Taxable Income (Rounded to nearest ₹10 as per Section 516, Income-tax Act, 2025)</td>
                                         <td style="text-align: right; padding: 5px 8px; border: 1px solid #dee2e6;"><t t-esc="'{:,.2f}'.format(r['net_taxable_income'])"/></td>
                                     </tr>
                                     <tr>
@@ -745,8 +756,12 @@
                                             <t t-esc="'{:,.2f}'.format(r['family_pension_declared_income'] - r['family_pension_57iia'])"/>
                                         </td>
                                     </tr>
+                                    <tr t-if="r.get('rounding_factor') is not None" style="background: #f8f9fa; color: #495057;">
+                                        <td style="padding: 5px 8px; border: 1px solid #dee2e6;">Rounding Factor / Adjustment (Section 516, Income-tax Act, 2025: to nearest ₹10)</td>
+                                        <td style="text-align: right; padding: 5px 8px; border: 1px solid #dee2e6;"><t t-esc="('{:+,.2f}'.format(r['rounding_factor']) if r['rounding_factor'] else '0.00')"/></td>
+                                    </tr>
                                     <tr style="background: #e8edf3; font-weight: bold;">
-                                        <td style="padding: 5px 8px; border: 1px solid #dee2e6;">Final Net Chargeable Taxable Income</td>
+                                        <td style="padding: 5px 8px; border: 1px solid #dee2e6;">Final Net Chargeable Taxable Income (Rounded to nearest ₹10 as per Section 516, Income-tax Act, 2025)</td>
                                         <td style="text-align: right; padding: 5px 8px; border: 1px solid #dee2e6;"><t t-esc="'{:,.2f}'.format(r['net_taxable_income'])"/></td>
                                     </tr>
                                     <tr style="background: #e8edf3; font-weight: bold;">

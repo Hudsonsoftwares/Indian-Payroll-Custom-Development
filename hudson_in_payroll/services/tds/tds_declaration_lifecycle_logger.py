@@ -826,7 +826,7 @@ Current Month TDS        : INR {float(current_month_tds or 0.0):,.2f}
 
             if amt_val > 0:
                 comp_eligible = amt_val if regime_code == 'old' else 0.0
-                comp_rule = f"Eligible under {rule_ref} (Old Regime)" if regime_code == 'old' else "Not permitted under New Tax Regime (Section 115BAC)"
+                comp_rule = f"Eligible under {rule_ref} (Old Regime)" if regime_code == 'old' else "Not permitted under New Tax Regime Income-tax Act, 2025 — Section 202(1)"
                 comp_considered = comp_eligible
 
                 total_component_declared += amt_val
@@ -909,7 +909,7 @@ Current Month TDS        : INR {float(current_month_tds or 0.0):,.2f}
         reconciliation_formula = (
             f"min(Total Component Eligible INR {total_component_eligible:,.2f}, Statutory Limit INR {statutory_limit:,.2f}) = INR {final_eligible_deduction:,.2f}"
             if regime_code == 'old' else
-            "Section 80C deductions not permitted under New Tax Regime (Section 115BAC)."
+            "Section 80C deductions not permitted under New Tax Regime Income-tax Act, 2025 — Section 202(1)."
         )
 
         return {
@@ -934,7 +934,7 @@ Current Month TDS        : INR {float(current_month_tds or 0.0):,.2f}
                 if cap_applied else
                 f"Total Section 80C deduction allowed INR {final_eligible_deduction:,.2f} within statutory limit INR {statutory_limit:,.2f}."
                 if regime_code == 'old' else
-                "Section 80C deductions not permitted under New Tax Regime (Section 115BAC)."
+                "Section 80C deductions not permitted under New Tax Regime Income-tax Act, 2025 — Section 202(1)."
             )
         }
 

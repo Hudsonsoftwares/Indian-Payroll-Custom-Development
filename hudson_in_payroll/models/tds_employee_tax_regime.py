@@ -66,7 +66,7 @@ class TdsEmployeeTaxRegime(models.Model):
         string="Selected Tax Regime",
         required=True,
         ondelete='restrict',
-        help="Selected statutory tax regime ('new' Section 115BAC or 'old' Regime)."
+        help="Selected statutory tax regime ('new' New Tax Regime Income-tax Act, 2025 — Section 202(1) or 'old' Regime)."
     )
     regime_code = fields.Selection(
         related='regime_id.code',
@@ -109,7 +109,7 @@ class TdsEmployeeTaxRegime(models.Model):
             policy = getattr(company, 'hds_in_default_tax_regime', 'flexible')
             if policy == 'new' and rec.regime_code != 'new':
                 raise ValidationError(_(
-                    "Company policy mandates the New Tax Regime (Section 115BAC) for all employees. "
+                    "Company policy mandates the New Tax Regime Income-tax Act, 2025 — Section 202(1) for all employees. "
                     "Individual selection of the Old Tax Regime is prohibited."
                 ))
             elif policy == 'old' and rec.regime_code != 'old':

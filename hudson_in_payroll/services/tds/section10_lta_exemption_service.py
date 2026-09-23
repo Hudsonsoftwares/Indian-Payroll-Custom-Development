@@ -320,7 +320,7 @@ class Section10LtaExemptionService(BaseStatutoryService):
         if regime_code == 'old':
             checks.append({'code': 'TAX_REGIME', 'status': 'pass', 'message': 'Old Tax Regime selected (Section 10(5) LTA Exemption permitted).'})
         else:
-            checks.append({'code': 'TAX_REGIME', 'status': 'fail', 'message': 'Not eligible for Section 10(5) exemption under selected tax regime (Section 115BAC prohibits LTA exemption).'})
+            checks.append({'code': 'TAX_REGIME', 'status': 'fail', 'message': 'Not eligible for Section 10(5) exemption under selected tax regime (New Tax Regime Income-tax Act, 2025 — Section 202(1) prohibits LTA exemption).'})
 
         # 2. JOURNEY_DATE
         if journey_date:

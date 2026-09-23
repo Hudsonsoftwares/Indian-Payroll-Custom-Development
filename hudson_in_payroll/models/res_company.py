@@ -202,14 +202,14 @@ class ResCompany(models.Model):
     )
     hds_in_default_tax_regime = fields.Selection(
         selection=[
-            ('new', 'New Regime'),
-            ('old', 'Old Regime'),
+            ('new', 'New Tax Regime Income-tax Act, 2025 — Section 202(1)'),
+            ('old', 'Old Tax Regime'),
             ('flexible', 'Flexible (Employee Choice)'),
         ],
         string="Default Tax Regime",
         default='new',
         help="Company Tax Regime policy:\n"
-             "- New Regime: Mandates New Tax Regime (Section 115BAC) for all employees.\n"
+             "- New Regime: Mandates New Tax Regime Income-tax Act, 2025 — Section 202(1) for all employees.\n"
              "- Old Regime: Mandates Old Tax Regime for all employees.\n"
              "- Flexible: Allows individual employees to choose their preferred tax regime."
     )

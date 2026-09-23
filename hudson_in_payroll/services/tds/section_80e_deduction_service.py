@@ -317,7 +317,7 @@ selected_amount=%s
         reason = ""
 
         if not cond_regime:
-            reason = "Section 80E Ineligible: Education Loan Interest deduction is available only under the Old Tax Regime (Section 115BAC)."
+            reason = "Section 80E Ineligible: Education Loan Interest deduction is available only under the Old Tax Regime (not permitted under New Tax Regime Income-tax Act, 2025 — Section 202(1))."
         elif not cond_interest:
             reason = "No Section 80E deduction allowable: Declared education loan interest amount is zero."
         elif not cond_higher_edu:

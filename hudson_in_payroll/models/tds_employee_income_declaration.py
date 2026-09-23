@@ -11,7 +11,7 @@ class TdsEmployeeIncomeDeclaration(models.Model):
     Bank Interest, Dividends) and Previous Employer Salary details.
     
     Regime-Neutral Architecture:
-    These income declarations are evaluated under BOTH the Old Tax Regime and New Tax Regime (Section 115BAC).
+    These income declarations are evaluated under BOTH the Old Tax Regime and New Tax Regime Income-tax Act, 2025 — Section 202(1).
     """
     _name = 'tds.employee.income.declaration'
     _description = 'Employee Non-Payroll & Previous Employer Income Declaration'

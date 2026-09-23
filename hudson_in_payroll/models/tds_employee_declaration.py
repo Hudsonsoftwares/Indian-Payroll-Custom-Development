@@ -1773,7 +1773,7 @@ class TdsEmployeeDeclaration(models.Model):
             regime = (rec.regime_code or 'old').lower()
             if regime == 'new':
                 rec.decl_24b_eligible = False
-                rec.decl_24b_ineligibility_reason = "Section 24(b) deduction on self-occupied house property is not permissible under the New Tax Regime (Section 115BAC)."
+                rec.decl_24b_ineligibility_reason = "Section 24(b) deduction on self-occupied house property is not permissible under the New Tax Regime Income-tax Act, 2025 — Section 202(1)."
                 rec.decl_24b_allowed_deduction = 0.0
                 rec.decl_24b_applicable_cap = 0.0
                 continue
@@ -1915,7 +1915,7 @@ class TdsEmployeeDeclaration(models.Model):
             regime = (rec.regime_code or 'old').lower()
             if regime == 'new':
                 rec.decl_80eea_eligible = False
-                rec.decl_80eea_ineligibility_reason = "Section 80EEA deduction is not permissible under the New Tax Regime (Section 115BAC)."
+                rec.decl_80eea_ineligibility_reason = "Section 80EEA deduction is not permissible under the New Tax Regime Income-tax Act, 2025 — Section 202(1)."
                 rec.decl_80eea_allowed_deduction = 0.0
                 rec.decl_80eea_remaining_interest = 0.0
                 continue
@@ -3664,7 +3664,7 @@ is_within_8_years=%s""",
             eval_date = (getattr(fy, 'start_date', False) or getattr(fy, 'date_from', False)) if fy else fields.Date.today()
             fy_name = rec.financial_year_id.name if rec.financial_year_id else 'Tax Year: 2026-27'
             ay_name = rec.financial_year_id.assessment_year if rec.financial_year_id and hasattr(rec.financial_year_id, 'assessment_year') and rec.financial_year_id.assessment_year else 'AY 2027-28'
-            regime_title = "Old Tax Regime (Section 115BAC Opted Out)" if rec.regime_code == 'old' else "New Tax Regime (Section 115BAC Default)"
+            regime_title = "Old Tax Regime (Section 202(1) Opted Out)" if rec.regime_code == 'old' else "New Tax Regime Income-tax Act, 2025 — Section 202(1)"
 
             active_sections = sec_config_svc.get_active_sections(regime_code=rec.regime_code, eval_date=eval_date)
             active_sec_codes = [s.code for s in active_sections] if active_sections else [s.code for s in self.env['tds.tax.section.config'].search([])]
@@ -4044,7 +4044,7 @@ is_within_8_years=%s""",
                     conditions=[
                         "Deduction calculated as 1/3rd of gross family pension received.",
                         f"Statutory ceiling: INR {cap_57iia:,.0f} per financial year under {regime_title}.",
-                        "Netted under Income from Other Sources under BOTH Old Regime and New Tax Regime (Section 115BAC)."
+                        "Netted under Income from Other Sources under BOTH Old Regime and New Tax Regime Income-tax Act, 2025 — Section 202(1)."
                     ],
                     typical_docs=[
                         "Pension Payment Order (PPO) Passbook / Credit Certificate",
@@ -4067,7 +4067,7 @@ is_within_8_years=%s""",
                     conditions=[
                         "Deduction available for individual contribution to Agniveer Corpus Fund.",
                         "No upper monetary statutory ceiling (100% of contribution allowed).",
-                        "Allowed under BOTH Old Tax Regime and New Tax Regime (Section 115BAC)."
+                        "Allowed under BOTH Old Tax Regime and New Tax Regime Income-tax Act, 2025 — Section 202(1)."
                     ],
                     typical_docs=[
                         "Agniveer Corpus Fund Contribution Certificate / Statement",

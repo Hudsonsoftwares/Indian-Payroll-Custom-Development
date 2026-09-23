@@ -34,13 +34,13 @@ class TdsSurcharge(models.Model):
     )
     regime_code = fields.Selection(
         selection=[
-            ('new', 'New Regime'),
+            ('new', 'New Tax Regime Income-tax Act, 2025 — Section 202(1)'),
             ('old', 'Old Regime'),
         ],
         string="Tax Regime",
         required=True,
         default='new',
-        help="Tax Regime ('new' for Section 115BAC, 'old' for Old Regime)."
+        help="Tax Regime ('new' for Income-tax Act, 2025 — Section 202(1), 'old' for Old Regime)."
     )
     income_from = fields.Float(
         string="Income From (₹)",

@@ -384,7 +384,7 @@ selected_amount=%s
         reason = ""
 
         if not cond_regime:
-            reason = "Section 80G Ineligible: Charitable Donations are not permitted under the New Tax Regime (Section 115BAC)."
+            reason = "Section 80G Ineligible: Charitable Donations are not permitted under the New Tax Regime Income-tax Act, 2025 — Section 202(1)."
             allowed_deduction = 0.0
         elif donation_amt <= 0.0:
             reason = "No Section 80G deduction allowable: Declared donation amount is zero."

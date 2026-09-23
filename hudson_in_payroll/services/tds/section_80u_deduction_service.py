@@ -289,7 +289,7 @@ class Section80UDeductionService:
         reasons = []
 
         if not cond_regime:
-            reasons.append("Section 80U Ineligible: Employee disability deduction is available only under the Old Tax Regime (Section 115BAC).")
+            reasons.append("Section 80U Ineligible: Employee disability deduction is available only under the Old Tax Regime (not permitted under New Tax Regime Income-tax Act, 2025 — Section 202(1)).")
         if not cond_resident:
             reasons.append(res_res.failure_reason if hasattr(res_res, 'failure_reason') and res_res.failure_reason else "Section 80U Ineligible: Employee is a Non-Resident.")
         if not cond_has_cert:

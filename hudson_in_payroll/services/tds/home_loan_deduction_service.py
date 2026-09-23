@@ -420,7 +420,7 @@ eligible_base_used                  : INR {eea_interest_to_check:,.2f} ({'Residu
 
 
 ---------------- 4. 80EEA STATUTORY ELIGIBILITY ----------------
-Tax Regime (Old Regime)             : {"PASS (OLD)" if (regime_code == 'old') else "FAIL (NEW - Not permitted u/s 115BAC)"}
+Tax Regime (Old Regime)             : {"PASS (OLD)" if (regime_code == 'old') else "FAIL (NEW - Not permitted under New Tax Regime Section 202(1))"}
 First-Time Home Buyer Condition     : {"PASS" if eea_first_buyer else "FAIL (Assessee is not a first-time buyer)"}
 Loan Sanction Date                  : {eea_sanction_date_str}
 Sanction-Date Window (2019-2022)    : {"PASS (Between 01-Apr-2019 and 31-Mar-2022)" if eea_cond_date_window else "FAIL (Outside statutory window)"}

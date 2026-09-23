@@ -6,7 +6,7 @@ from odoo.exceptions import ValidationError
 class TdsTaxRegime(models.Model):
     """
     TDS Tax Regime Master Model.
-    Manages Income Tax Regimes (New Tax Regime under Sec 115BAC, Old Tax Regime, and future statutory regimes).
+    Manages Income Tax Regimes (New Tax Regime Income-tax Act, 2025 — Section 202(1), Old Tax Regime, and future statutory regimes).
     Decouples regime logic from hardcoded Python conditions.
     """
     _name = 'tds.tax.regime'
@@ -16,12 +16,12 @@ class TdsTaxRegime(models.Model):
     name = fields.Char(
         string="Regime Name",
         required=True,
-        help="e.g. New Tax Regime (Section 115BAC) or Old Tax Regime"
+        help="e.g. New Tax Regime Income-tax Act, 2025 — Section 202(1) or Old Tax Regime"
     )
     code = fields.Selection(
         selection=[
-            ('new', 'New Regime'),
-            ('old', 'Old Regime'),
+            ('new', 'New Tax Regime Income-tax Act, 2025 — Section 202(1)'),
+            ('old', 'Old Tax Regime'),
         ],
         string="Regime Code",
         required=True,
@@ -29,7 +29,7 @@ class TdsTaxRegime(models.Model):
     )
     description = fields.Text(
         string="Description / Statutory Basis",
-        help="Explanations, Section references (e.g. Section 115BAC of Income Tax Act), or caveats."
+        help="Explanations, Section references (e.g. Section 202(1) of Income-tax Act, 2025), or caveats."
     )
     sequence = fields.Integer(
         string="Sequence",

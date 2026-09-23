@@ -219,7 +219,7 @@
                                         <div class="col-lg-7">
                                             <field name="hds_in_default_tax_regime" widget="radio" options="{'horizontal': true}"/>
                                             <div class="text-muted small mt-1" invisible="hds_in_default_tax_regime != 'new'">
-                                                <i class="fa fa-lock me-1 text-info"/>All employees are mandated to follow the <strong>New Tax Regime</strong> (Sec 115BAC). Individual selection is locked.
+                                                <i class="fa fa-lock me-1 text-info"/>All employees are mandated to follow the <strong>New Tax Regime Income-tax Act, 2025 — Section 202(1)</strong>. Individual selection is locked.
                                             </div>
                                             <div class="text-muted small mt-1" invisible="hds_in_default_tax_regime != 'old'">
                                                 <i class="fa fa-lock me-1 text-info"/>All employees are mandated to follow the <strong>Old Tax Regime</strong>. Individual selection is locked.

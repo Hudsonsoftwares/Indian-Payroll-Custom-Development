@@ -78,8 +78,8 @@ class AnnualIncomeProjectionService(BaseStatutoryService):
         if policy == 'new':
             resolved_code = 'new'
             default_regime = self.env['tds.tax.regime'].search([('code', '=', 'new')], limit=1)
-            resolved_name = default_regime.name if default_regime else 'New Tax Regime (Section 115BAC)'
-            reason_default = "Company TDS configuration mandates New Tax Regime (Section 115BAC) for all employees."
+            resolved_name = default_regime.name if default_regime else 'New Tax Regime Income-tax Act, 2025 — Section 202(1)'
+            reason_default = "Company TDS configuration mandates New Tax Regime Income-tax Act, 2025 — Section 202(1) for all employees."
         elif policy == 'old':
             resolved_code = 'old'
             default_regime = self.env['tds.tax.regime'].search([('code', '=', 'old')], limit=1)
@@ -96,8 +96,8 @@ class AnnualIncomeProjectionService(BaseStatutoryService):
         else:
             default_regime = self.env['tds.tax.regime'].search([('code', '=', 'new')], limit=1)
             resolved_code = 'new'
-            resolved_name = default_regime.name if default_regime else 'New Tax Regime (Section 115BAC)'
-            reason_default = "No tds.employee.tax.regime master record OR tds.employee.declaration header choice found for (employee_id, financial_year_id); applying Income Tax Act Section 115BAC statutory default."
+            resolved_name = default_regime.name if default_regime else 'New Tax Regime Income-tax Act, 2025 — Section 202(1)'
+            reason_default = "No tds.employee.tax.regime master record OR tds.employee.declaration header choice found for (employee_id, financial_year_id); applying Income-tax Act, 2025 Section 202(1) statutory default."
 
         _logger.info(
             "\n==================================================\n"

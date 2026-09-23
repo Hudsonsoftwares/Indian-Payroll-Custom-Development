@@ -7,7 +7,7 @@
             <field name="code">new</field>
             <field name="sequence">1</field>
             <field name="is_default">True</field>
-            <field name="description">Concessional Tax Regime under Section 115BAC with wider slab thresholds and standard deduction ₹75,000.</field>
+            <field name="description">Concessional Tax Regime under Income-tax Act, 2025 — Section 202(1) with wider slab thresholds and standard deduction ₹75,000.</field>
             <field name="active">True</field>
         </record>
 

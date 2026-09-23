@@ -188,7 +188,7 @@ class Section80EEAEligibilityService(BaseStatutoryService):
         ) or (cond_regime and is_post_proof and approved_amt_found > 0.0)
 
         if not cond_regime:
-            reason = "Section 80EEA deduction is not permitted under the New Tax Regime (Section 115BAC)."
+            reason = "Section 80EEA deduction is not permitted under the New Tax Regime Income-tax Act, 2025 — Section 202(1)."
             allowed_deduction = 0.0
         elif not is_eligible:
             if not cond_date_present:

@@ -693,7 +693,7 @@ eligible_base_used                  : INR {eea_eligible_base:,.2f} ({'Residual i
 
 
 ---------------- 4. 80EEA STATUTORY ELIGIBILITY ----------------
-Tax Regime (Old Regime)             : {"PASS (OLD)" if (regime_code == 'old') else "FAIL (NEW - Not permitted u/s 115BAC)"}
+Tax Regime (Old Regime)             : {"PASS (OLD)" if (regime_code == 'old') else "FAIL (NEW - Not permitted under New Tax Regime Section 202(1))"}
 First-Time Home Buyer Condition     : {"PASS" if eea_first_buyer else "FAIL (Assessee is not a first-time buyer)"}
 Loan Sanction Date                  : {eea_sanction_date_str}
 Sanction-Date Window (2019-2022)    : {"PASS (Between 01-Apr-2019 and 31-Mar-2022)" if eea_cond_date_window else "FAIL (Outside statutory window)"}
@@ -1971,10 +1971,10 @@ else:
 
         # Resolve Tax Regime
         regime_code = 'new'
-        regime_name = 'New Tax Regime (115BAC)'
+        regime_name = 'New Tax Regime Income-tax Act, 2025 — Section 202(1)'
         if tds_res and getattr(tds_res, 'regime_code', False):
             regime_code = str(tds_res.regime_code).lower()
-            regime_name = getattr(tds_res, 'regime_name', 'New Tax Regime (115BAC)' if regime_code == 'new' else 'Old Tax Regime')
+            regime_name = getattr(tds_res, 'regime_name', 'New Tax Regime Income-tax Act, 2025 — Section 202(1)' if regime_code == 'new' else 'Old Tax Regime')
         else:
             emp_reg = False
             if fy:
@@ -1992,7 +1992,7 @@ else:
                     regime_name = default_reg.name
 
         is_new_regime = (regime_code == 'new')
-        regime_display = 'New Tax Regime (115BAC)' if is_new_regime else 'Old Tax Regime'
+        regime_display = 'New Tax Regime Income-tax Act, 2025 — Section 202(1)' if is_new_regime else 'Old Tax Regime'
         regime_header = 'NEW REGIME' if is_new_regime else 'OLD REGIME'
 
         decl = self.env['tds.employee.declaration'].search([
@@ -2052,7 +2052,7 @@ else:
         c6a = getattr(deduct, 'chapter_6a_deductions', None) if deduct else None
 
         if is_new_regime:
-            # New Tax Regime (Section 115BAC) Applicable Deductions Breakdown
+            # New Tax Regime Income-tax Act, 2025 — Section 202(1) Applicable Deductions Breakdown
             sec_80ccd2 = float(getattr(deduct, 'employer_nps_80ccd2', 0.0) or 0.0) if deduct else 0.0
             if not sec_80ccd2 and decl:
                 sec_80ccd2 = float(getattr(decl, 'decl_80ccd2_employer_nps', 0.0) or (next((l.declared_amount for l in getattr(decl, 'declaration_line_ids', []) if l.category == '80ccd2'), 0.0)) or 0.0)

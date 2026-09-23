@@ -198,6 +198,8 @@ class ReportStatutoryTaxCalculation(models.AbstractModel):
             total_chapter6a = float(deduct.total_chapter_6a if hasattr(deduct, 'total_chapter_6a') else 0.0)
             total_allowable = float(getattr(deduct, 'total_allowable_deductions', 0.0) or 0.0)
             net_taxable_income = float(getattr(tax_inc, 'net_taxable_income', 0.0) or 0.0)
+            net_taxable_before_rounding = float(getattr(tax_inc, 'net_taxable_income_before_rounding', net_taxable_income) or net_taxable_income)
+            rounding_factor = float(getattr(tax_inc, 'rounding_factor', 0.0) or 0.0)
 
             # ── Tax values ───────────────────────────────────────────────────
             base_tax = float(getattr(slab, 'base_tax_liability', 0.0) or 0.0)
@@ -501,7 +503,7 @@ Actual Current Month TDS : ₹{current_month_tds:,.2f}
                 'financial_year': financial_year,
                 'assessment_year': self._get_assessment_year(financial_year),
                 'regime_code': regime_code_upper,
-                'regime_label': 'Old Tax Regime' if regime_code == 'old' else 'New Tax Regime (115BAC)',
+                'regime_label': 'Old Tax Regime' if regime_code == 'old' else 'New Tax Regime Income-tax Act, 2025 — Section 202(1)',
                 'eval_date': eval_date.strftime('%d-%b-%Y') if eval_date else 'N/A',
                 'declaration_id': decl.id if decl else 'N/A',
                 'declaration_name': (decl.name or f'DECL-{decl.id}') if decl else 'No Declaration Record',
@@ -533,6 +535,8 @@ Actual Current Month TDS : ₹{current_month_tds:,.2f}
                 'deduction_breakdown': deduction_breakdown,
                 # ── Taxable Income ────────────────────────────────────────────
                 'net_taxable_income': net_taxable_income,
+                'net_taxable_before_rounding': net_taxable_before_rounding,
+                'rounding_factor': rounding_factor,
                 # ── Tax Computation ───────────────────────────────────────────
                 'base_tax': base_tax,
                 'rebate_applied': rebate_applied,
@@ -668,7 +672,7 @@ Actual Current Month TDS : ₹{current_month_tds:,.2f}
             'cap_applied': hra_excess > 0,
             'is_eligible': hra_approved > 0,
             'eligibility_status': self._eligibility_badge({'declared': annual_rent, 'approved': hra_approved, 'is_eligible': hra_approved > 0}),
-            'reason': hra_res.remarks if regime_code == 'old' else 'HRA Exemption not permitted under New Tax Regime (Section 115BAC).',
+            'reason': hra_res.remarks if regime_code == 'old' else 'HRA Exemption not permitted under New Tax Regime Income-tax Act, 2025 — Section 202(1).',
             'inputs': [
                 ('Annual Rent Paid', fmt(annual_rent)),
                 ('Actual HRA Received', fmt(actual_hra)),

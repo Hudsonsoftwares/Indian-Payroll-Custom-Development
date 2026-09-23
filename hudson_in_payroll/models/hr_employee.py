@@ -1040,7 +1040,7 @@ class HrEmployee(models.Model):
     )
     hds_in_tax_regime = fields.Selection(
         selection=[
-            ('new', 'New Tax Regime (115BAC)'),
+            ('new', 'New Tax Regime Income-tax Act, 2025 — Section 202(1)'),
             ('old', 'Old Tax Regime'),
         ],
         string="Tax Regime",
