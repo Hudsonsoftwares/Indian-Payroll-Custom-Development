@@ -1,4 +1,5 @@
 # -*- coding: utf-8 -*-
+# pyrefly: ignore [missing-import]
 from odoo import api, fields, models
 
 class HrVersion(models.Model):
@@ -85,6 +86,8 @@ class HrVersion(models.Model):
     @api.model_create_multi
     def create(self, vals_list):
         for vals in vals_list:
+            if not vals.get('salary_calculation_type'):
+                vals['salary_calculation_type'] = 'fixed'
             wage = vals.get('wage', 0.0)
             
             # Fetch divisor values from vals or default to company-level defaults

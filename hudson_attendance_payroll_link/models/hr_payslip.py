@@ -101,6 +101,8 @@ class HrPayslip(models.Model):
         # 5. Day-by-day scheduled vs actual audit loop
         total_scheduled_hours = 0.0
         total_scheduled_days = 0.0
+        total_out_of_contract_hours = 0.0
+        total_out_of_contract_days = 0.0
         total_actual_hours = 0.0
         total_shortage_hours = 0.0
         total_shortage_days = 0.0
@@ -110,8 +112,35 @@ class HrPayslip(models.Model):
         current_date = fields.Date.from_string(date_from)
         end_date = fields.Date.from_string(date_to)
         day_std_hours = (calendar.hours_per_day if calendar and calendar.hours_per_day else 8.0)
+
+        c_start = getattr(contract, 'contract_date_start', False) or getattr(contract, 'date_start', False)
+        c_end = getattr(contract, 'contract_date_end', False) or getattr(contract, 'date_end', False)
         
         while current_date <= end_date:
+            # Check if this day is outside contract bounds
+            is_out_of_contract = False
+            if c_start and current_date < c_start:
+                is_out_of_contract = True
+            elif c_end and current_date > c_end:
+                is_out_of_contract = True
+
+            if is_out_of_contract:
+                # Scheduled hours for out-of-contract day
+                out_day_hours = 0.0
+                if calendar:
+                    day_start = tz.localize(datetime.combine(current_date, time.min))
+                    day_end = tz.localize(datetime.combine(current_date, time.max))
+                    out_day_hours = calendar.get_work_hours_count(day_start, day_end, compute_leaves=False)
+                else:
+                    out_day_hours = day_std_hours
+                
+                if out_day_hours > 0.0:
+                    total_out_of_contract_hours += out_day_hours
+                    total_out_of_contract_days += min(1.0, out_day_hours / day_std_hours)
+                
+                current_date += relativedelta(days=1)
+                continue
+
             # Scheduled work hours for the day (factoring in working schedule and mandatory holidays)
             scheduled_hours = 0.0
             if calendar:
@@ -175,6 +204,8 @@ class HrPayslip(models.Model):
         data = {
             'scheduled_hours': total_scheduled_hours,
             'scheduled_days': total_scheduled_days,
+            'out_of_contract_hours': total_out_of_contract_hours,
+            'out_of_contract_days': total_out_of_contract_days,
             'actual_hours': total_actual_hours,
             'validated_overtime_hours': net_overtime_hours,
             'overtime_hours_delta': net_overtime_hours,
@@ -264,27 +295,59 @@ class HrPayslip(models.Model):
             data = self._get_attendance_vs_schedule(contract, date_from, date_to)
             sched_days = data.get('scheduled_days', 0.0)
             sched_hours = data.get('scheduled_hours', 0.0)
+            out_days = data.get('out_of_contract_days', 0.0)
+            out_hours = data.get('out_of_contract_hours', 0.0)
+
+            # 1. Update or remove WORK100
             work100_found = False
-            for line in res:
+            for line in list(res):
                 if line.get('code') == 'WORK100' and line.get('contract_id') == contract.id:
-                    line['number_of_days'] = sched_days
-                    line['number_of_hours'] = sched_hours
-                    work100_found = True
-            if not work100_found and sched_days > 0.0:
+                    if sched_days <= 0.01:
+                        res.remove(line)
+                    else:
+                        line['number_of_days'] = sched_days
+                        line['number_of_hours'] = sched_hours
+                        work100_found = True
+            if not work100_found and sched_days > 0.01:
                 res.insert(0, {
                     'name': _('Normal Working Days'),
-                    'sequence': 1,
+                    'sequence': 2,
                     'code': 'WORK100',
+                    'description': _('Normal Working Days'),
                     'number_of_days': sched_days,
                     'number_of_hours': sched_hours,
                     'contract_id': contract.id,
                 })
 
+            # 2. Update or insert OUT_OF_CONTRACT
+            if out_days > 0.01 or out_hours > 0.01:
+                out_found = False
+                for line in res:
+                    if line.get('code') == 'OUT_OF_CONTRACT' and line.get('contract_id') == contract.id:
+                        line['number_of_days'] = out_days
+                        line['number_of_hours'] = out_hours
+                        out_found = True
+                if not out_found:
+                    is_india = (getattr(contract, '_is_india_localization', None) and contract._is_india_localization()) or (contract.company_id and contract.company_id.country_id and contract.company_id.country_id.code == 'IN')
+                    out_type_name = _('Out of Contract (India)') if is_india else _('Out of Contract')
+                    res.insert(0, {
+                        'name': out_type_name,
+                        'sequence': 1,
+                        'code': 'OUT_OF_CONTRACT',
+                        'description': _('Out of Contract'),
+                        'number_of_days': out_days,
+                        'number_of_hours': out_hours,
+                        'contract_id': contract.id,
+                        'amount': 0.0,
+                    })
+
+            # 3. Leaves, Shortages, Overtime
             if data.get('unpaid_days', 0.0) > 0.01:
                 res.append({
                     'name': _('Unpaid Leave'),
                     'sequence': 4,
                     'code': 'UNPAID',
+                    'description': _('Unpaid Leave'),
                     'number_of_days': data['unpaid_days'],
                     'number_of_hours': data['unpaid_hours'],
                     'contract_id': contract.id,
@@ -295,6 +358,7 @@ class HrPayslip(models.Model):
                         'name': _('Attendance Shortage'),
                         'sequence': 5,
                         'code': 'SHORTAGE',
+                        'description': _('Attendance Shortage'),
                         'number_of_days': data.get('shortage_days', 0.0),
                         'number_of_hours': data['shortage_hours_delta'],
                         'contract_id': contract.id,
@@ -305,6 +369,7 @@ class HrPayslip(models.Model):
                         'name': _('Overtime Hours'),
                         'sequence': 5,
                         'code': 'OVERTIME',
+                        'description': _('Overtime Hours'),
                         'number_of_days': 0.0,
                         'number_of_hours': data['overtime_hours_delta'],
                         'contract_id': contract.id,

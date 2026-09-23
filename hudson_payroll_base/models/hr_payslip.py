@@ -333,6 +333,61 @@ class HrPayslip(models.Model):
         compute='_compute_stage_metrics',
         store=True,
     )
+    has_no_running_contract = fields.Boolean(
+        string='No Running Contract',
+        compute='_compute_contract_status',
+        store=True,
+    )
+    has_zero_or_negative_net = fields.Boolean(
+        string='Zero or Negative Net',
+        compute='_compute_contract_status',
+        store=True,
+    )
+
+    @api.depends('employee_id', 'contract_id', 'contract_id.date_start', 'contract_id.date_end',
+                 'contract_id.contract_date_start', 'contract_id.contract_date_end',
+                 'date_from', 'date_to', 'state', 'line_ids', 'net_wage')
+    def _compute_contract_status(self):
+        for slip in self:
+            no_contract = False
+            if not slip.employee_id:
+                no_contract = False
+            elif not slip.contract_id:
+                no_contract = True
+            elif slip.date_from and slip.date_to:
+                c_start = getattr(slip.contract_id, 'contract_date_start', False) or getattr(slip.contract_id, 'date_start', False)
+                c_end = getattr(slip.contract_id, 'contract_date_end', False) or getattr(slip.contract_id, 'date_end', False)
+                if c_start and c_start > slip.date_to:
+                    no_contract = True
+                elif c_end and c_end < slip.date_from:
+                    no_contract = True
+
+            slip.has_no_running_contract = no_contract
+            slip.has_zero_or_negative_net = bool(
+                slip.employee_id and slip.state != 'cancel' and slip.line_ids and slip.net_wage <= 0.0
+            )
+
+    def action_open_contract(self):
+        """Open the employee's payroll / contract section from the 'No running contract' banner."""
+        self.ensure_one()
+        employee = self.employee_id or (self.contract_id.employee_id if self.contract_id else False)
+        if employee:
+            return {
+                'name': _('Employee - %s') % employee.name,
+                'type': 'ir.actions.act_window',
+                'res_model': 'hr.employee',
+                'view_mode': 'form',
+                'views': [[False, 'form']],
+                'res_id': employee.id,
+                'target': 'current',
+                'context': dict(self.env.context, active_id=employee.id),
+                'state': {
+                    'activeNotebookPages': {
+                        0: 'payroll_information',
+                    }
+                },
+            }
+        return False
 
     @api.depends('contract_id', 'contract_id.resource_calendar_id', 'employee_id.resource_calendar_id',
                  'worked_days_line_ids.number_of_days', 'worked_days_line_ids.number_of_hours', 'worked_days_line_ids.code')
@@ -344,7 +399,7 @@ class HrPayslip(models.Model):
             slip.contract_review = _("Confirmed") if (slip.contract_id and getattr(slip.contract_id, 'state', 'draft') in ('open', 'confirmed')) else _("Draft")
 
             # 2. Time Off (Stage 2)
-            leave_lines = slip.worked_days_line_ids.filtered(lambda l: l.code not in ('WORK100', 'SHORTAGE') and l.number_of_days > 0)
+            leave_lines = slip.worked_days_line_ids.filtered(lambda l: l.code not in ('WORK100', 'SHORTAGE', 'OUT_OF_CONTRACT') and l.number_of_days > 0)
             slip.time_off_days = sum(leave_lines.mapped('number_of_days'))
             slip.time_off_summary = ", ".join(leave_lines.mapped('name')) if leave_lines else _("No Time Off")
 
@@ -373,14 +428,17 @@ class HrPayslip(models.Model):
     def _compute_totals(self):
         for slip in self:
             gross = sum(l.total for l in slip.line_ids if l.category_id.code == 'GROSS')
-            net = sum(l.total for l in slip.line_ids if l.category_id.code == 'NET')
+            net = sum(l.total for l in slip.line_ids if (l.category_id and l.category_id.code == 'NET') or l.code == 'NET')
             slip.gross_wage = gross
             slip.net_wage = max(0.0, net)
 
-    @api.depends('line_ids.total', 'line_ids.category_id.code', 'contract_id.basic_salary', 'contract_id.wage')
+    @api.depends('line_ids.total', 'line_ids.category_id.code', 'contract_id.basic_salary', 'contract_id.wage', 'has_no_running_contract')
     def _compute_basic_wage(self):
         for slip in self:
-            basic_lines = slip.line_ids.filtered(lambda l: l.category_id.code == 'BASIC' or l.code == 'BASIC')
+            if slip.has_no_running_contract:
+                slip.basic_wage = 0.0
+                continue
+            basic_lines = slip.line_ids.filtered(lambda l: (l.category_id and l.category_id.code == 'BASIC') or l.code == 'BASIC')
             if basic_lines:
                 slip.basic_wage = sum(basic_lines.mapped('total'))
             elif slip.contract_id:
@@ -388,10 +446,15 @@ class HrPayslip(models.Model):
             else:
                 slip.basic_wage = 0.0
 
-    @api.depends('worked_days_line_ids.number_of_hours', 'worked_days_line_ids.code', 'employee_id.bank_account_id', 'bank_account_id')
+    @api.depends('employee_id', 'worked_days_line_ids.number_of_hours', 'worked_days_line_ids.code', 'employee_id.bank_account_id', 'bank_account_id', 'has_no_running_contract')
     def _compute_payslip_warning(self):
         for slip in self:
             warnings = []
+            if not slip.employee_id:
+                slip.payslip_warning = False
+                continue
+            if slip.has_no_running_contract:
+                warnings.append(_("No running contract -> Contract"))
             shortage_lines = slip.worked_days_line_ids.filtered(lambda l: l.code == 'SHORTAGE' and l.number_of_hours > 0)
             if shortage_lines:
                 total_shortage = sum(shortage_lines.mapped('number_of_hours'))
@@ -511,6 +574,10 @@ class HrPayslip(models.Model):
     @api.onchange('employee_id', 'date_from', 'date_to')
     def onchange_employee(self):
         if not self.employee_id:
+            self.contract_id = False
+            self.has_no_running_contract = False
+            self.has_zero_or_negative_net = False
+            self.payslip_warning = False
             return
 
         self.company_id = self.employee_id.company_id
@@ -584,27 +651,68 @@ class HrPayslip(models.Model):
             if calendar and calendar.hours_per_day:
                 hours_per_day = calendar.hours_per_day
 
-            if calendar:
-                tz = pytz.timezone(calendar.tz or 'UTC')
-                d_from = fields.Date.from_string(date_from)
-                d_to = fields.Date.from_string(date_to)
-                day_start = tz.localize(datetime.combine(d_from, time.min))
-                day_end = tz.localize(datetime.combine(d_to, time.max))
-                work_data = calendar.get_work_duration_data(day_start, day_end, compute_leaves=True)
-                total_days = work_data.get('days', 0.0)
-                total_hours = work_data.get('hours', 0.0)
-            else:
-                total_days = (fields.Date.from_string(date_to) - fields.Date.from_string(date_from)).days + 1
-                total_hours = total_days * hours_per_day
+            tz = pytz.timezone(calendar.tz or 'UTC') if calendar else pytz.UTC
+            d_from = fields.Date.from_string(date_from)
+            d_to = fields.Date.from_string(date_to)
 
-            res.append({
-                'name': _("Normal Working Days"),
-                'sequence': 1,
-                'code': 'WORK100',
-                'number_of_days': total_days,
-                'number_of_hours': total_hours,
-                'contract_id': contract.id,
-            })
+            c_start = getattr(contract, 'contract_date_start', False) or getattr(contract, 'date_start', False)
+            c_end = getattr(contract, 'contract_date_end', False) or getattr(contract, 'date_end', False)
+
+            in_days = 0.0
+            in_hours = 0.0
+            out_days = 0.0
+            out_hours = 0.0
+
+            cur = d_from
+            while cur <= d_to:
+                day_start = tz.localize(datetime.combine(cur, time.min))
+                day_end = tz.localize(datetime.combine(cur, time.max))
+                if calendar:
+                    day_h = calendar.get_work_hours_count(day_start, day_end, compute_leaves=False)
+                    day_d = min(1.0, day_h / hours_per_day) if day_h > 0 else 0.0
+                else:
+                    day_h = hours_per_day
+                    day_d = 1.0
+
+                is_out = False
+                if c_start and cur < c_start:
+                    is_out = True
+                elif c_end and cur > c_end:
+                    is_out = True
+
+                if is_out:
+                    out_hours += day_h
+                    out_days += day_d
+                else:
+                    in_hours += day_h
+                    in_days += day_d
+                cur += relativedelta(days=1)
+
+            is_india = (getattr(contract, '_is_india_localization', None) and contract._is_india_localization()) or (contract.company_id and contract.company_id.country_id and contract.company_id.country_id.code == 'IN')
+            out_type_name = _('Out of Contract (India)') if is_india else _('Out of Contract')
+
+            if out_days > 0.0 or out_hours > 0.0:
+                res.append({
+                    'name': out_type_name,
+                    'sequence': 1,
+                    'code': 'OUT_OF_CONTRACT',
+                    'description': _('Out of Contract'),
+                    'number_of_days': out_days,
+                    'number_of_hours': out_hours,
+                    'contract_id': contract.id,
+                    'amount': 0.0,
+                })
+
+            if in_days > 0.0 or in_hours > 0.0:
+                res.append({
+                    'name': _("Normal Working Days"),
+                    'sequence': 2,
+                    'code': 'WORK100',
+                    'description': _("Normal Working Days"),
+                    'number_of_days': in_days,
+                    'number_of_hours': in_hours,
+                    'contract_id': contract.id,
+                })
         return res
 
     def _populate_worked_days(self):
@@ -784,6 +892,30 @@ class HrPayslip(models.Model):
             if not slip.struct_id:
                 raise UserError(_("Please assign a Salary Structure to payslip %(name)s") % {'name': slip.name})
 
+            if slip.has_no_running_contract:
+                # Employee has no running contract during this payslip period.
+                # Net wage and gross wage must be 0.0.
+                rules = slip.struct_id.get_all_rules()
+                net_rule = rules.filtered(lambda r: r.code == 'NET') or self.env['hr.salary.rule'].search([('code', '=', 'NET')], limit=1)
+                lines_vals = []
+                if net_rule:
+                    lines_vals.append((0, 0, {
+                        'name': net_rule.name or _('Net Salary'),
+                        'code': net_rule.code,
+                        'sequence': net_rule.sequence or 200,
+                        'salary_rule_id': net_rule.id,
+                        'employee_id': slip.employee_id.id,
+                        'contract_id': slip.contract_id.id if slip.contract_id else False,
+                        'amount': 0.0,
+                        'rate': 100.0,
+                        'quantity': 1.0,
+                        'appears_on_payslip': True,
+                    }))
+                slip.line_ids = [(5, 0, 0)] + lines_vals
+                slip._compute_totals()
+                slip._compute_contract_status()
+                continue
+
             rules = slip.struct_id.get_all_rules()
             localdict = slip._get_eval_context()
             localdict = slip._get_localization_context(localdict)
@@ -828,6 +960,8 @@ class HrPayslip(models.Model):
 
     def action_payslip_done(self):
         for slip in self:
+            if slip.has_no_running_contract:
+                raise ValidationError(_("• No running contract"))
             if not slip.number:
                 slip.number = self.env['ir.sequence'].next_by_code('hr.payslip') or _('New')
             # Check applied salary adjustments

@@ -56,3 +56,25 @@ class HrPayslipWorkedDays(models.Model):
         string='Contract',
         help="The contract for which the worked days are computed"
     )
+    description = fields.Char(
+        string='Description',
+        compute='_compute_description',
+        store=True,
+        readonly=False,
+    )
+
+    def _compute_description(self):
+        for line in self:
+            if not line.description:
+                if line.code == 'OUT_OF_CONTRACT':
+                    line.description = "Out of Contract"
+                elif line.code == 'WORK100':
+                    line.description = "Normal Working Days"
+                elif line.code == 'UNPAID':
+                    line.description = "Unpaid Leave"
+                elif line.code == 'SHORTAGE':
+                    line.description = "Attendance Shortage"
+                elif line.code == 'OVERTIME':
+                    line.description = "Overtime Hours"
+                else:
+                    line.description = line.name or line.code

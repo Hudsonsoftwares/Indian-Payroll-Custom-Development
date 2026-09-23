@@ -1696,6 +1696,8 @@ else:
         if payslip lines already exist and employee declaration has not changed.
         """
         for slip in self:
+            if slip.has_no_running_contract:
+                raise ValidationError(_("• No running contract"))
             needs_recompute = False
             if not slip.line_ids:
                 needs_recompute = True
