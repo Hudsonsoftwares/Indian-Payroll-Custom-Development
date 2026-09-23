@@ -356,6 +356,8 @@ class ResConfigSettings(models.TransientModel):
                         "Default Tax Regime is mandatory when TDS is enabled."
                     ))
                 record.hds_in_tan = tan
+            if not self.env.registry.ready or self.env.context.get('install_mode') or self.env.context.get('skip_statutory_threshold_check'):
+                continue
             if (record.hds_in_enable_lwf or record.hds_in_enable_professional_tax):
                 comp = record.company_id
                 if comp and comp.partner_id and not comp.partner_id.state_id:

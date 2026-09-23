@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 import logging
+# pyrefly: ignore [missing-import]
 from odoo import fields
 from ..base import BaseStatutoryService
 from ..audit.audit_service import StatutoryAuditSession
@@ -100,9 +101,11 @@ class LWFService(BaseStatutoryService):
                 return float(slip.net_wage)
             if hasattr(slip, 'gross_wage') and slip.gross_wage:
                 return float(slip.gross_wage)
-            if hasattr(slip, 'contract_id') and slip.contract_id:
+            if hasattr(slip, 'contract_id') and slip.contract_id and getattr(slip.contract_id, 'wage', False):
                 return float(slip.contract_id.wage or 0.0)
-        return 0.0
+            if hasattr(slip, 'employee_id') and slip.employee_id and getattr(slip.employee_id, 'wage', False):
+                return float(slip.employee_id.wage or 0.0)
+        return None
 
     def compute_lwf_employee(self, payslip=None):
         """

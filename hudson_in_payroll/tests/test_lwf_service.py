@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 from datetime import date
+# pyrefly: ignore [missing-import]
 from odoo.tests.common import TransactionCase
 from ..services.payroll.work_location_service import PayrollWorkLocationService
 from ..services.lwf.lwf_rate_service import LWFRateService
@@ -67,6 +68,12 @@ class TestLWFService(TransactionCase):
             'name': 'Maharashtra Employee',
             'work_location_id': self.work_loc_mh.id,
         })
+        contract = self.env['hr.version'].search([('employee_id', '=', self.emp_mh.id)], limit=1)
+        if contract:
+            contract.write({
+                'wage': 30000.0,
+                'pay_by_attendance': False,
+            })
 
     def test_01_rate_service_lookup(self):
         """Verify active rate config lookup by state and date effectiveness."""

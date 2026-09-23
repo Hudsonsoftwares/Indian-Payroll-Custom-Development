@@ -1,6 +1,8 @@
 # -*- coding: utf-8 -*-
 import re
+# pyrefly: ignore [missing-import]
 from odoo import api, fields, models, _
+# pyrefly: ignore [missing-import]
 from odoo.exceptions import ValidationError
 
 
@@ -34,7 +36,7 @@ class ResCompany(models.Model):
             ('hds_in_esic_custom_period1_end_month', "VARCHAR DEFAULT '9'"),
             ('hds_in_esic_custom_period2_start_month', "VARCHAR DEFAULT '10'"),
             ('hds_in_esic_custom_period2_end_month', "VARCHAR DEFAULT '3'"),
-            ('hds_in_enable_lwf', 'BOOLEAN DEFAULT TRUE'),
+            ('hds_in_enable_lwf', 'BOOLEAN DEFAULT FALSE'),
             ('hds_in_lwf_registration_no', 'VARCHAR'),
             ('hds_in_enable_gratuity', 'BOOLEAN DEFAULT FALSE'),
             ('hds_in_gratuity_registration_no', 'VARCHAR'),
@@ -159,7 +161,7 @@ class ResCompany(models.Model):
     # LWF Company Configuration Fields
     hds_in_enable_lwf = fields.Boolean(
         string="Enable Labour Welfare Fund (LWF)",
-        default=True,
+        default=False,
         help="Enable Labour Welfare Fund (LWF) statutory compliance for this company."
     )
     hds_in_lwf_registration_no = fields.Char(
@@ -321,8 +323,9 @@ class ResCompany(models.Model):
     @api.constrains('partner_id', 'hds_in_enable_lwf', 'hds_in_enable_professional_tax')
     def _check_company_state_statutory(self):
         """Ensures company address has a state when statutory compliance modules (LWF / PT) are active."""
-        if self.env.context.get('install_mode') or self.env.context.get('test_enable'):
-            return
+        if not self.env.context.get('validate_statutory_threshold'):
+            if not self.env.registry.ready or self.env.context.get('install_mode') or self.env.context.get('skip_statutory_threshold_check'):
+                return
         for company in self:
             if company.hds_in_enable_lwf or company.hds_in_enable_professional_tax:
                 if not company.partner_id or not company.partner_id.state_id:
@@ -338,10 +341,9 @@ class ResCompany(models.Model):
         statutory minimum employee count threshold. If the active headcount in the company's
         state is below the mandated threshold, LWF cannot be enabled.
         """
-        if self.env.context.get('install_mode') or self.env.context.get('skip_statutory_threshold_check'):
-            return
-        if self.env.context.get('test_enable') and not self.env.context.get('validate_statutory_threshold'):
-            return
+        if not self.env.context.get('validate_statutory_threshold'):
+            if not self.env.registry.ready or self.env.context.get('install_mode') or self.env.context.get('skip_statutory_threshold_check'):
+                return
 
         today = fields.Date.today()
         for company in self:

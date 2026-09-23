@@ -1,6 +1,8 @@
 # -*- coding: utf-8 -*-
 from datetime import date
+# pyrefly: ignore [missing-import]
 from odoo.exceptions import ValidationError
+# pyrefly: ignore [missing-import]
 from odoo.tests.common import TransactionCase
 from ..services.lwf.company_configuration_validator import CompanyConfigurationValidator
 from ..services.lwf.lwf_eligibility_validator import LWFEligibilityValidator
@@ -177,4 +179,45 @@ class TestLWFValidatorsCalculators(TransactionCase):
 
         test_comp.with_context(validate_statutory_threshold=True).hds_in_enable_lwf = True
         self.assertTrue(test_comp.hds_in_enable_lwf)
+
+    def test_11_lwf_eligibility_net_salary_below_contribution(self):
+        """Validates ineligibility when employee earned net salary is less than LWF contribution (or 0 on LOP)."""
+        self.emp.hds_in_lwf_applicable = True
+        self.emp.employee_type = 'employee'
+        # Contribution is 25.0, net salary is 10.0
+        res = self.elig_validator.validate(
+            employee=self.emp,
+            state=self.state_mh,
+            rate_config=self.rate_mh,
+            eval_date=date(2026, 6, 30),
+            establishment_headcount=15,
+            net_salary=10.0
+        )
+        self.assertFalse(res.is_eligible)
+        self.assertIn("less than the state lwf contribution", res.reason.lower())
+
+        # Net salary is 0.0 (unpaid shortage / LOP)
+        res_zero = self.elig_validator.validate(
+            employee=self.emp,
+            state=self.state_mh,
+            rate_config=self.rate_mh,
+            eval_date=date(2026, 6, 30),
+            establishment_headcount=15,
+            net_salary=0.0
+        )
+        self.assertFalse(res_zero.is_eligible)
+
+    def test_12_lwf_eligibility_net_salary_sufficient(self):
+        """Validates eligibility when employee earned net salary exceeds LWF contribution."""
+        self.emp.hds_in_lwf_applicable = True
+        self.emp.employee_type = 'employee'
+        res = self.elig_validator.validate(
+            employee=self.emp,
+            state=self.state_mh,
+            rate_config=self.rate_mh,
+            eval_date=date(2026, 6, 30),
+            establishment_headcount=15,
+            net_salary=15000.0
+        )
+        self.assertTrue(res.is_eligible)
 

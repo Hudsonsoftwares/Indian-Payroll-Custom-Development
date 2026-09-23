@@ -82,10 +82,10 @@ def post_init_hook(env):
         comp_vals['hds_in_eps_applicable'] = True
         comp_vals['hds_in_edli_applicable'] = True
         comp_vals['hds_in_esic_applicable'] = True
-        comp_vals['hds_in_enable_lwf'] = True
+        comp_vals['hds_in_enable_lwf'] = False
         comp_vals['hds_in_enable_statutory_audit'] = True
 
-        indian_company.sudo().write(comp_vals)
+        indian_company.sudo().with_context(skip_statutory_threshold_check=True, install_mode=True).write(comp_vals)
 
     # Ensure structure and structure type names match Indian localization
     reg_struct = env.ref('hudson_payroll_base.structure_base', raise_if_not_found=False)
