@@ -2251,23 +2251,22 @@ else:
         # YTD (current employer only, inc. this month) — for display
         tds_recovered_ytd = ytd_current_tds_only + current_month_tds
 
-        # Remaining TDS liability = what the engine already computed:
-        #   total_annual_tax - (ytd_current + prev_employer_tds)
-        # Use the engine's pre-computed value directly so it never diverges.
-        eng_remaining = float(getattr(monthly_obj, 'remaining_annual_tax_liability', 0.0) or 0.0) if monthly_obj else 0.0
-        # remaining_annual_tax_liability from the engine = total_annual_tax - (ytd + prev_tds),
-        # BEFORE dividing by remaining periods.  This is exactly what the PDF should display.
-        remaining_tds_liability = eng_remaining if eng_remaining > 0 else max(0.0, total_annual_tax - prev_employer_tds_pdf - ytd_current_tds_only)
+        # Remaining TDS liability = net balance remaining AFTER deducting this payslip's TDS:
+        # total_annual_tax - prev_employer_tds - tds_recovered_ytd (which includes current_month_tds)
+        remaining_tds_liability = max(0.0, round(float(total_annual_tax or 0.0) - float(prev_employer_tds_pdf or 0.0) - float(tds_recovered_ytd or 0.0), 2))
 
-        # Remaining months = remaining_payroll_periods from the engine (INCLUDES current month).
-        # For an October-1 joiner evaluating October, this is 6 (Oct–Mar).
+        # Remaining months = remaining future payroll periods in the financial year AFTER this month's payslip.
+        # eng_rem_periods includes the current period (e.g., 1 in March, 2 in February, 3 in January).
         eng_rem_periods = int(getattr(monthly_obj, 'remaining_payroll_periods', 0) or 0) if monthly_obj else 0
         if eng_rem_periods <= 0:
             eng_rem_periods = period_svc.calculate_remaining_periods(emp, fy, eval_date=eval_date)
-        remaining_months = max(1, eng_rem_periods)  # display value matches the divisor used in monthly_tds
+        remaining_months = max(0, eng_rem_periods - 1)
 
-        # Monthly TDS = the engine's authoritative current_month_tds (= remaining / remaining_periods)
-        projected_monthly_tds = current_month_tds
+        # Projected monthly TDS for remaining future months in the financial year:
+        if remaining_months > 0 and remaining_tds_liability > 0:
+            projected_monthly_tds = round(remaining_tds_liability / remaining_months, 2)
+        else:
+            projected_monthly_tds = 0.0
 
         tax_rows = [
             (inc['head'], inc['annual'], 0.0, inc['exempt'], inc['taxable'])

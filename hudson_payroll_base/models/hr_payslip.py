@@ -3,7 +3,9 @@ import calendar
 import pytz
 from datetime import date, datetime, time
 from dateutil.relativedelta import relativedelta
+# pyrefly: ignore [missing-import]
 from odoo import api, fields, models, _
+# pyrefly: ignore [missing-import]
 from odoo.exceptions import UserError, ValidationError
 
 

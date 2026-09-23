@@ -251,7 +251,7 @@
                                 <td style="padding: 2px 4px; font-weight: bold; text-align: right;"></td>
                             </tr>
                             <tr style="border-top: 1px solid #eef2f5; font-weight: bold; background: #eef4f8;">
-                                <td style="padding: 2px 4px;">Remaining Months: <t t-esc="pdata['remaining_months']"/> Months</td>
+                                <td style="padding: 2px 4px;">Remaining Months: <t t-esc="pdata['remaining_months']"/> <t t-if="pdata['remaining_months'] == 1">Month</t><t t-else="">Months</t></td>
                                 <td style="padding: 2px 4px; text-align: right; color: #003366;">Projected Monthly TDS: ₹ <t t-esc="'{:,.2f}'.format(pdata['projected_monthly_tds'])"/></td>
                             </tr>
                         </table>
