@@ -1067,7 +1067,9 @@ allowed=%s""", decl_for_log.decl_80ccd1b_nps if decl_for_log else sec_80ccd1b_va
             nps2_claimed = float(getattr(decl_for_log, 'decl_80ccd2_employer_nps', 0.0) or (next((l.declared_amount for l in decl_for_log.declaration_line_ids if l.category == '80ccd2'), 0.0) if decl_for_log else 0.0) or 0.0) if decl_for_log else emp_nps_80ccd2
             if nps2_claimed == 0.0:
                 nps2_claimed = emp_nps_80ccd2
-            nps2_limit = round(((sal_proj.total_basic or 0.0) + (sal_proj.total_da or 0.0)) * (0.14 if regime_code == 'new' else 0.10), 2) if sal_proj else emp_nps_80ccd2
+            emp_type = getattr(employee, 'hds_in_employer_category', getattr(employee, 'employer_type', 'private')) or 'private'
+            nps2_pct = self.param_service.get_employer_nps_limit(regime=regime_code, employer_type=emp_type, eval_date=eval_date, as_decimal=True) or (0.14 if regime_code == 'new' else 0.10)
+            nps2_limit = round(((sal_proj.total_basic or 0.0) + (sal_proj.total_da or 0.0)) * nps2_pct, 2) if sal_proj else emp_nps_80ccd2
             if nps2_limit == 0.0:
                 nps2_limit = emp_nps_80ccd2
 

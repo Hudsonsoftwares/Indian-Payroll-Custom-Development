@@ -117,6 +117,20 @@
             <field name="description">Finance Act 2024 enhanced employer NPS limit to 14% under New Regime w.e.f. 01-Apr-2025.</field>
         </record>
 
+        <!-- 8b. NPS Employer Contribution Percentage (Direct Configurable Parameter) -->
+        <record id="hds_in_tds_nps_employer_contribution_percentage" model="hr.rule.parameter">
+            <field name="name">TDS: NPS Employer Contribution Percentage (New Regime)</field>
+            <field name="code">NPS_EMPLOYER_CONTRIBUTION_PERCENTAGE</field>
+            <field name="category">rate</field>
+            <field name="description">Statutory employer NPS contribution deduction limit percentage under Section 80CCD(2) for New Tax Regime (default 14%).</field>
+        </record>
+        <record id="hds_in_tds_nps_employer_contribution_percentage_val_1" model="hr.rule.parameter.value">
+            <field name="parameter_id" ref="hds_in_tds_nps_employer_contribution_percentage"/>
+            <field name="date_from">2025-04-01</field>
+            <field name="parameter_value">14</field>
+            <field name="description">Statutory employer NPS deduction limit percentage under Section 80CCD(2) w.e.f. 01-Apr-2025 (14%).</field>
+        </record>
+
         <!-- 9. Employer NPS Limit % - Old Regime Private (10%) -->
         <record id="hds_in_tds_nps_limit_old_private" model="hr.rule.parameter">
             <field name="name">TDS: Employer NPS Limit % (Old Regime - Private)</field>

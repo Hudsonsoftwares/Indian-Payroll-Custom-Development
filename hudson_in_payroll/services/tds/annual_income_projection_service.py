@@ -1,6 +1,8 @@
 # -*- coding: utf-8 -*-
 import logging
+# pyrefly: ignore [missing-import]
 from odoo import fields
+# pyrefly: ignore [missing-import]
 from odoo.exceptions import ValidationError
 from ..base import BaseStatutoryService
 
@@ -20,7 +22,8 @@ class AnnualIncomeProjectionResult:
     """
     def __init__(self, employee_id, financial_year_id, regime_code, regime_name,
                  salary_projection, previous_employer_income, other_income_aggregation,
-                 projected_annual_salary, gross_total_income, regime_context):
+                 projected_annual_salary, gross_total_income, regime_context,
+                 sec_17_2_vii_perquisite=0.0):
         self.employee_id = employee_id
         self.financial_year_id = financial_year_id
         self.regime_code = regime_code
@@ -31,6 +34,7 @@ class AnnualIncomeProjectionResult:
         self.projected_annual_salary = projected_annual_salary
         self.gross_total_income = gross_total_income
         self.regime_context = regime_context
+        self.sec_17_2_vii_perquisite = sec_17_2_vii_perquisite
 
     @property
     def current_employer_salary(self):
@@ -198,6 +202,99 @@ class AnnualIncomeProjectionService(BaseStatutoryService):
         projected_annual_salary = current_employer_income + prev_emp_income
         gross_total_income = projected_annual_salary + other_income_val
 
+        # ── 6b. Section 17(2)(vii): Employer Contribution Perquisite ─────────────
+        # Under Section 17(2)(vii), when an employer's combined annual contributions
+        # to EPF + NPS + Approved Superannuation Fund exceed ₹7,50,000 (configurable
+        # via HDS_IN_TDS_EMPLOYER_CONTRIBUTION_LIMIT), the excess is a taxable perquisite
+        # added to Gross Salary and Gross Total Income (GTI).
+
+        fy_start = financial_year.start_date
+        fy_end = financial_year.end_date
+
+        # 1. Aggregate Year-To-Date (YTD) employer EPF from payslips
+        fy_payslips = self.env['hr.payslip'].search([
+            ('employee_id', '=', employee.id),
+            ('date_from', '>=', fy_start),
+            ('date_to', '<=', eval_date),
+            ('state', 'in', ['done', 'paid']),
+        ])
+        ytd_employer_epf = 0.0
+        for slip in fy_payslips:
+            slip_epf = 0.0
+            for line in slip.line_ids:
+                if (line.code or '').upper() in ('EMPLOYER_EPF', 'EPF_ER', 'ER_PF', 'EMPLOYER_EPF_TOTAL', 'EPF_SHARE', 'EPS'):
+                    amt = float(line.total or 0.0)
+                    if amt == 0.0 and hasattr(line, 'amount') and line.amount:
+                        amt = float(line.amount)
+                    slip_epf += abs(amt)
+            if slip_epf > 0.0:
+                ytd_employer_epf += slip_epf
+            elif hasattr(slip, 'hds_in_employer_epf') and slip.hds_in_employer_epf > 0.0:
+                ytd_employer_epf += float(slip.hds_in_employer_epf)
+
+        # 2. Project remaining months employer EPF
+        paid_months_count = len(fy_payslips)
+        months_remaining = getattr(salary_proj, 'months_remaining', 0)
+        projected_employer_epf = 0.0
+
+        if paid_months_count > 0:
+            monthly_avg_epf = ytd_employer_epf / paid_months_count
+            projected_employer_epf = monthly_avg_epf * max(0, months_remaining)
+        elif getattr(employee, 'hds_in_epf_applicable', False):
+            # Check draft payslip in current run if available
+            draft_slip = self.env['hr.payslip'].search([
+                ('employee_id', '=', employee.id),
+                ('date_from', '>=', fy_start),
+                ('date_to', '<=', fy_end),
+                ('state', '=', 'draft'),
+            ], limit=1)
+            if draft_slip and getattr(draft_slip, 'hds_in_employer_epf', 0.0) > 0.0:
+                monthly_est = float(draft_slip.hds_in_employer_epf)
+            else:
+                contract = salary_svc._get_employee_contract(employee) if hasattr(salary_svc, '_get_employee_contract') else False
+                contract_basic = float(getattr(contract, 'basic_salary', 0.0) or getattr(contract, 'wage', 0.0) or 0.0) if contract else 0.0
+                contract_da = float(getattr(contract, 'da', 0.0) or getattr(contract, 'da_amount', 0.0) or 0.0) if contract else 0.0
+                basis = getattr(employee, 'hds_in_pf_contribution_basis', 'statutory_ceiling')
+                pf_ceiling = tds_param_svc.get_parameter('PF_WAGE_CEILING', eval_date=eval_date, default_val=15000.0) or 15000.0
+                if basis in ('actual_pf_wage', 'actual_basic'):
+                    wage_base = contract_basic + contract_da
+                else:
+                    wage_base = min(contract_basic + contract_da, pf_ceiling)
+                monthly_est = round(wage_base * 0.12, 2)
+            projected_employer_epf = monthly_est * max(0, months_remaining)
+
+        total_annual_employer_epf = ytd_employer_epf + projected_employer_epf
+
+        # 3. Retrieve actual declared Employer NPS contribution
+        decl_for_perq = self.env['tds.employee.declaration'].sudo().search([
+            ('employee_id', '=', employee.id),
+            ('financial_year_id', '=', financial_year.id),
+        ], limit=1)
+        actual_employer_nps = 0.0
+        if decl_for_perq:
+            nps_lines = [l for l in decl_for_perq.declaration_line_ids if l.category == '80ccd2' and getattr(l, 'active', True)]
+            if nps_lines:
+                actual_employer_nps = sum(float(l.declared_amount or 0.0) for l in nps_lines)
+            if actual_employer_nps == 0.0:
+                actual_employer_nps = float(getattr(decl_for_perq, 'decl_80ccd2_employer_nps', 0.0) or 0.0)
+
+        # 4. Resolve statutory aggregate ceiling via TdsParameterService
+        combined_ceiling = tds_param_svc.get_combined_employer_contribution_limit(eval_date=eval_date) or 750000.0
+
+        # 5. Calculate Section 17(2)(vii) perquisite
+        combined_employer_contribution = total_annual_employer_epf + actual_employer_nps
+        sec_17_2_vii_perquisite = max(0.0, round(combined_employer_contribution - combined_ceiling, 2))
+
+        # 6. Add taxable perquisite to Gross Salary and GTI
+        if sec_17_2_vii_perquisite > 0.0:
+            projected_annual_salary += sec_17_2_vii_perquisite
+            gross_total_income += sec_17_2_vii_perquisite
+            _logger.warning(
+                "[SEC17_2_VII] Employee '%s' (FY %s): Employer EPF=₹%.2f + Actual NPS=₹%.2f = Combined ₹%.2f > Ceiling ₹%.2f → Taxable Perquisite ₹%.2f added to GTI",
+                employee.name, financial_year.name, total_annual_employer_epf, actual_employer_nps,
+                combined_employer_contribution, combined_ceiling, sec_17_2_vii_perquisite
+            )
+
         summary_log = f"""
 ========================================================
 ANNUAL INCOME PROJECTION SERVICE
@@ -205,6 +302,11 @@ ANNUAL INCOME PROJECTION SERVICE
 Regime Code               : {regime_code.upper()} ({regime_name})
 Current Employer Salary   : ₹{current_employer_income:,.2f}
 Previous Employer Income  : ₹{prev_emp_income:,.2f}
+Employer EPF (Annual)     : ₹{total_annual_employer_epf:,.2f}
+Employer NPS (Actual)     : ₹{actual_employer_nps:,.2f}
+Combined Employer Contrib : ₹{combined_employer_contribution:,.2f}
+Sec 17(2)(vii) Ceiling    : ₹{combined_ceiling:,.2f}
+Sec 17(2)(vii) Perquisite : ₹{sec_17_2_vii_perquisite:,.2f}
 Projected Annual Salary   : ₹{projected_annual_salary:,.2f}
 Other Sources Income      : ₹{other_inc_agg.total_other_sources:,.2f}
 Raw HP Net Income/Loss    : ₹{other_inc_agg.net_house_property_income_loss:,.2f}
@@ -215,7 +317,7 @@ Total Other Income        : ₹{other_income_val:,.2f}
 Gross Total Income (GTI)  : ₹{gross_total_income:,.2f}
 
 Formula:
-Projected Annual Salary = Current Employer Salary + Previous Employer Income
+Projected Annual Salary = Current Employer Salary + Previous Employer Income + Sec 17(2)(vii) Perquisite
 Other Income = Other Sources + Effective HP Impact
 GTI = Projected Annual Salary + Other Income
 ========================================================
@@ -243,5 +345,6 @@ GTI = Projected Annual Salary + Other Income
             other_income_aggregation=other_inc_agg,
             projected_annual_salary=projected_annual_salary,
             gross_total_income=gross_total_income,
-            regime_context=regime_context
+            regime_context=regime_context,
+            sec_17_2_vii_perquisite=sec_17_2_vii_perquisite
         )

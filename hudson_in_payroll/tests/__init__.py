@@ -45,6 +45,7 @@ from . import test_esic_service
 from . import test_pt_min_service_days
 from . import test_pt_attendance_earned_wage_and_carry_forward
 from . import test_tds_surcharge_marginal_relief
+from . import test_sec_17_2_vii_and_80ccd2
 
 
 

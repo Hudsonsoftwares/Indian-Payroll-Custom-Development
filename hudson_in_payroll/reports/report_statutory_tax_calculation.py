@@ -187,6 +187,7 @@ class ReportStatutoryTaxCalculation(models.AbstractModel):
             gross_current_salary = float(getattr(sal_proj, 'total_projected_current_salary', 0.0) or 0.0)
             prev_emp_income = float(getattr(prev_emp, 'taxable_salary', 0.0) or 0.0)
             other_income = float(getattr(other_inc, 'total_other_income', 0.0) or 0.0)
+            sec_17_2_vii_perquisite = float(getattr(proj, 'sec_17_2_vii_perquisite', 0.0) or 0.0)
             gross_total_income = float(getattr(proj, 'gross_total_income', 0.0) or 0.0)
 
             standard_deduction = float(getattr(deduct, 'standard_deduction', 0.0) or 0.0)
@@ -519,6 +520,7 @@ Actual Current Month TDS : ₹{current_month_tds:,.2f}
                 # ── Income ────────────────────────────────────────────────────
                 'gross_current_salary': gross_current_salary,
                 'prev_emp_income': prev_emp_income,
+                'sec_17_2_vii_perquisite': sec_17_2_vii_perquisite,
                 'other_income': other_income,
                 'other_income_breakdown': other_income_breakdown,
                 'family_pension_declared_income': family_pension_declared_income,

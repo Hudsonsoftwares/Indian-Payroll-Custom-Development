@@ -1,6 +1,8 @@
 # -*- coding: utf-8 -*-
 import logging
+# pyrefly: ignore [missing-import]
 from odoo import fields
+# pyrefly: ignore [missing-import]
 from odoo.exceptions import ValidationError
 from ..base import BaseStatutoryService
 from .standard_deduction_service import StandardDeductionService
@@ -332,6 +334,34 @@ remarks=%s""",
                     lta_res.block_period,
                     lta_res.remarks
                 )
+
+        # Fallback for Section 80CCD(2) Employer NPS if claimed on header but no child line
+        if employer_nps_80ccd2 == 0.0 and decl and getattr(decl, 'decl_80ccd2_employer_nps', 0.0) > 0.0:
+            hdr_nps = float(decl.decl_80ccd2_employer_nps or 0.0)
+            from .tds_parameter_service import TdsParameterService
+            tds_param_svc = TdsParameterService(self.env)
+            emp_type = getattr(employee, 'hds_in_employer_category', getattr(employee, 'employer_type', 'private')) or 'private'
+            nps_pct = tds_param_svc.get_employer_nps_limit(regime=regime_code, employer_type=emp_type, eval_date=eval_date, as_decimal=False) or (14.0 if regime_code == 'new' else 10.0)
+            from .salary_projection_service import SalaryProjectionService
+            sal_proj_svc = SalaryProjectionService(self.env)
+            sal_res = sal_proj_svc.project_salary(employee, financial_year, eval_date=eval_date)
+            salary_base = (sal_res.total_basic or 0.0) + (sal_res.total_da or 0.0)
+            nps_cap = round(salary_base * (nps_pct / 100.0), 2)
+            employer_nps_80ccd2 = min(hdr_nps, nps_cap)
+            _logger.warning("""[SECTION_80CCD2_HEADER_FALLBACK]
+employee=%s
+declared_nps=%s
+salary_base=%s
+nps_percentage=%s
+calculated_cap=%s
+eligible_80ccd2=%s""",
+                employee.name if employee else 'N/A',
+                f"INR {hdr_nps:,.2f}",
+                f"INR {salary_base:,.2f}",
+                f"{nps_pct}%",
+                f"INR {nps_cap:,.2f}",
+                f"INR {employer_nps_80ccd2:,.2f}"
+            )
 
         # Statutory Section 16(ia) Rule:
         # Standard deduction applies strictly against salary chargeable under 'Salaries'
