@@ -187,10 +187,30 @@ class SalaryProjectionService(BaseStatutoryService):
         ytd_bonus = 0.0
         ytd_lta = 0.0
         ytd_allowances = 0.0
+        ytd_attendance_deductions = 0.0  # Tracks real salary reductions from unpaid leave / LOP
 
         # Explicitly defined summary rule codes and categories to exclude from YTD component aggregation
         EXCLUDED_SUMMARY_CODES = {'GROSS', 'NET', 'PF_WAGE', 'TOTAL', 'ESIC_WAGE', 'EPF_ADMIN', 'EDLI_ADMIN', 'ESI_WAGE'}
-        EXCLUDED_SUMMARY_CATEGORIES = {'GROSS', 'NET', 'COMP', 'DED'}
+        # NOTE: 'DED' is intentionally NOT blanket-excluded here.
+        # Attendance-based deductions (SHORT, UNPAID, LOP) carry negative amounts that
+        # must reduce YTD earnings. They are handled separately in the loop below.
+        EXCLUDED_SUMMARY_CATEGORIES = {'GROSS', 'NET', 'COMP'}
+
+        # Attendance-based deduction codes that represent REAL salary reductions
+        # (employee did not work → did not earn). These reduce YTD earnings.
+        ATTENDANCE_DEDUCTION_CODES = {
+            'SHORT', 'UNPAID', 'LOP', 'LWOP', 'ABSENT',
+            'LOP_DED', 'UNPAID_LEAVE', 'SHORTAGE', 'LEAVE_DEDUCTION',
+            'ATTENDANCE_DEDUCTION', 'ABS_DED', 'LWP',
+        }
+
+        # Statutory deduction codes — deducted from gross but gross was still earned.
+        # These must NOT reduce projected earnings.
+        STATUTORY_DEDUCTION_CODES = {
+            'PF', 'EPF', 'ESI', 'ESIC', 'PT', 'TDS', 'IT',
+            'PF_EE', 'ESI_EE', 'PROF_TAX', 'INCOME_TAX',
+            'VPF', 'NPS', 'LOAN', 'ADVANCE', 'SALARY_ADVANCE',
+        }
 
         for slip in payslips:
             for line in slip.line_ids:
@@ -198,11 +218,25 @@ class SalaryProjectionService(BaseStatutoryService):
                 cat_code = (line.category_id.code or '').upper() if line.category_id else ''
                 amt = line.total or 0.0
 
-                # 1. Skip summary rules and non-earning category lines
+                # 1. Skip summary/aggregation rules
                 if cat_code in EXCLUDED_SUMMARY_CATEGORIES or code in EXCLUDED_SUMMARY_CODES:
                     continue
 
-                # 2. Accumulate specific earning components
+                # 2. Handle DED category lines with nuance
+                if cat_code == 'DED':
+                    if code in ATTENDANCE_DEDUCTION_CODES:
+                        # Attendance deductions reduce actual earnings
+                        # These lines typically carry negative amounts (e.g., -₹1,20,000 for full LOP)
+                        ytd_attendance_deductions += abs(amt)
+                        _logger.info(
+                            "[SALARY_PROJ] Attendance deduction captured: code=%s, amt=%.2f, slip=%s",
+                            code, amt, slip.number or slip.id
+                        )
+                    # Statutory deductions (PF, ESI, PT, TDS) and any other DED codes
+                    # are skipped — gross was earned, deductions don't reduce taxable projection
+                    continue
+
+                # 3. Accumulate specific earning components
                 if code in ('BASIC', 'BASIC_PAY'):
                     ytd_basic += amt
                 elif code in ('DA', 'DEARNESS_ALLOWANCE'):
@@ -267,7 +301,17 @@ class SalaryProjectionService(BaseStatutoryService):
 
         total_projected_current_salary = total_basic + total_da + total_hra + total_lta + total_bonus + total_allowances
 
-        previous_salary_val = ytd_basic + ytd_da + ytd_hra + ytd_lta + ytd_bonus + ytd_allowances
+        # Subtract attendance-based deductions from projected salary
+        # These represent real salary not earned due to unpaid leave / LOP
+        if ytd_attendance_deductions > 0:
+            _logger.warning(
+                "[SALARY_PROJ] Subtracting YTD attendance deductions: ₹%.2f from projected salary ₹%.2f",
+                ytd_attendance_deductions, total_projected_current_salary
+            )
+            total_projected_current_salary -= ytd_attendance_deductions
+            total_projected_current_salary = max(0.0, total_projected_current_salary)
+
+        previous_salary_val = ytd_basic + ytd_da + ytd_hra + ytd_lta + ytd_bonus + ytd_allowances - ytd_attendance_deductions
         remaining_projected_val = projected_basic + projected_da + projected_hra + projected_lta + projected_bonus + projected_allowances
 
         _logger.warning("""[FORENSIC_TDS_TRACE]
@@ -308,6 +352,7 @@ Paid Payslip Months        : {paid_months_count}
 Projection Months          : {salary_projection_months}
 Remaining Payroll Periods  : {remaining_periods}
 
+YTD Attendance Deductions  : ₹{ytd_attendance_deductions:,.2f}
 Projected Annual Salary    : ₹{total_projected_current_salary:,.2f}
 Projected Annual LTA       : ₹{total_lta:,.2f}
 ========================================================

@@ -158,7 +158,13 @@
             <field name="struct_id" ref="hudson_payroll_base.structure_base"/>
             <field name="condition_select">none</field>
             <field name="amount_select">code</field>
-            <field name="amount_python_compute"><![CDATA[result = payslip_record.hds_in_compute_tds()]]></field>
+            <field name="amount_python_compute"><![CDATA[
+net_before_tds = (categories.BASIC or 0.0) + (categories.ALW or 0.0) + (categories.DED or 0.0)
+if net_before_tds <= 0.0:
+    result = 0.0
+else:
+    result = payslip_record.hds_in_compute_tds()
+]]></field>
             <field name="appears_on_payslip" eval="True"/>
             <field name="active" eval="True"/>
         </record>

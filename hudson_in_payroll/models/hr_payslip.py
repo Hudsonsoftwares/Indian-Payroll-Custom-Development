@@ -206,7 +206,7 @@ class HrPayslip(models.Model):
         localdict = super()._get_localization_context(localdict)
         return self._get_statutory_context(localdict)
 
-    def hds_in_compute_tds(self):
+    def hds_in_compute_tds(self, localdict=None):
         """
         Payslip statutory method called by salary rule HDS_IN_TDS.
         Invokes TdsOrchestrationEngine master entry point and returns monthly TDS deduction.
@@ -229,8 +229,23 @@ class HrPayslip(models.Model):
                 self.name or self.id
             )
             return 0.0
-        if self._get_earned_wage_ratio() <= 0.0:
+        if self._get_earned_wage_ratio(localdict=localdict) <= 0.0:
+            _logger.info(
+                "[TDS_EARNED_RATIO_GUARD] Earned wage ratio is <= 0.0. Skipping TDS calculation for payslip %s.",
+                self.name or self.id
+            )
             return 0.0
+
+        eval_ctx = localdict or self._get_payroll_eval_context(raise_if_missing=False)
+        if eval_ctx and 'categories' in eval_ctx:
+            cats = eval_ctx['categories']
+            net_before_tds = (getattr(cats, 'BASIC', 0.0) or 0.0) + (getattr(cats, 'ALW', 0.0) or 0.0) + (getattr(cats, 'DED', 0.0) or 0.0)
+            if net_before_tds <= 0.0:
+                _logger.info(
+                    "[TDS_NET_WAGE_GUARD] Net wage before TDS is <= 0 (₹%.2f). Skipping TDS calculation for payslip %s.",
+                    net_before_tds, self.name or self.id
+                )
+                return 0.0
 
         _logger.warning(
             "[TDS_ENTRY_AUDIT] hds_in_compute_tds ENTERED | payslip=%s | employee=%s",
@@ -886,7 +901,21 @@ final_HDS_IN_TDS=%s""",
             f"INR {res.current_month_tds:,.2f}"
         )
 
-        result = -res.current_month_tds
+        eval_ctx = localdict or self._get_payroll_eval_context(raise_if_missing=False)
+        final_tds = float(res.current_month_tds or 0.0)
+        if eval_ctx and 'categories' in eval_ctx:
+            cats = eval_ctx['categories']
+            net_before_tds = (getattr(cats, 'BASIC', 0.0) or 0.0) + (getattr(cats, 'ALW', 0.0) or 0.0) + (getattr(cats, 'DED', 0.0) or 0.0)
+            if net_before_tds <= 0.0:
+                final_tds = 0.0
+            elif final_tds > net_before_tds:
+                _logger.info(
+                    "[TDS_NET_CAP] Capping monthly TDS from ₹%.2f to net payable ₹%.2f for payslip %s",
+                    final_tds, net_before_tds, self.name or self.id
+                )
+                final_tds = max(0.0, net_before_tds)
+
+        result = -final_tds
         _logger.warning(
             "[TDS_EXIT_AUDIT] hds_in_compute_tds EXIT | payslip=%s | final_tds=%s",
             self.id,
@@ -1181,6 +1210,17 @@ else:
 """
                         })
 
+                    # Auto-heal HDS_IN_TDS salary rule in database if net_before_tds guard is missing
+                    if rule.code == 'HDS_IN_TDS' and ('net_before_tds' not in (rule.amount_python_compute or '') or 'locals()' in (rule.amount_python_compute or '')):
+                        rule.sudo().write({
+                            'amount_python_compute': """net_before_tds = (categories.BASIC or 0.0) + (categories.ALW or 0.0) + (categories.DED or 0.0)
+if net_before_tds <= 0.0:
+    result = 0.0
+else:
+    result = payslip_record.hds_in_compute_tds()
+"""
+                        })
+
                     if rule._satisfy_condition(localdict) and rule.id not in blacklist:
                         amount, qty, rate = rule._compute_rule(localdict)
 
@@ -1426,7 +1466,7 @@ else:
         If no shortage or unpaid leave, returns 1.0.
         """
         self.ensure_one()
-        ld = localdict or {}
+        ld = localdict or self._get_payroll_eval_context(raise_if_missing=False) or {}
         categories = ld.get('categories')
         worked_days = ld.get('worked_days')
         contract = ld.get('contract') or self.contract_id
@@ -1452,6 +1492,14 @@ else:
                 rate = abs(contract.get_period_shortage_rate(self.date_from, self.date_to))
                 short_ded = min(short_hrs * rate, total_earnings)
 
+        if short_ded <= 0.0 and self.worked_days_line_ids and contract and getattr(contract, 'pay_by_attendance', False):
+            s_wd = self.worked_days_line_ids.filtered(lambda w: w.code == 'SHORTAGE')
+            if s_wd:
+                short_hrs = sum(s_wd.mapped('number_of_hours'))
+                if short_hrs > 0.0 and hasattr(contract, 'get_period_shortage_rate'):
+                    rate = abs(contract.get_period_shortage_rate(self.date_from, self.date_to))
+                    short_ded = min(short_hrs * rate, total_earnings)
+
         if unpaid_ded <= 0.0 and worked_days and contract and hasattr(worked_days, 'UNPAID') and worked_days.UNPAID:
             unpaid_hrs = float(getattr(worked_days.UNPAID, 'number_of_hours', 0.0) or 0.0)
             unpaid_days = float(getattr(worked_days.UNPAID, 'number_of_days', 0.0) or 0.0)
@@ -1461,6 +1509,18 @@ else:
             elif unpaid_days > 0.0 and hasattr(contract, 'get_period_day_rate'):
                 rate = abs(contract.get_period_day_rate(self.date_from, self.date_to))
                 unpaid_ded = min(unpaid_days * rate, total_earnings)
+
+        if unpaid_ded <= 0.0 and self.worked_days_line_ids and contract:
+            u_wd = self.worked_days_line_ids.filtered(lambda w: w.code == 'UNPAID')
+            if u_wd:
+                unpaid_hrs = sum(u_wd.mapped('number_of_hours'))
+                unpaid_days = sum(u_wd.mapped('number_of_days'))
+                if unpaid_hrs > 0.0 and hasattr(contract, 'get_period_shortage_rate'):
+                    rate = abs(contract.get_period_shortage_rate(self.date_from, self.date_to))
+                    unpaid_ded = min(unpaid_hrs * rate, total_earnings)
+                elif unpaid_days > 0.0 and hasattr(contract, 'get_period_day_rate'):
+                    rate = abs(contract.get_period_day_rate(self.date_from, self.date_to))
+                    unpaid_ded = min(unpaid_days * rate, total_earnings)
 
         if short_ded <= 0.0 and self.line_ids:
             s_line = self.line_ids.filtered(lambda l: l.code == 'SHORT')
@@ -1485,6 +1545,13 @@ else:
                 shortage_hrs += float(getattr(worked_days.SHORTAGE, 'number_of_hours', 0.0) or 0.0)
             if hasattr(worked_days, 'UNPAID') and worked_days.UNPAID:
                 unpaid_hrs += float(getattr(worked_days.UNPAID, 'number_of_hours', 0.0) or 0.0)
+
+        if shortage_hrs <= 0.0 and unpaid_hrs <= 0.0 and self.worked_days_line_ids:
+            for wd in self.worked_days_line_ids:
+                if wd.code == 'SHORTAGE':
+                    shortage_hrs += float(wd.number_of_hours or 0.0)
+                elif wd.code == 'UNPAID':
+                    unpaid_hrs += float(wd.number_of_hours or 0.0)
 
         if contract and (shortage_hrs > 0.0 or unpaid_hrs > 0.0):
             sched_hrs = 0.0
