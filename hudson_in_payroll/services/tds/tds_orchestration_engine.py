@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 import logging
+# pyrefly: ignore [missing-import]
 from odoo import fields
 from ..base import BaseStatutoryService
 from .annual_income_projection_service import AnnualIncomeProjectionService
@@ -1395,7 +1396,8 @@ current_month_tds=%s""", ann_tax_liab, monthly_tds.current_month_tds)
             dist_m = max(1, min(12, int(getattr(financial_year, 'tds_recalculation_distribution_months', 3) or 3)))
             recalc_start_fy_idx = 12 - dist_m + 1
 
-            fy_start = financial_year.start_date
+            eval_m_num = eval_date.month if hasattr(eval_date, 'month') else 4
+            fy_start = financial_year.start_date if financial_year else False
             if fy_start:
                 fy_start_year = fy_start.year
                 fy_start_month = fy_start.month
@@ -1404,7 +1406,6 @@ current_month_tds=%s""", ann_tax_liab, monthly_tds.current_month_tds)
                 elapsed_months = (eval_year - fy_start_year) * 12 + (eval_month - fy_start_month) + 1
                 eval_fy_idx = min(12, max(1, elapsed_months))
             else:
-                eval_m_num = eval_date.month if hasattr(eval_date, 'month') else 4
                 eval_fy_idx = eval_m_num - 3 if eval_m_num >= 4 else eval_m_num + 9
 
             is_recalc_active = (eval_fy_idx >= recalc_start_fy_idx)
@@ -1412,6 +1413,8 @@ current_month_tds=%s""", ann_tax_liab, monthly_tds.current_month_tds)
             month_names_dict = {1: 'January', 2: 'February', 3: 'March', 4: 'April', 5: 'May', 6: 'June',
                                 7: 'July', 8: 'August', 9: 'September', 10: 'October', 11: 'November', 12: 'December'}
             payroll_month_name = month_names_dict.get(eval_m_num, str(eval_m_num))
+            start_cal_m = recalc_start_fy_idx + 3 if recalc_start_fy_idx <= 9 else recalc_start_fy_idx - 9
+            recalc_month_name = month_names_dict.get(start_cal_m, str(start_cal_m))
 
             other_agg = annual_projection.other_income_aggregation
             raw_hp_inc = float(getattr(other_agg, 'net_house_property_income_loss', 0.0) or 0.0)

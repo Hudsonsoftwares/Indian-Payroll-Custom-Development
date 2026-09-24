@@ -2,6 +2,7 @@
 import pytz
 from datetime import datetime, time
 from dateutil.relativedelta import relativedelta
+# pyrefly: ignore [missing-import]
 from odoo import api, fields, models, _
 
 class HrPayslip(models.Model):

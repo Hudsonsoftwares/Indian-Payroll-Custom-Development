@@ -1,6 +1,8 @@
 # -*- coding: utf-8 -*-
 import logging
+# pyrefly: ignore [missing-import]
 from odoo import fields, _
+# pyrefly: ignore [missing-import]
 from odoo.exceptions import ValidationError
 from ..base import BaseStatutoryService
 
