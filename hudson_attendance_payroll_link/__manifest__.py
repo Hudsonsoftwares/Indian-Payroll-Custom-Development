@@ -1,7 +1,8 @@
 # -*- coding: utf-8 -*-
 {
     'name': 'Hudson Attendance and Payroll Connection',
-    'version': '19.0.1.0.1',
+    'version': '19.0.1.0.2',
+
     'category': 'Human Resources',
     'summary': 'Connects biometric attendance, contract rates, leave deductions, and auto-regularization with payroll.',
     'description': """
