@@ -9,13 +9,16 @@
                 <group string="Hourly Rate Configuration" name="hourly_rate_config">
                     <field name="salary_calculation_type"/>
                     <field name="pay_by_attendance" widget="boolean_toggle"/>
-                    <field name="pay_overtime" widget="boolean_toggle"/>
-                    <field name="overtime_multiplier"/>
                     <field name="hourly_rate" readonly="1"/>
-                    <field name="overtime_hourly_rate" readonly="1"/>
-                    <field name="overtime_rate_manually_set" invisible="1"/>
+                    <field name="shortage_deduction_rate_per_hour"/>
                     <field name="shortage_rate_manually_set" invisible="1"/>
-                    <button name="action_reset_to_computed_rates" string="Reset to Computed Rates" type="object" class="btn-secondary" invisible="not overtime_rate_manually_set and not shortage_rate_manually_set"/>
+                    <button name="action_reset_to_computed_rates"
+                            string="Reset Shortage Rate"
+                            type="object"
+                            class="btn-secondary"
+                            invisible="not shortage_rate_manually_set"/>
+                    <!-- Overtime rates are now configured in Standard Odoo 19 Overtime Rulesets -->
+                    <!-- Attendances → Configuration → Overtime Rulesets -->
                 </group>
             </xpath>
         </field>

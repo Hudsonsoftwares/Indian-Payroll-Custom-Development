@@ -888,21 +888,40 @@ class HdsPayrollDashboard(models.Model):
                 <!-- 1. PRIMARY KPI CARDS GRID (PAYRUN PALETTE) -->
                 <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 16px; margin-bottom: 22px;">
 
-                    <!-- Card 1: Total Payroll Cost (Payrun Employer Cost - Purple) -->
+                    <!-- Card 1: Total Payroll Cost / CTC (Gross Salary + Employer Statutory) - Purple -->
                     <div role="button" tabindex="0" onclick="window.hdsCardClick &amp;&amp; window.hdsCardClick(this, 'total_payroll_cost')" data-card-type="total_payroll_cost" data-month-num="{m_num}" data-year="{year}" data-date-from="{month_start}" data-date-to="{month_end}" class="hds-dash-card o_hds_dashboard_card_clickable" style="text-decoration: none; display: block; padding: 18px; border-top: 4px solid #c084fc !important; cursor: pointer;">
                         <div style="display: flex; justify-content: space-between; align-items: center;">
                             <span class="small fw-semibold text-uppercase" style="color: #c084fc !important; font-size: 11px; letter-spacing: 0.5px;">
-                                <i class="fa fa-briefcase me-1"></i> Total Payroll Cost
+                                <i class="fa fa-briefcase me-1"></i> Total Payroll Cost (CTC)
                             </span>
                             <span style="font-size: 11px; color: #c084fc; font-weight: 600;">View Details &darr;</span>
                         </div>
                         <div class="hds-text-primary" style="font-size: 24px; font-weight: 800; margin: 8px 0; letter-spacing: -0.5px;">
                             {currency_symbol} {rec.total_payroll_cost:,.2f}
                         </div>
-                        <div class="hds-text-muted" style="font-size: 11px; font-weight: 500;">
-                            Period: {month_name} ({fy_name})
+                        <!-- CTC breakdown: Gross Salary + Employer Statutory Costs -->
+                        <div style="display: flex; flex-direction: column; gap: 3px; margin-top: 4px;">
+                            <div style="display: flex; justify-content: space-between; align-items: center;">
+                                <span style="font-size: 10px; color: #94a3b8; font-weight: 500;">
+                                    <span style="display: inline-block; width: 8px; height: 8px; border-radius: 2px; background: #7c3aed; margin-right: 4px; vertical-align: middle;"></span>
+                                    Gross Salary (Employee Earn)
+                                </span>
+                                <span style="font-size: 10px; color: #e2e8f0; font-weight: 700;">{currency_symbol} {rec.total_gross_pay:,.2f}</span>
+                            </div>
+                            <div style="display: flex; justify-content: space-between; align-items: center;">
+                                <span style="font-size: 10px; color: #94a3b8; font-weight: 500;">
+                                    <span style="display: inline-block; width: 8px; height: 8px; border-radius: 2px; background: #38bdf8; margin-right: 4px; vertical-align: middle;"></span>
+                                    Employer Statutory (PF+ESIC+LWF)
+                                </span>
+                                <span style="font-size: 10px; color: #38bdf8; font-weight: 700;">+ {currency_symbol} {rec.total_employer_statutory_liability:,.2f}</span>
+                            </div>
+                            <div style="border-top: 1px solid rgba(255,255,255,0.08); margin-top: 3px; padding-top: 3px; display: flex; justify-content: space-between; align-items: center;">
+                                <span style="font-size: 10px; color: #c084fc; font-weight: 700; text-transform: uppercase; letter-spacing: 0.4px;">= CTC ({month_name} {year})</span>
+                                <span style="font-size: 10px; color: #c084fc; font-weight: 700;">{currency_symbol} {rec.total_payroll_cost:,.2f}</span>
+                            </div>
                         </div>
                     </div>
+
 
                     <!-- Card 2: Total Net Salary (Payrun Net - Emerald Green) -->
                     <div role="button" tabindex="0" onclick="window.hdsCardClick &amp;&amp; window.hdsCardClick(this, 'total_net_pay')" data-card-type="total_net_pay" data-month-num="{m_num}" data-year="{year}" data-date-from="{month_start}" data-date-to="{month_end}" class="hds-dash-card o_hds_dashboard_card_clickable" style="text-decoration: none; display: block; padding: 18px; border-top: 4px solid #4ade80 !important; cursor: pointer;">

@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 from odoo import fields, models
 
+
 class ResConfigSettings(models.TransientModel):
     _inherit = 'res.config.settings'
 
@@ -14,14 +15,5 @@ class ResConfigSettings(models.TransientModel):
         readonly=False,
         string='Standard Hours per Day'
     )
-    overtime_multiplier = fields.Float(
-        related='company_id.overtime_multiplier',
-        readonly=False,
-        string='Overtime Rate Multiplier'
-    )
-    pay_overtime = fields.Boolean(
-        related='company_id.pay_overtime',
-        readonly=False,
-        string='Pay Overtime'
-    )
-
+    # Note: Overtime rates are now configured via Standard Odoo 19 Overtime Rulesets.
+    # Go to: Attendances → Configuration → Overtime Rulesets

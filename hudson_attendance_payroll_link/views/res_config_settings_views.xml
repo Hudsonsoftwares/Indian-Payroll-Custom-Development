@@ -7,14 +7,20 @@
         <field name="arch" type="xml">
             <xpath expr="//app[@name='hr_attendance']" position="inside">
                 <block title="Attendance &amp; Payroll Connection" name="attendance_payroll_connection_setting_container">
-                    <setting id="overtime_multiplier_setting" string="Overtime Rate Multiplier" help="Default multiplier for overtime rate calculation.">
+                    <setting string="Standard Working Days per Month"
+                             help="Default monthly working days used for shortage deduction rate calculation.">
                         <div class="content-group mt4">
-                            <field name="overtime_multiplier"/>
+                            <field name="standard_working_days_per_month"/>
                         </div>
                     </setting>
-                    <setting id="pay_overtime_setting" string="Pay Overtime" help="Enable or disable overtime salary calculations and payouts on payslips.">
-                        <field name="pay_overtime"/>
+                    <setting string="Standard Hours per Day"
+                             help="Default daily working hours used for shortage deduction rate calculation.">
+                        <div class="content-group mt4">
+                            <field name="standard_hours_per_day"/>
+                        </div>
                     </setting>
+                    <!-- Overtime rates are configured in Overtime Rulesets -->
+                    <!-- Attendances → Configuration → Overtime Rulesets -->
                 </block>
             </xpath>
         </field>

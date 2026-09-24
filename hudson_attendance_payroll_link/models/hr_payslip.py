@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 import pytz
-from datetime import datetime, time
+from datetime import datetime, time, date as date_type
 from dateutil.relativedelta import relativedelta
 # pyrefly: ignore [missing-import]
 from odoo import api, fields, models, _
@@ -187,20 +187,27 @@ class HrPayslip(models.Model):
                 total_shortage_days += min(1.0, shortage_hours / denom)
             current_date += relativedelta(days=1)
 
-        # 6. Overtime calculation (Calculate net extra hours beyond shift, e.g. 1 hr)
-        approved_attendances = attendances.filtered(lambda a: a.overtime_status == 'approved')
+        # 6. Overtime calculation — reads from Standard Odoo 19 hr.attendance.overtime.line.
+        #    Only lines that are:
+        #      • status = 'approved'  (manager has validated them)
+        #      • compensable_as_leave = False  (not converted to comp-off leave)
+        #    are considered payable overtime for payroll.
+        #    amount_rate on each line carries the rule rate (1.0, 1.5, 2.0 etc.) which
+        #    the OT salary rule uses for weighted pay calculation.
+        d_from = fields.Date.from_string(date_from) if not isinstance(date_from, date_type) else date_from
+        d_to = fields.Date.from_string(date_to) if not isinstance(date_to, date_type) else date_to
+        ot_lines = self.env['hr.attendance.overtime.line'].search([
+            ('employee_id', '=', contract.employee_id.id),
+            ('date', '>=', d_from),
+            ('date', '<=', d_to),
+            ('status', '=', 'approved'),
+            ('compensable_as_leave', '=', False),
+        ])
         net_overtime_hours = 0.0
-        for att in approved_attendances:
-            ot_hrs = getattr(att, 'overtime_hours', 0.0) or 0.0
-            val_hrs = getattr(att, 'validated_overtime_hours', 0.0) or 0.0
-            if ot_hrs > 0.0 and val_hrs > 0.0:
-                # Use net overtime hours, capped if user manually set a lower validated amount
-                effective_ot = min(ot_hrs, val_hrs)
-            elif ot_hrs > 0.0:
-                effective_ot = ot_hrs
-            else:
-                effective_ot = val_hrs
-            net_overtime_hours += effective_ot
+        for ot_line in ot_lines:
+            # manager_duration (manual_duration) > 0 means manager explicitly edited the approved amount
+            approved_hrs = ot_line.manual_duration if ot_line.manual_duration > 0.0 else ot_line.duration
+            net_overtime_hours += max(approved_hrs, 0.0)
 
         data = {
             'scheduled_hours': total_scheduled_hours,
@@ -210,6 +217,7 @@ class HrPayslip(models.Model):
             'actual_hours': total_actual_hours,
             'validated_overtime_hours': net_overtime_hours,
             'overtime_hours_delta': net_overtime_hours,
+            'overtime_lines': ot_lines,
             'shortage_hours_delta': total_shortage_hours,
             'shortage_days': total_shortage_days,
             'unpaid_hours': total_unpaid_hours,
@@ -364,13 +372,17 @@ class HrPayslip(models.Model):
                         'number_of_hours': data['shortage_hours_delta'],
                         'contract_id': contract.id,
                     })
-            if contract.pay_by_attendance and data.get('overtime_hours_delta', 0.0) > 0.01:
+            # Overtime worked days line — uses Standard Odoo 19 overtime.line data.
+            # Gate: any approved, payable OT lines exist for the period.
+            # The salary rule OT reads rate-weighted pay directly from overtime.line,
+            # so number_of_hours here is the total approved payable hours (informational).
+            if data.get('overtime_hours_delta', 0.0) > 0.01:
                 if not any(l.get('code') == 'OVERTIME' for l in res):
                     res.append({
                         'name': _('Overtime Hours'),
-                        'sequence': 5,
+                        'sequence': 6,
                         'code': 'OVERTIME',
-                        'description': _('Overtime Hours'),
+                        'description': _('Overtime Hours (Standard Odoo Ruleset)'),
                         'number_of_days': 0.0,
                         'number_of_hours': data['overtime_hours_delta'],
                         'contract_id': contract.id,
