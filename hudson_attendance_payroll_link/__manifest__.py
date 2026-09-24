@@ -19,7 +19,6 @@ This module connects biometric attendance anomalies, contract rates, unpaid leav
     
     ],
     'data': [
-        'views/res_config_settings_views.xml',
         'views/hr_version_views.xml',
         'views/hr_employee_views.xml',
         'views/hr_payslip_views.xml',
