@@ -235,6 +235,92 @@ class HrPayslip(models.Model):
             return (contract.wage / sched_hrs) if sched_hrs > 0.0 else 0.0
         return contract.shortage_deduction_rate_per_hour
 
+    def _get_dynamic_overtime_values(self, contract, worked_days=None):
+        """
+        Dynamically calculates (base_hourly_wage, rate_percentage, total_hours)
+        for draft payslips based on the live overtime rule/ruleset pay rates.
+        Once payslip is validated, it uses the preserved rate on the line.
+        """
+        self.ensure_one()
+        OtLine = self.env['hr.attendance.overtime.line']
+        ot_lines = OtLine.search([
+            ('employee_id', '=', contract.employee_id.id),
+            ('date', '>=', self.date_from),
+            ('date', '<=', self.date_to),
+            ('status', '=', 'approved'),
+            ('compensable_as_leave', '=', False),
+        ])
+        if not ot_lines:
+            return 0.0, 100.0, 0.0
+
+        # Base hourly wage from scheduled hours (WORK100 line)
+        sched_hrs = 0.0
+        if worked_days and hasattr(worked_days, 'WORK100') and worked_days.WORK100:
+            sched_hrs = worked_days.WORK100.number_of_hours
+        if not sched_hrs or sched_hrs <= 0.0:
+            wd_line = self.worked_days_line_ids.filtered(lambda w: w.code == 'WORK100')
+            if wd_line:
+                sched_hrs = wd_line[0].number_of_hours
+        if not sched_hrs or sched_hrs <= 0.0:
+            cal = contract.resource_calendar_id
+            sched_hrs = (cal.hours_per_day * 26.0) if cal and cal.hours_per_day else 208.0
+
+        base_hourly = (contract.wage / sched_hrs) if sched_hrs > 0.0 else 0.0
+
+        # Applicable ruleset
+        ruleset = contract.ruleset_id or self.env['hr.attendance.overtime.ruleset'].search([
+            ('company_id', 'in', [contract.company_id.id, False])
+        ], limit=1)
+
+        is_draft = (not self.state or self.state == 'draft')
+        total_hours = 0.0
+        weighted_rate_sum = 0.0
+
+        for line in ot_lines:
+            approved_hrs = line.manual_duration if line.manual_duration > 0.0 else line.duration
+            if approved_hrs <= 0.0:
+                continue
+
+            if is_draft:
+                # Draft stage: dynamically resolve CURRENT rule rate from applied rules or active ruleset
+                paid_rules = line.rule_ids.filtered(lambda r: r.paid)
+                if not paid_rules and ruleset:
+                    paid_rules = ruleset.rule_ids.filtered(lambda r: r.paid)
+
+                if paid_rules:
+                    mode = ruleset.rate_combination_mode if ruleset else 'max'
+                    if mode == 'sum':
+                        current_rate = 1.0 + sum((r.amount_rate - 1.0) for r in paid_rules)
+                    else:
+                        current_rate = max(paid_rules.mapped('amount_rate'))
+                else:
+                    current_rate = line.amount_rate or 1.0
+
+                # Synchronize line's stored amount_rate in DB so attendance records stay in sync
+                if abs((line.amount_rate or 1.0) - current_rate) > 0.001:
+                    line.sudo().write({'amount_rate': current_rate})
+
+                rate_to_use = current_rate
+            else:
+                # Validated/Confirmed stage: keep preserved rate
+                rate_to_use = line.amount_rate if line.amount_rate and line.amount_rate > 0.0 else 1.0
+
+            total_hours += approved_hrs
+            weighted_rate_sum += approved_hrs * rate_to_use
+
+        if total_hours <= 0.0:
+            return 0.0, 100.0, 0.0
+
+        # Rate percentage to display on the payslip line (e.g. 1.5 -> 150.0%)
+        effective_rate_pct = (weighted_rate_sum / total_hours) * 100.0
+
+        return base_hourly, effective_rate_pct, total_hours
+
+    def _get_dynamic_overtime_pay(self, contract, worked_days=None):
+        """Returns total overtime pay amount."""
+        base_hourly, rate_pct, hours = self._get_dynamic_overtime_values(contract, worked_days)
+        return hours * base_hourly * (rate_pct / 100.0)
+
     attendance_discrepancy_hours = fields.Float(
         string='Attendance Discrepancy Hours',
         compute='_compute_attendance_discrepancy',

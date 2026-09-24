@@ -196,6 +196,16 @@ class HrVersion(models.Model):
             return (self.wage / sched_hrs) if sched_hrs > 0.0 else 0.0
         return self.shortage_deduction_rate_per_hour or 0.0
 
+    def get_period_overtime_rate(self, date_from, date_to):
+        """Backward-compatibility helper: Returns base hourly rate for overtime if called by legacy rules."""
+        self.ensure_one()
+        sched_hrs = self._get_period_scheduled_hours(date_from, date_to)
+        if sched_hrs > 0.0:
+            return self.wage / sched_hrs
+        cal = self.resource_calendar_id
+        fallback_hrs = (cal.hours_per_day * 26.0) if cal and cal.hours_per_day else 208.0
+        return (self.wage / fallback_hrs) if fallback_hrs > 0.0 else 0.0
+
     def get_period_day_rate(self, date_from, date_to):
         """Public method: Returns daily rate for the payslip period based on scheduled days."""
         self.ensure_one()

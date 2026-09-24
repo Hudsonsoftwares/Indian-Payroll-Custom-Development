@@ -10,45 +10,9 @@
             <field name="struct_id" ref="hudson_payroll_base.structure_base"/>
             <field name="condition_select">none</field>
             <field name="amount_select">code</field>
-            <field name="amount_python_compute">
-# Standard Odoo 19 Overtime Rulesets — Rate-Weighted OT Pay
-# Reads from hr.attendance.overtime.line (approved, payable lines only).
-# Each line carries amount_rate set by the ruleset (e.g. 1.0 normal, 1.5 extended, 2.0 holiday).
-# Base hourly wage = contract wage ÷ scheduled hours in the payslip period.
-# OT Pay = Σ (approved_hours × line_rate × base_hourly)
-
-result = 0.0
-result_qty = 1.0
-
-OtLine = env['hr.attendance.overtime.line']
-ot_lines = OtLine.search([
-    ('employee_id', '=', contract.employee_id.id),
-    ('date', '>=', payslip.date_from),
-    ('date', '<=', payslip.date_to),
-    ('status', '=', 'approved'),
-    ('compensable_as_leave', '=', False),
-])
-
-if ot_lines:
-    # Base hourly wage from scheduled hours (WORK100 line) for period-exact accuracy
-    sched_hrs = 0.0
-    if worked_days.WORK100:
-        sched_hrs = worked_days.WORK100.number_of_hours
-    if not sched_hrs or sched_hrs &lt;= 0.0:
-        # Fallback: use calendar standard hours if WORK100 is absent
-        cal = contract.resource_calendar_id
-        sched_hrs = (cal.hours_per_day * 26.0) if cal and cal.hours_per_day else 208.0
-    base_hourly = contract.wage / sched_hrs if sched_hrs > 0.0 else 0.0
-
-    total_ot_pay = 0.0
-    for line in ot_lines:
-        # Use manager-edited duration when available, else auto-calculated duration
-        approved_hrs = line.manual_duration if line.manual_duration > 0.0 else line.duration
-        line_rate = line.amount_rate if line.amount_rate and line.amount_rate > 0.0 else 1.0
-        total_ot_pay += max(approved_hrs, 0.0) * line_rate * base_hourly
-
-    result = total_ot_pay
-            </field>
+            <field name="amount_python_compute"><![CDATA[
+result, result_rate, result_qty = payslip._get_dynamic_overtime_values(contract, worked_days)
+]]></field>
             <field name="appears_on_payslip" eval="True"/>
         </record>
 
@@ -61,14 +25,14 @@ if ot_lines:
             <field name="struct_id" ref="hudson_payroll_base.structure_base"/>
             <field name="condition_select">none</field>
             <field name="amount_select">code</field>
-            <field name="amount_python_compute">
+            <field name="amount_python_compute"><![CDATA[
 result = -contract.get_period_shortage_rate(payslip.date_from, payslip.date_to)
 shortage_hours = worked_days.SHORTAGE.number_of_hours if (worked_days.SHORTAGE and contract.pay_by_attendance) else 0.0
 raw_ded = shortage_hours * abs(result)
 total_earnings = categories.BASIC + categories.ALW
 result = -min(raw_ded, total_earnings) if total_earnings > 0.0 else 0.0
 result_qty = 1.0
-            </field>
+]]></field>
             <field name="appears_on_payslip" eval="True"/>
         </record>
 
@@ -81,7 +45,7 @@ result_qty = 1.0
             <field name="struct_id" ref="hudson_payroll_base.structure_base"/>
             <field name="condition_select">none</field>
             <field name="amount_select">code</field>
-            <field name="amount_python_compute">
+            <field name="amount_python_compute"><![CDATA[
 if worked_days.UNPAID and worked_days.UNPAID.number_of_hours > 0.0:
     raw_ded = worked_days.UNPAID.number_of_hours * contract.get_period_shortage_rate(payslip.date_from, payslip.date_to)
 elif worked_days.UNPAID and worked_days.UNPAID.number_of_days > 0.0:
@@ -93,7 +57,7 @@ short_ded = abs(rules.SHORT.total if 'SHORT' in rules else 0.0)
 rem_earnings = max(0.0, total_earnings - short_ded)
 result = -min(raw_ded, rem_earnings) if rem_earnings > 0.0 else 0.0
 result_qty = 1.0
-            </field>
+]]></field>
             <field name="appears_on_payslip" eval="True"/>
         </record>
 
