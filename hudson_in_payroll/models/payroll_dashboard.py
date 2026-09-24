@@ -1311,10 +1311,10 @@ class HdsPayrollDashboard(models.Model):
                         </div>
 
                         <!-- Combined Grand Totals Banner -->
-                        <div role="button" tabindex="0" onclick="window.hdsCardClick &amp;&amp; window.hdsCardClick(this, 'total_employer_statutory')" data-card-type="total_employer_statutory" class="hds-subcard o_hds_dashboard_card_clickable" style="cursor: pointer; padding: 10px 16px; border-radius: 8px; display: flex; justify-content: space-between; align-items: center; border-left: 4px solid #c084fc !important;">
+                        <div role="button" tabindex="0" onclick="window.hdsCardClick &amp;&amp; window.hdsCardClick(this, 'total_payroll_cost')" data-card-type="total_payroll_cost" class="hds-subcard o_hds_dashboard_card_clickable" style="cursor: pointer; padding: 10px 16px; border-radius: 8px; display: flex; justify-content: space-between; align-items: center; border-left: 4px solid #c084fc !important;">
                             <div>
                                 <div class="hds-text-muted" style="font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px;">Total Employer Cost (CTC)</div>
-                                <div class="hds-text-primary" style="font-weight: 800; font-size: 16px; color: #c084fc; margin-top: 1px;">{currency_symbol} {rec.total_employer_statutory_liability:,.2f}</div>
+                                <div class="hds-text-primary" style="font-weight: 800; font-size: 16px; color: #c084fc; margin-top: 1px;">{currency_symbol} {rec.total_payroll_cost:,.2f}</div>
                             </div>
                             <div style="text-align: right;">
                                 <div class="hds-text-muted" style="font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px;">Total Statutory Liability (Govt Deposit)</div>

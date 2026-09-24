@@ -71,7 +71,14 @@
               sequence="60"
               groups="group_biometric_attendance_manager"/>
 
-    <!-- Anomalies and Regularization (placed under main Attendances Management/Configuration area) -->
+    <!-- Management: Attendance Approval, Anomalies and Regularization -->
+    <menuitem id="menu_hudson_attendance_approval"
+              name="Attendance Approval"
+              parent="hr_attendance.menu_hr_attendance_view_attendances_management"
+              action="hr_attendance.hr_attendance_management_action"
+              sequence="10"
+              groups="hr_attendance.group_hr_attendance_officer"/>
+
     <menuitem id="menu_hudson_attendance_anomaly"
               name="Attendance Anomalies"
               parent="hr_attendance.menu_hr_attendance_view_attendances_management"
