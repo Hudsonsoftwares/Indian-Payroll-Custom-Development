@@ -1045,7 +1045,7 @@ Actual Current Month TDS : ₹{current_month_tds:,.2f}
             'name': 'Section 80CCH — Agniveer Corpus Fund Contribution',
             'statutory_ref': 'Section 80CCH of Income Tax Act',
             'source_type': 'Agniveer Scheme Declaration',
-            'regime_applicability': 'Both Old & New Regime — 100% Eligible',
+            'regime_applicability': 'Old Tax Regime Only (Section 80CCH(1))' if regime_code == 'old' else 'Ineligible under New Regime',
             'declared': cch_amt,
             'approved': cch_allowed,
             'excess': cch_excess,

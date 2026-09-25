@@ -298,6 +298,9 @@
                                      <field name="decl_80dd_amount" readonly="1"/>
                                      <field name="decl_80u_amount" readonly="state in ['approved', 'rejected']"/>
                                  </group>
+                                 <group string="Section 80CCH — Agniveer Corpus Fund">
+                                     <field name="decl_80cch_agniveer" readonly="state in ['approved', 'rejected']"/>
+                                 </group>
                             </group>
                         </page>
 
@@ -377,6 +380,7 @@
                                     <field name="fixed_deposit_interest" readonly="state in ['approved', 'rejected']"/>
                                     <field name="dividend_income" readonly="state in ['approved', 'rejected']"/>
                                     <field name="other_sources_income" readonly="state in ['approved', 'rejected']"/>
+                                    <field name="decl_57iia_family_pension" readonly="state in ['approved', 'rejected']"/>
                                     <field name="annual_let_out_rent" readonly="state in ['approved', 'rejected']"/>
                                     <field name="municipal_taxes_paid" readonly="state in ['approved', 'rejected']"/>
                                     <field name="let_out_interest_paid" readonly="state in ['approved', 'rejected']"/>
@@ -410,10 +414,6 @@
                             <group string="Statutory Deductions (New &amp; Old Regimes)">
                                 <group string="Employer NPS Contribution &amp; Pension">
                                     <field name="decl_80ccd2_employer_nps" readonly="state in ['approved', 'rejected']"/>
-                                    <field name="decl_57iia_family_pension" readonly="state in ['approved', 'rejected']"/>
-                                </group>
-                                <group string="Agniveer Corpus Fund">
-                                    <field name="decl_80cch_agniveer" readonly="state in ['approved', 'rejected']"/>
                                 </group>
                             </group>
                         </page>
@@ -629,6 +629,9 @@
                                     <field name="decl_80gg_form_10ba_filed" readonly="state != 'draft'"/>
                                     <field name="decl_80gg_summary_html" nolabel="1" colspan="2" readonly="1"/>
                                 </group>
+                                <group string="Section 80CCH — Agniveer Corpus Fund">
+                                    <field name="decl_80cch_agniveer" readonly="state != 'draft'"/>
+                                </group>
                             </group>
                         </page>
 
@@ -708,6 +711,7 @@
                                     <field name="fixed_deposit_interest" readonly="state != 'draft'"/>
                                     <field name="dividend_income" readonly="state != 'draft'"/>
                                     <field name="other_sources_income" readonly="state != 'draft'"/>
+                                    <field name="decl_57iia_family_pension" readonly="state != 'draft'"/>
                                     <field name="total_other_sources_income" readonly="1"/>
                                 </group>
                                 <group string="House Property (Let-Out Property)">
@@ -750,18 +754,8 @@
                             <group string="Employer Pension &amp; Statutory Allocations">
                                 <group>
                                     <field name="decl_80ccd2_employer_nps" string="Employer NPS Contribution — Section 124 (₹)" readonly="state != 'draft'"/>
-                                    <field name="decl_57iia_family_pension" readonly="state != 'draft'"/>
                                 </group>
                             </group>
-                            <group string="Agniveer Corpus Fund (Section 80CCH)">
-                                <group>
-                                    <field name="decl_80cch_agniveer" readonly="state != 'draft'"/>
-                                </group>
-                            </group>
-                            <div class="alert alert-info" role="alert">
-                                <i class="fa fa-info-circle me-1"/>
-                                <strong>Section 80CCH - Agniveer Corpus Fund:</strong> Under Section 80CCH of the Income Tax Act, 1961, 100% of contributions made by an individual or the Central Government to the Agniveer Corpus Fund under the Agnipath Scheme are fully deductible from taxable income under both Old and New Tax Regimes (Income-tax Act, 2025 — Section 202(1)).
-                            </div>
                         </page>
 
                         <!-- TAB 6: PROOF DOCUMENTATION & RULE GUIDE -->

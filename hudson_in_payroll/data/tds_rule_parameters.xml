@@ -783,18 +783,18 @@
             <field name="description">Finance Act 2023 w.e.f. 01-Nov-2022 establishing 100% eligibility under Section 80CCH (Old Regime).</field>
         </record>
 
-        <!-- 54. Section 80CCH Agniveer Corpus Fund Eligibility Percentage - New Regime (100%) -->
+        <!-- 54. Section 80CCH Agniveer Corpus Fund Eligibility Percentage - New Regime (0%) -->
         <record id="hds_in_tds_80cch_eligibility_percent_new" model="hr.rule.parameter">
             <field name="name">TDS: Sec 80CCH Agniveer Corpus Fund Eligibility Percentage (New Regime)</field>
             <field name="code">HDS_IN_TDS_80CCH_ELIGIBILITY_PERCENT_NEW</field>
             <field name="category">rate</field>
-            <field name="description">Section 80CCH employee contribution statutory eligibility percentage for New Tax Regime (100%).</field>
+            <field name="description">Section 80CCH employee contribution statutory eligibility percentage for New Tax Regime (0% - Not allowable under New Regime).</field>
         </record>
         <record id="hds_in_tds_80cch_eligibility_percent_new_val_1" model="hr.rule.parameter.value">
             <field name="parameter_id" ref="hds_in_tds_80cch_eligibility_percent_new"/>
             <field name="date_from">2022-11-01</field>
-            <field name="parameter_value">100.0</field>
-            <field name="description">Finance Act 2023 w.e.f. 01-Nov-2022 establishing 100% eligibility under Section 80CCH (New Regime).</field>
+            <field name="parameter_value">0.0</field>
+            <field name="description">Section 80CCH(1) employee contributions not deductible under New Tax Regime (0%).</field>
         </record>
 
         <!-- 55. Section 10(5) LTA Calendar-Year Block Period (e.g. 2022-2025) -->

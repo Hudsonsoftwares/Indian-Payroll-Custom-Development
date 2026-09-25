@@ -292,8 +292,6 @@ remarks=%s""",
                         employer_nps_80ccd2 += amt
                     elif cat == '57iia':
                         family_pension_57iia = max(family_pension_57iia, amt)
-                    elif cat == '80cch':
-                        other_approved_deductions += amt
 
             # Safe Fallback for Section 10(5) LTA Exemption if child line was absent in declaration_line_ids
             if regime_code == 'old' and lta_exemption == 0.0 and decl and getattr(decl, 'decl_lta_declared_fare', 0.0) > 0.0:

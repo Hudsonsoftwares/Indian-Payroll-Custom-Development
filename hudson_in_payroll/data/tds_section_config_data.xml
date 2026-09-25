@@ -399,7 +399,7 @@
             <field name="sequence">140</field>
         </record>
 
-        <!-- 8. BOTH REGIME SECTIONS (80CCD(2), 57(iia), 80CCH) -->
+        <!-- 8. BOTH REGIME SECTIONS (80CCD(2), 57(iia)) -->
         <record id="hds_in_tds_section_both_regimes" model="tds.tax.section.config">
             <field name="name">Other Tax-Eligible Adjustments</field>
             <field name="code">BOTH_REGIMES</field>
@@ -428,15 +428,27 @@
             <field name="effective_from">2020-04-01</field>
             <field name="sequence">20</field>
         </record>
+
+        <!-- 9. SECTION 80CCH AGNIVEER CORPUS FUND (Old Regime Only) -->
+        <record id="hds_in_tds_section_80cch" model="tds.tax.section.config">
+            <field name="name">Section 80CCH Agniveer Corpus Fund</field>
+            <field name="code">80CCH</field>
+            <field name="old_regime_allowed">1</field>
+            <field name="new_regime_allowed">0</field>
+            <field name="effective_from">2022-04-01</field>
+            <field name="sequence">90</field>
+            <field name="eligibility_guidance">100% deduction for individual contributions to the Agniveer Corpus Fund under the Agnipath Scheme u/s 80CCH(1). Allowable under Old Tax Regime only.</field>
+            <field name="typical_documents">Agniveer Corpus Fund Statement, Salary Slip showing Agniveer Contribution, Defense Enrollment Record.</field>
+        </record>
         <record id="hds_in_tds_comp_80cch" model="tds.tax.component.config">
-            <field name="section_id" ref="hds_in_tds_section_both_regimes"/>
+            <field name="section_id" ref="hds_in_tds_section_80cch"/>
             <field name="name">Agniveer Corpus Fund (Section 80CCH)</field>
             <field name="code">80cch</field>
             <field name="python_field_name">decl_80cch_agniveer</field>
             <field name="old_regime_allowed">1</field>
-            <field name="new_regime_allowed">1</field>
+            <field name="new_regime_allowed">0</field>
             <field name="effective_from">2022-04-01</field>
-            <field name="sequence">30</field>
+            <field name="sequence">10</field>
         </record>
     </data>
 </odoo>

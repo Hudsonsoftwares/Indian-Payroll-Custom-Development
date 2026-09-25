@@ -2126,20 +2126,11 @@ else:
             if not sec_80ccd2 and decl:
                 sec_80ccd2 = float(getattr(decl, 'decl_80ccd2_employer_nps', 0.0) or (next((l.declared_amount for l in getattr(decl, 'declaration_line_ids', []) if l.category == '80ccd2'), 0.0)) or 0.0)
 
-            sec_80cch = float(getattr(c6a, 'section_80cch', 0.0) or 0.0) if c6a else 0.0
-            if not sec_80cch and decl:
-                sec_80cch = float(getattr(decl, 'decl_80cch_agniveer', 0.0) or (next((l.declared_amount for l in getattr(decl, 'declaration_line_ids', []) if l.category == '80cch'), 0.0)) or 0.0)
-
-            fam_pension = float(getattr(deduct, 'family_pension_57iia', 0.0) or 0.0) if deduct else 0.0
-            if not fam_pension and decl:
-                fam_pension = float(getattr(decl, 'decl_57iia_family_pension', 0.0) or (next((l.declared_amount for l in getattr(decl, 'declaration_line_ids', []) if l.category == '57iia'), 0.0)) or 0.0)
-
             tax_comp_deductions = [
                 {'name': 'Standard Deduction [u/s 16(ia)]', 'amount': std_ded},
                 {'name': 'Employer NPS Contribution [Section 124]', 'amount': sec_80ccd2},
-                {'name': 'Agniveer Corpus Fund [Section 80CCH]', 'amount': sec_80cch},
             ]
-            other_ded = max(0.0, float(getattr(deduct, 'other_approved_deductions', 0.0) or 0.0) - sec_80cch)
+            other_ded = float(getattr(deduct, 'other_approved_deductions', 0.0) or 0.0)
             if other_ded > 0:
                 tax_comp_deductions.append({'name': 'Other Approved Deductions', 'amount': other_ded})
         else:

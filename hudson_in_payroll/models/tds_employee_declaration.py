@@ -45,7 +45,8 @@ DECLARATION_BUSINESS_REGISTRY = [
     # Shared Deductions (Both Regimes)
     {'category': '80ccd2', 'field_name': 'decl_80ccd2_employer_nps', 'statutory_section': 'Section 80CCD(2)', 'eligibility_strategy': 'EMPLOYER_NPS_PERCENTAGE_CAP', 'parameter_code': 'NPS_EMPLOYER_CONTRIBUTION_PERCENTAGE', 'allowed_regimes': ['old', 'new'], 'workflow': {'planning_supported': True, 'proof_required': False, 'hr_verification_required': False}, 'deduction_group': 'statutory_earning_deduction'},
     {'category': '57iia', 'field_name': 'decl_57iia_family_pension', 'statutory_section': 'Section 57(iia)', 'eligibility_strategy': 'FAMILY_PENSION_CAP', 'parameter_code': 'HDS_IN_TDS_FAMILY_PENSION_LIMIT', 'allowed_regimes': ['old', 'new'], 'workflow': {'planning_supported': True, 'proof_required': True, 'hr_verification_required': True}, 'deduction_group': 'statutory_earning_deduction'},
-    {'category': '80cch', 'field_name': 'decl_80cch_agniveer', 'statutory_section': 'Section 80CCH', 'eligibility_strategy': 'UNLIMITED', 'parameter_code': None, 'allowed_regimes': ['old', 'new'], 'workflow': {'planning_supported': True, 'proof_required': True, 'hr_verification_required': True}, 'deduction_group': 'statutory_earning_deduction'},
+    # Old Regime Deductions
+    {'category': '80cch', 'field_name': 'decl_80cch_agniveer', 'statutory_section': 'Section 80CCH', 'eligibility_strategy': 'UNLIMITED', 'parameter_code': None, 'allowed_regimes': ['old'], 'workflow': {'planning_supported': True, 'proof_required': True, 'hr_verification_required': True}, 'deduction_group': 'statutory_earning_deduction'},
 ]
 
 DECLARATION_UI_REGISTRY = {
@@ -4053,21 +4054,23 @@ is_within_8_years=%s""",
                     ]
                 ))
 
-            # 11. BOTH REGIMES (Section 80CCH Agniveer Corpus Fund)
+            # 11. OLD REGIME ONLY (Section 80CCH Agniveer Corpus Fund)
             d_80cch = float(getattr(rec, 'decl_80cch_agniveer', 0.0) or 0.0)
             line_80cch = sum(float(l.usable_amount if l.usable_amount is not None else (l.declared_amount or 0.0)) for l in rec.declaration_line_ids if l.category == '80cch' and getattr(l, 'active', True))
             tot_80cch = max(d_80cch, line_80cch)
             if tot_80cch > 0:
+                eligible_cch = tot_80cch if rec.regime_code == 'old' else 0.0
+                excess_cch = 0.0 if rec.regime_code == 'old' else tot_80cch
                 cards.append(self._build_card_html(
                     section_code="Section 80CCH", section_title="Contributions to Agniveer Corpus Fund (Agnipath Scheme)",
                     fy_name=fy_name, ay_name=ay_name, regime_title=regime_title,
-                    declared_amt=tot_80cch, eligible_amt=tot_80cch, cap_amt=None, excess_amt=0.0,
+                    declared_amt=tot_80cch, eligible_amt=eligible_cch, cap_amt=None, excess_amt=excess_cch,
                     param_code="HDS_IN_TDS_80CCH_DEDUCTION_LIMIT", param_val=tot_80cch, date_from=eval_date,
-                    statutory_rule="100% statutory deduction allowed for contributions made by an individual enrolled in the Agnipath Scheme to the Agniveer Corpus Fund u/s 80CCH(1). Allowed under BOTH Old and New Tax Regimes.",
+                    statutory_rule="100% statutory deduction allowed for contributions made by an individual enrolled in the Agnipath Scheme to the Agniveer Corpus Fund u/s 80CCH(1). Allowed under Old Tax Regime only.",
                     conditions=[
-                        "Deduction available for individual contribution to Agniveer Corpus Fund.",
+                        "Deduction available for individual contribution to Agniveer Corpus Fund u/s 80CCH(1).",
                         "No upper monetary statutory ceiling (100% of contribution allowed).",
-                        "Allowed under BOTH Old Tax Regime and New Tax Regime Income-tax Act, 2025 — Section 202(1)."
+                        "Allowed under Old Tax Regime only; prohibited under New Tax Regime Section 115BAC."
                     ],
                     typical_docs=[
                         "Agniveer Corpus Fund Contribution Certificate / Statement",

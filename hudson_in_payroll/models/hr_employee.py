@@ -1645,7 +1645,7 @@ class HrEmployee(models.Model):
         compute='_compute_current_deduction_decl',
         inverse='_inverse_current_deduction_decl',
         store=False,
-        help="Agniveer Corpus Fund deduction under Section 80CCH (permitted under BOTH Old and New Regimes)."
+        help="Agniveer Corpus Fund deduction under Section 80CCH (permitted under Old Regime only)."
     )
 
     # Section 6: Supporting Proof Documents

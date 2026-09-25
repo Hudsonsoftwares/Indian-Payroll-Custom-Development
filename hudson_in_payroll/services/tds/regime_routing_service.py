@@ -34,7 +34,6 @@ class RegimeRoutingService(BaseStatutoryService):
     NEW_REGIME_PERMITTED_CATEGORIES = {
         '80ccd2',  # Employer NPS Contribution (Section 80CCD(2))
         '57iia',   # Family Pension Standard Deduction (Section 57(iia))
-        '80cch',   # Agniveer Corpus Fund (Section 80CCH)
     }
 
     OLD_REGIME_PERMITTED_CATEGORIES = {

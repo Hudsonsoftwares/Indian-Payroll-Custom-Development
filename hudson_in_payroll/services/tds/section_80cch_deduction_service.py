@@ -50,6 +50,9 @@ class Section80CCHDeductionService(BaseStatutoryService):
 
         # 1. Extract Declaration Inputs (Supporting Header Field & Declaration Line)
         declared_amt = 0.0
+        approved_amt = 0.0
+        verified_amt = 0.0
+        source_amt = 0.0
         decl = None
         source_type = 'HEADER_DECLARATION'
         decl_id = 'N/A'
@@ -67,21 +70,43 @@ class Section80CCHDeductionService(BaseStatutoryService):
             line_80cch = next((l for l in getattr(decl, 'declaration_line_ids', []) if l.category == '80cch' and getattr(l, 'active', True)), None)
             if line_80cch:
                 declared_amt = float(line_80cch.declared_amount or 0.0)
+                verified_amt = float(getattr(line_80cch, 'verified_amount', 0.0) or 0.0)
                 line_approved = float(getattr(line_80cch, 'tax_firm_approved_amount', 0.0) or getattr(line_80cch, 'approved_amount', 0.0) or 0.0)
+                approved_amt = line_approved
                 source_amt = line_approved if (is_post_proof and line_approved > 0.0) else declared_amt
                 source_type = 'DECLARATION_LINE'
             else:
                 declared_amt = float(getattr(decl, 'decl_80cch_agniveer', 0.0) or 0.0)
+                verified_amt = float(getattr(decl, 'decl_80cch_verified_amount', 0.0) or 0.0)
                 hdr_approved = float(getattr(decl, 'decl_80cch_approved_amount', 0.0) or 0.0)
+                approved_amt = hdr_approved
                 source_amt = hdr_approved if (is_post_proof and hdr_approved > 0.0) else declared_amt
                 source_type = 'HEADER_DECLARATION'
+        elif hasattr(declaration_or_dict, 'category') and getattr(declaration_or_dict, 'category', False) == '80cch':
+            line = declaration_or_dict
+            decl = getattr(line, 'declaration_id', None)
+            employee = employee or getattr(line, 'employee_id', None) or (decl.employee_id if decl else None)
+            financial_year = financial_year or getattr(line, 'financial_year_id', None) or (decl.financial_year_id if decl else None)
+            decl_id = decl.id if decl else 'N/A'
+            decl_state = getattr(decl, 'state', 'draft') if decl else getattr(line, 'validation_status', 'draft')
+            regime = (getattr(line, 'regime_code', False) or (getattr(decl, 'regime_code', False) if decl else False) or regime).lower()
+            is_post_proof = decl_state in ('proof_verified', 'approved')
+
+            declared_amt = float(line.declared_amount or 0.0)
+            verified_amt = float(getattr(line, 'verified_amount', 0.0) or 0.0)
+            line_approved = float(getattr(line, 'tax_firm_approved_amount', 0.0) or getattr(line, 'approved_amount', 0.0) or 0.0)
+            approved_amt = line_approved
+            source_amt = line_approved if (is_post_proof and line_approved > 0.0) else declared_amt
+            source_type = 'DECLARATION_LINE'
         else:
             d = declaration_or_dict or {}
             decl = None
             decl_state = d.get('declaration_state', 'draft')
             is_post_proof = decl_state in ('proof_verified', 'approved')
             declared_amt = float(d.get('decl_80cch_agniveer', d.get('declared_amount', 0.0)))
-            appr_val = float(d.get('approved_amount', 0.0))
+            verified_amt = float(d.get('verified_amount', 0.0))
+            appr_val = float(d.get('tax_firm_approved_amount', d.get('approved_amount', 0.0)))
+            approved_amt = appr_val
             source_amt = appr_val if (is_post_proof and appr_val > 0.0) else declared_amt
             source_type = d.get('source_type', 'DECLARATION_LINE')
             decl_id = d.get('declaration_id', 'N/A')
@@ -90,6 +115,12 @@ class Section80CCHDeductionService(BaseStatutoryService):
         emp_id = employee.id if employee else kwargs.get('employee_id', 'N/A')
         fy_name = financial_year.name if financial_year else 'N/A'
 
+        # Lifecycle tracking
+        from .tds_declaration_lifecycle_logger import TdsDeclarationLifecycleLogger
+        lifecycle_logger = TdsDeclarationLifecycleLogger(self.env)
+        calc_phase = lifecycle_logger.get_calculation_phase(decl_state)
+        amount_source_label = lifecycle_logger.get_amount_source(decl_state)
+
         # 2. Resolve Statutory Parameter via TdsParameterService
         from .tds_parameter_service import TdsParameterService
         tds_param_svc = TdsParameterService(self.env)
@@ -97,22 +128,26 @@ class Section80CCHDeductionService(BaseStatutoryService):
         param_code = 'HDS_IN_TDS_80CCH_ELIGIBILITY_PERCENT_NEW' if regime == 'new' else 'HDS_IN_TDS_80CCH_ELIGIBILITY_PERCENT_OLD'
 
         # 3. Perform Eligibility & Deduction Calculation
-        eligible_amount = round(source_amt * (configured_pct / 100.0), 2)
-        excess_amount = max(0.0, source_amt - eligible_amount)
-        usable_amount = eligible_amount
-        is_eligible = (eligible_amount > 0.0 or source_amt == 0.0)
-        status_str = 'ELIGIBLE' if is_eligible else 'INELIGIBLE'
-
-        verified_amt = float(getattr(decl, 'decl_80cch_verified_amount', 0.0) or 0.0) if decl else 0.0
-        approved_amt = source_amt if is_post_proof else 0.0
-        amount_source_label = "APPROVED/POST-PROOF" if (is_post_proof and source_amt > 0.0) else "PROJECTED"
-
-        calc_phase = "POST-PROOF" if is_post_proof else "PRE-PROOF"
-
-        remarks = (
-            f"Section 80CCH Status: ELIGIBLE. Agniveer Corpus Fund contribution "
-            f"of INR {source_amt:,.2f} is allowable as deduction under Section 80CCH ({configured_pct:.0f}% rate)."
-        )
+        if regime == 'new' or configured_pct == 0.0:
+            eligible_amount = 0.0
+            excess_amount = source_amt
+            usable_amount = 0.0
+            is_eligible = False
+            status_str = 'INELIGIBLE'
+            remarks = (
+                f"Section 80CCH Status: INELIGIBLE. Section 80CCH(1) Agniveer Corpus Fund employee contribution "
+                f"is not allowable as a deduction under the New Tax Regime (Old Regime only)."
+            )
+        else:
+            eligible_amount = round(source_amt * (configured_pct / 100.0), 2)
+            excess_amount = max(0.0, source_amt - eligible_amount)
+            usable_amount = eligible_amount
+            is_eligible = (eligible_amount > 0.0 or source_amt == 0.0)
+            status_str = 'ELIGIBLE' if is_eligible else 'INELIGIBLE'
+            remarks = (
+                f"Section 80CCH Status: ELIGIBLE. Agniveer Corpus Fund contribution "
+                f"of INR {source_amt:,.2f} is allowable as deduction under Section 80CCH ({configured_pct:.0f}% rate)."
+            )
 
         # 4. Generate Formatted Statutory Audit Trace Log
         trace_log = f"""

@@ -70,7 +70,7 @@ class TdsEmployeeDeclarationLine(models.Model):
         ('nps_employee', 'Section 80CCD(1) Employee NPS Contribution'),
         ('80ccd2', 'Employer NPS Contribution — Section 124 (Both Regimes)'),
         ('57iia', 'Section 57(iia) Family Pension Deduction (Both Regimes)'),
-        ('80cch', 'Section 80CCH Agniveer Corpus Fund Contribution (Both Regimes)'),
+        ('80cch', 'Section 80CCH Agniveer Corpus Fund Contribution (Old Regime Only)'),
         ('leave_encashment', 'Section 10(10AA) Leave Encashment Exemption'),
         ('vrs', 'Section 10(10C) VRS Compensation Exemption'),
         ('other', 'Other Statutory Exemptions'),

@@ -163,9 +163,10 @@ class TdsParameterService(BaseStatutoryService):
         """
         Resolves Section 80CCH Agniveer Corpus Fund employee contribution statutory eligibility percentage based on tax regime.
         - Old Regime: HDS_IN_TDS_80CCH_ELIGIBILITY_PERCENT_OLD (100%)
-        - New Regime: HDS_IN_TDS_80CCH_ELIGIBILITY_PERCENT_NEW (100%)
+        - New Regime: HDS_IN_TDS_80CCH_ELIGIBILITY_PERCENT_NEW (0% - Not deductible under New Regime)
         """
-        return self.get_parameter('80CCH_ELIGIBILITY_PERCENT', eval_date=eval_date, regime=regime, as_decimal=as_decimal)
+        def_val = 0.0 if (regime or 'old').lower() == 'new' else 100.0
+        return self.get_parameter('80CCH_ELIGIBILITY_PERCENT', eval_date=eval_date, regime=regime, as_decimal=as_decimal, default_val=def_val)
 
     def get_family_pension_limit(self, regime='new', eval_date=None):
         """Resolves Section 57(iia) Family Pension deduction statutory ceiling based on tax regime."""
