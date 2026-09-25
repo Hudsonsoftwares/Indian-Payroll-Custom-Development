@@ -39,10 +39,12 @@ result = 0.0
         </record>
 
         <!-- Unpaid Leave Deduction Salary Rule
-             Handles formally approved LOP (Loss of Pay) leaves.
-             Deducts at the contract day-rate for each unpaid leave day.
-             In the Earned Proration model, unpaid leave hours are excluded from WORK100
-             (so BASIC is already lower), and this rule deducts the remaining unpaid portion. -->
+             In the Earned Proration model (pay_by_attendance=True), unpaid leave hours
+             are already excluded from WORK100, so BASIC/HRA/DA are already prorated strictly
+             to earned hours. Applying an additional deduction here would cause double deduction.
+             Therefore, for pay_by_attendance contracts, this rule returns 0.0.
+             For non-attendance contracts paying 100% nominal wage, LOP deduction is deducted here.
+             The unpaid leave days/hours remain fully tracked in the Worked Days tab for audit. -->
         <record id="hr_rule_unpaid" model="hr.salary.rule">
             <field name="name">Unpaid Leave Deduction</field>
             <field name="code">UNPAID</field>
@@ -52,23 +54,31 @@ result = 0.0
             <field name="condition_select">none</field>
             <field name="amount_select">code</field>
             <field name="amount_python_compute"><![CDATA[
-if worked_days.UNPAID and worked_days.UNPAID.number_of_hours > 0.0:
-    # Per-hour deduction for unpaid leave
-    sched_data = payslip._get_attendance_vs_schedule(contract, payslip.date_from, payslip.date_to)
-    sched_hours = sched_data.get('scheduled_hours', 0.0)
-    if sched_hours > 0.0:
-        nominal_gross = (contract.basic_salary or contract.wage or 0.0)
-        per_hour_rate = nominal_gross / sched_hours
-        raw_ded = worked_days.UNPAID.number_of_hours * per_hour_rate
-    else:
-        raw_ded = worked_days.UNPAID.number_of_hours * contract.get_period_shortage_rate(payslip.date_from, payslip.date_to)
-elif worked_days.UNPAID and worked_days.UNPAID.number_of_days > 0.0:
-    raw_ded = worked_days.UNPAID.number_of_days * contract.get_period_day_rate(payslip.date_from, payslip.date_to)
+if contract.pay_by_attendance:
+    # Earned Proration model: unpaid leaves are already excluded from WORK100.
+    # BASIC, HRA, DA, and other allowances are already prorated strictly to earned hours.
+    # Therefore, the deduction is 0.0 so the employee is not deducted twice.
+    result = 0.0
+    result_qty = 1.0
 else:
-    raw_ded = 0.0
-total_earnings = categories.BASIC + categories.ALW
-result = -min(raw_ded, total_earnings) if total_earnings > 0.0 else 0.0
-result_qty = 1.0
+    # Fixed monthly salary model (non-attendance): nominal wage is paid in full,
+    # so formal unpaid leave days must be deducted from total earnings.
+    if worked_days.UNPAID:
+        raw_ded = abs(float(worked_days.UNPAID.amount or 0.0))
+        if not raw_ded:
+            sched_data = payslip._get_attendance_vs_schedule(contract, payslip.date_from, payslip.date_to)
+            sched_hours = sched_data.get('scheduled_hours', 0.0)
+            wage = float(getattr(contract, 'wage', 0.0) or getattr(contract, 'basic_salary', 0.0) or 0.0)
+            if sched_hours > 0.0:
+                raw_ded = round((worked_days.UNPAID.number_of_hours or 0.0) * (wage / sched_hours), 2)
+            elif hasattr(contract, 'get_period_day_rate'):
+                raw_ded = round((worked_days.UNPAID.number_of_days or 0.0) * contract.get_period_day_rate(payslip.date_from, payslip.date_to), 2)
+        total_earnings = categories.BASIC + categories.ALW
+        result = -min(raw_ded, total_earnings) if total_earnings > 0.0 else 0.0
+        result_qty = 1.0
+    else:
+        result = 0.0
+        result_qty = 1.0
 ]]></field>
             <field name="appears_on_payslip" eval="True"/>
         </record>

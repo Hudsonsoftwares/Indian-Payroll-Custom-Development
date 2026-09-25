@@ -298,11 +298,13 @@ class HdsPayrollDashboard(models.Model):
             ] + company_domain
             all_slips = self.env['hr.payslip'].search(period_domain)
 
-            # Deduplicate only if identical employee AND identical pay period (date_from, date_to)
-            # This ensures split payslips (e.g. 1-15 and 16-30) are both fully accounted for
+            # Deduplicate: split non-overlapping payslips (e.g. 1-15 and 16-30) are both fully accounted for,
+            # while duplicate or overlapping payslips are excluded to avoid double-counting payroll costs.
             state_priority = {'paid': 2, 'done': 1}
             unique_slips = {}
-            for slip in all_slips.sorted(key=lambda s: (state_priority.get(s.state, 0), s.id), reverse=True):
+            for slip in all_slips.sorted(key=lambda s: (state_priority.get(s.state, 0), -(s.id or 0)), reverse=True):
+                if getattr(slip, 'has_duplicate_payslip', False):
+                    continue
                 key = (slip.employee_id.id, slip.date_from, slip.date_to)
                 if key not in unique_slips:
                     unique_slips[key] = slip
@@ -495,7 +497,9 @@ class HdsPayrollDashboard(models.Model):
                 ('state', 'in', ('done', 'paid')),
             ] + company_domain)
             ytd_slips_by_emp_period = {}
-            for ys in ytd_slips.sorted(key=lambda s: (state_priority.get(s.state, 0), s.id), reverse=True):
+            for ys in ytd_slips.sorted(key=lambda s: (state_priority.get(s.state, 0), -(s.id or 0)), reverse=True):
+                if getattr(ys, 'has_duplicate_payslip', False):
+                    continue
                 key = (ys.employee_id.id, ys.date_from)
                 if key not in ytd_slips_by_emp_period:
                     ytd_slips_by_emp_period[key] = ys
@@ -613,7 +617,9 @@ class HdsPayrollDashboard(models.Model):
                 ] + company_domain
                 t_all_slips = self.env['hr.payslip'].search(t_domain)
                 t_unique = {}
-                for s in t_all_slips.sorted(key=lambda s: (state_priority.get(s.state, 0), s.id), reverse=True):
+                for s in t_all_slips.sorted(key=lambda s: (state_priority.get(s.state, 0), -(s.id or 0)), reverse=True):
+                    if getattr(s, 'has_duplicate_payslip', False):
+                        continue
                     key = (s.employee_id.id, s.date_from, s.date_to)
                     if key not in t_unique:
                         t_unique[key] = s

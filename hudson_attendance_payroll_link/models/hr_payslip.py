@@ -504,29 +504,19 @@ class HrPayslip(models.Model):
                         'amount': 0.0,
                     })
 
-            # 3. Unpaid Leave — remains a separate deduction for formal LOP entries.
-            #    Unpaid hours are NOT included in earned, so they still reduce BASIC via
-            #    the UNPAID salary rule applied on top of the already-prorated BASIC.
+            # 3. Unpaid Leave — recorded for attendance tracking and audit.
+            #    Amount is 0.0 because in the Earned Proration model, unpaid leave hours
+            #    are already excluded from WORK100 (non-payable), so no deduction or pay is tied here.
             if data.get('unpaid_days', 0.0) > 0.01 or data.get('unpaid_hours', 0.0) > 0.01:
                 unpaid_hours = data.get('unpaid_hours', 0.0)
                 unpaid_days = data.get('unpaid_days', 0.0)
-                if sched_hours > 0.0 and unpaid_hours > 0.0:
-                    per_hour = wage / sched_hours
-                    unpaid_ded = round(unpaid_hours * per_hour, 2)
-                elif hasattr(contract, 'get_period_day_rate') and unpaid_days > 0.0:
-                    unpaid_ded = round(unpaid_days * contract.get_period_day_rate(date_from, date_to), 2)
-                elif sched_days > 0.0 and unpaid_days > 0.0:
-                    per_day = wage / sched_days
-                    unpaid_ded = round(unpaid_days * per_day, 2)
-                else:
-                    unpaid_ded = 0.0
 
                 unpaid_found = False
                 for l in res:
                     if l.get('code') == 'UNPAID' and l.get('contract_id') == contract.id:
                         l['number_of_days'] = unpaid_days
                         l['number_of_hours'] = unpaid_hours
-                        l['amount'] = -unpaid_ded if unpaid_ded else 0.0
+                        l['amount'] = 0.0
                         unpaid_found = True
                 if not unpaid_found:
                     res.append({
@@ -537,7 +527,7 @@ class HrPayslip(models.Model):
                         'number_of_days': unpaid_days,
                         'number_of_hours': unpaid_hours,
                         'contract_id': contract.id,
-                        'amount': -unpaid_ded if unpaid_ded else 0.0,
+                        'amount': 0.0,
                     })
 
             # NOTE: SHORTAGE line is intentionally NOT generated.

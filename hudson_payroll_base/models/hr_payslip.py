@@ -345,6 +345,79 @@ class HrPayslip(models.Model):
         compute='_compute_contract_status',
         store=True,
     )
+    has_duplicate_payslip = fields.Boolean(
+        string='Duplicate / Overlapping Payslip',
+        compute='_compute_duplicate_payslip',
+        store=True,
+    )
+    duplicate_payslip_id = fields.Many2one(
+        'hr.payslip',
+        string='Conflicting Payslip',
+        compute='_compute_duplicate_payslip',
+        store=True,
+    )
+
+    @api.depends('employee_id', 'date_from', 'date_to', 'state')
+    def _compute_duplicate_payslip(self):
+        state_priority = {'paid': 4, 'done': 3, 'verify': 2, 'draft': 1}
+        for slip in self:
+            if not slip.employee_id or not slip.date_from or not slip.date_to or slip.state == 'cancel':
+                slip.has_duplicate_payslip = False
+                slip.duplicate_payslip_id = False
+                continue
+
+            # Query all non-cancelled payslips for this employee that overlap with this payslip's dates
+            domain = [
+                ('employee_id', '=', slip.employee_id.id),
+                ('state', '!=', 'cancel'),
+                ('date_from', '<=', slip.date_to),
+                ('date_to', '>=', slip.date_from),
+            ]
+            slip_real_id = slip._origin.id if slip._origin else (slip.id if isinstance(slip.id, int) else False)
+            if slip_real_id:
+                domain.append(('id', '!=', slip_real_id))
+
+            candidates = self.search(domain, order='create_date asc, id asc')
+            if not candidates:
+                slip.has_duplicate_payslip = False
+                slip.duplicate_payslip_id = False
+                continue
+
+            # Overlapping candidates exist. Determine primary vs duplicate:
+            # 1. Higher state priority (paid > done > verify > draft) is primary.
+            # 2. If same state, older created record (smaller ID) is primary.
+            if not slip_real_id:
+                primary = candidates.sorted(
+                    key=lambda s: (-state_priority.get(s.state, 0), s.id or 999999999)
+                )[0]
+                slip.has_duplicate_payslip = True
+                slip.duplicate_payslip_id = primary.id
+            else:
+                all_cluster = candidates + slip._origin
+                primary = all_cluster.sorted(
+                    key=lambda s: (-state_priority.get(s.state, 0), s.id or 999999999)
+                )[0]
+                if primary.id != slip_real_id:
+                    slip.has_duplicate_payslip = True
+                    slip.duplicate_payslip_id = primary.id
+                else:
+                    slip.has_duplicate_payslip = False
+                    slip.duplicate_payslip_id = False
+
+    def action_open_duplicate_payslip(self):
+        """Open the conflicting primary payslip from the duplicate banner."""
+        self.ensure_one()
+        if self.duplicate_payslip_id:
+            return {
+                'name': _('Conflicting Payslip - %s') % (self.duplicate_payslip_id.name or self.duplicate_payslip_id.number or ''),
+                'type': 'ir.actions.act_window',
+                'res_model': 'hr.payslip',
+                'view_mode': 'form',
+                'views': [[False, 'form']],
+                'res_id': self.duplicate_payslip_id.id,
+                'target': 'current',
+            }
+        return False
 
     @api.depends('employee_id', 'contract_id', 'contract_id.date_start', 'contract_id.date_end',
                  'contract_id.contract_date_start', 'contract_id.contract_date_end',
@@ -448,13 +521,15 @@ class HrPayslip(models.Model):
             else:
                 slip.basic_wage = 0.0
 
-    @api.depends('employee_id', 'worked_days_line_ids.number_of_hours', 'worked_days_line_ids.code', 'employee_id.bank_account_id', 'bank_account_id', 'has_no_running_contract')
+    @api.depends('employee_id', 'worked_days_line_ids.number_of_hours', 'worked_days_line_ids.code', 'employee_id.bank_account_id', 'bank_account_id', 'has_no_running_contract', 'has_duplicate_payslip')
     def _compute_payslip_warning(self):
         for slip in self:
             warnings = []
             if not slip.employee_id:
                 slip.payslip_warning = False
                 continue
+            if slip.has_duplicate_payslip:
+                warnings.append(_("Duplicate / Overlapping Payslip"))
             if slip.has_no_running_contract:
                 warnings.append(_("No running contract -> Contract"))
             shortage_lines = slip.worked_days_line_ids.filtered(lambda l: l.code == 'SHORTAGE' and l.number_of_hours > 0)
@@ -565,7 +640,36 @@ class HrPayslip(models.Model):
                 slip._populate_worked_days()
             if not slip.input_line_ids:
                 slip._populate_inputs()
+        slips._recompute_overlapping_duplicate_status()
         return slips
+
+    def write(self, vals):
+        res = super().write(vals)
+        if any(f in vals for f in ('employee_id', 'date_from', 'date_to', 'state')):
+            self._recompute_overlapping_duplicate_status()
+        return res
+
+    def unlink(self):
+        emp_ids = self.mapped('employee_id').ids
+        res = super().unlink()
+        if emp_ids:
+            remaining = self.search([
+                ('employee_id', 'in', emp_ids),
+                ('state', '!=', 'cancel'),
+            ])
+            if remaining:
+                remaining._compute_duplicate_payslip()
+        return res
+
+    def _recompute_overlapping_duplicate_status(self):
+        emp_ids = self.mapped('employee_id').ids
+        if emp_ids:
+            all_slips = self.search([
+                ('employee_id', 'in', emp_ids),
+                ('state', '!=', 'cancel'),
+            ])
+            if all_slips:
+                all_slips._compute_duplicate_payslip()
 
     @api.onchange('date_from')
     def _onchange_date_from(self):
@@ -579,6 +683,8 @@ class HrPayslip(models.Model):
             self.contract_id = False
             self.has_no_running_contract = False
             self.has_zero_or_negative_net = False
+            self.has_duplicate_payslip = False
+            self.duplicate_payslip_id = False
             self.payslip_warning = False
             return
 
@@ -635,6 +741,7 @@ class HrPayslip(models.Model):
         # Automatically populate worked days and inputs
         self._populate_worked_days()
         self._populate_inputs()
+        self._compute_duplicate_payslip()
 
     def compute_sheet(self):
         """Standard method for computing payslip sheet."""

@@ -125,16 +125,7 @@ class HrPayslipWorkedDays(models.Model):
                     base_hourly = (wage / sched_hours) if sched_hours > 0.0 else 0.0
                     line.amount = round(base_hourly * 1.5 * line.number_of_hours, 2)
             elif line.code in ('UNPAID', 'LOP', 'ABSENT'):
-                if sched_hours > 0.0 and line.number_of_hours > 0.0:
-                    per_hour = wage / sched_hours
-                    line.amount = -round(line.number_of_hours * per_hour, 2)
-                elif hasattr(contract, 'get_period_day_rate') and d_from and d_to and line.number_of_days > 0.0:
-                    line.amount = -round(line.number_of_days * contract.get_period_day_rate(d_from, d_to), 2)
-                elif sched_days > 0.0 and line.number_of_days > 0.0:
-                    per_day = wage / sched_days
-                    line.amount = -round(line.number_of_days * per_day, 2)
-                else:
-                    line.amount = 0.0
+                line.amount = 0.0
             else:
                 if sched_days > 0.0 and line.number_of_days > 0.0:
                     line.amount = round(wage * (line.number_of_days / sched_days), 2)

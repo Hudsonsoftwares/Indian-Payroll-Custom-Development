@@ -28,6 +28,16 @@
                         </div>
                     </div>
 
+                    <!-- Alert Ribbon: Duplicate / Overlapping Payslip -->
+                    <div class="alert alert-warning mb-0 border-0 rounded-0 d-flex align-items-center py-2 px-3" role="alert" invisible="not employee_id or not has_duplicate_payslip" style="background-color: rgba(255, 193, 7, 0.2); border-left: 4px solid #ffc107 !important;">
+                        <i class="fa fa-exclamation-triangle me-2 text-warning fs-5"/>
+                        <div class="d-flex align-items-center gap-2">
+                            <span class="text-warning fw-semibold">Duplicate / Overlapping Payslip:</span>
+                            <span>Another payslip already exists for this employee covering an overlapping period.</span>
+                            <button name="action_open_duplicate_payslip" type="object" string="View Conflicting Payslip" class="oe_link p-0 align-baseline fw-bold text-info" invisible="not duplicate_payslip_id"/>
+                        </div>
+                    </div>
+
                     <!-- Alert Ribbon: Zero or Negative Net Pay -->
                     <div class="alert alert-warning mb-0 border-0 rounded-0 d-flex align-items-center py-2 px-3" role="alert" invisible="not employee_id or not has_zero_or_negative_net" style="background-color: rgba(255, 193, 7, 0.2); border-left: 4px solid #ffc107 !important;">
                         <span class="text-warning fw-semibold">The net pay for this payslip is zero or negative.</span>
@@ -46,6 +56,8 @@
                     <sheet>
                         <field name="has_no_running_contract" invisible="1"/>
                         <field name="has_zero_or_negative_net" invisible="1"/>
+                        <field name="has_duplicate_payslip" invisible="1"/>
+                        <field name="duplicate_payslip_id" invisible="1"/>
                         <field name="has_bank_account" invisible="1"/>
                         <field name="effective_advice_id" invisible="1"/>
                         <div class="oe_button_box" name="button_box">
