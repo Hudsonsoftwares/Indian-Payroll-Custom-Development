@@ -1460,18 +1460,34 @@ else:
     # -------------------------------------------------------------------------
     def _get_earned_wage_ratio(self, localdict=None):
         """
-        Computes the ratio of earned wages to master wages (0.0 to 1.0)
-        taking into account attendance shortage, unpaid leaves, and worked days.
-        If an employee is completely absent (100% shortage or LOP), returns 0.0.
-        If no shortage or unpaid leave, returns 1.0.
+        Computes the ratio of earned wages to master wages (0.0 to 1.0).
+
+        With the Earned Proration model (pay_by_attendance=True):
+          BASIC / HRA / DA are already prorated by (earned_hours / scheduled_hours)
+          inside the salary rules. Returning 1.0 here prevents statutory components
+          (EPF, ESIC, PT) from double-prorating an already-reduced figure.
+
+        Without pay_by_attendance (fixed-salary + unpaid-leave deduction):
+          Uses legacy logic — ratio is derived from unpaid leave deductions vs total earnings.
         """
         self.ensure_one()
         ld = localdict or self._get_payroll_eval_context(raise_if_missing=False) or {}
-        categories = ld.get('categories')
-        worked_days = ld.get('worked_days')
         contract = ld.get('contract') or self.contract_id
 
-        # 1. Total earnings from categories or contract
+        # ── Earned Proration Model ──────────────────────────────────────────────
+        # When pay_by_attendance is ON, salary components are already at their earned
+        # value (prorated). Statutory calculations (PF/ESIC/PT) should simply multiply
+        # those earned amounts × 1.0 — no further reduction needed.
+        if getattr(contract, 'pay_by_attendance', False):
+            return 1.0
+
+        # ── Fixed salary + LOP model ────────────────────────────────────────────
+        # For contracts without pay_by_attendance, the only deductions that could
+        # reduce the statutory base are formal Unpaid (LOP) leave entries.
+        # We compute ratio = 1 - (unpaid_deduction / total_earnings).
+        categories = ld.get('categories')
+        worked_days = ld.get('worked_days')
+
         total_earnings = 0.0
         if categories:
             total_earnings = float(getattr(categories, 'GROSS', 0.0) or 0.0)
@@ -1479,26 +1495,8 @@ else:
                 total_earnings = float(getattr(categories, 'BASIC', 0.0) or 0.0) + float(getattr(categories, 'ALW', 0.0) or 0.0)
         if total_earnings <= 0.0 and contract:
             total_earnings = float(getattr(contract, 'wage', 0.0) or 0.0)
-        if total_earnings <= 0.0 and self.employee_id:
-            total_earnings = float(getattr(self.employee_id, 'wage', 0.0) or 0.0)
 
-        # 2. Check shortage & unpaid deductions from evaluated rules, localdict, worked_days, or line_ids
-        short_ded = abs(float(ld.get('SHORT') or 0.0))
         unpaid_ded = abs(float(ld.get('UNPAID') or 0.0))
-
-        if short_ded <= 0.0 and worked_days and contract and hasattr(worked_days, 'SHORTAGE') and worked_days.SHORTAGE and getattr(contract, 'pay_by_attendance', False):
-            short_hrs = float(getattr(worked_days.SHORTAGE, 'number_of_hours', 0.0) or 0.0)
-            if short_hrs > 0.0 and hasattr(contract, 'get_period_shortage_rate'):
-                rate = abs(contract.get_period_shortage_rate(self.date_from, self.date_to))
-                short_ded = min(short_hrs * rate, total_earnings)
-
-        if short_ded <= 0.0 and self.worked_days_line_ids and contract and getattr(contract, 'pay_by_attendance', False):
-            s_wd = self.worked_days_line_ids.filtered(lambda w: w.code == 'SHORTAGE')
-            if s_wd:
-                short_hrs = sum(s_wd.mapped('number_of_hours'))
-                if short_hrs > 0.0 and hasattr(contract, 'get_period_shortage_rate'):
-                    rate = abs(contract.get_period_shortage_rate(self.date_from, self.date_to))
-                    short_ded = min(short_hrs * rate, total_earnings)
 
         if unpaid_ded <= 0.0 and worked_days and contract and hasattr(worked_days, 'UNPAID') and worked_days.UNPAID:
             unpaid_hrs = float(getattr(worked_days.UNPAID, 'number_of_hours', 0.0) or 0.0)
@@ -1522,48 +1520,15 @@ else:
                     rate = abs(contract.get_period_day_rate(self.date_from, self.date_to))
                     unpaid_ded = min(unpaid_days * rate, total_earnings)
 
-        if short_ded <= 0.0 and self.line_ids:
-            s_line = self.line_ids.filtered(lambda l: l.code == 'SHORT')
-            if s_line:
-                short_ded = abs(sum(s_line.mapped('total')))
         if unpaid_ded <= 0.0 and self.line_ids:
             u_line = self.line_ids.filtered(lambda l: l.code == 'UNPAID')
             if u_line:
                 unpaid_ded = abs(sum(u_line.mapped('total')))
 
-        total_ded = short_ded + unpaid_ded
-        if total_earnings > 0.0 and total_ded > 0.0:
-            if total_ded >= (total_earnings - 0.5):
+        if total_earnings > 0.0 and unpaid_ded > 0.0:
+            if unpaid_ded >= (total_earnings - 0.5):
                 return 0.0
-            return max(0.0, min(1.0, (total_earnings - total_ded) / total_earnings))
-
-        # 3. Check hours from worked_days or attendance schedule
-        shortage_hrs = 0.0
-        unpaid_hrs = 0.0
-        if worked_days:
-            if hasattr(worked_days, 'SHORTAGE') and worked_days.SHORTAGE:
-                shortage_hrs += float(getattr(worked_days.SHORTAGE, 'number_of_hours', 0.0) or 0.0)
-            if hasattr(worked_days, 'UNPAID') and worked_days.UNPAID:
-                unpaid_hrs += float(getattr(worked_days.UNPAID, 'number_of_hours', 0.0) or 0.0)
-
-        if shortage_hrs <= 0.0 and unpaid_hrs <= 0.0 and self.worked_days_line_ids:
-            for wd in self.worked_days_line_ids:
-                if wd.code == 'SHORTAGE':
-                    shortage_hrs += float(wd.number_of_hours or 0.0)
-                elif wd.code == 'UNPAID':
-                    unpaid_hrs += float(wd.number_of_hours or 0.0)
-
-        if contract and (shortage_hrs > 0.0 or unpaid_hrs > 0.0):
-            sched_hrs = 0.0
-            if hasattr(contract, '_get_period_scheduled_hours'):
-                sched_hrs = contract._get_period_scheduled_hours(self.date_from, self.date_to)
-            elif hasattr(contract, 'get_period_scheduled_hours'):
-                sched_hrs = contract.get_period_scheduled_hours(self.date_from, self.date_to)
-            if sched_hrs > 0.0:
-                loss_hrs = (shortage_hrs if getattr(contract, 'pay_by_attendance', False) else 0.0) + unpaid_hrs
-                if loss_hrs >= (sched_hrs - 0.1):
-                    return 0.0
-                return max(0.0, min(1.0, (sched_hrs - loss_hrs) / sched_hrs))
+            return max(0.0, min(1.0, (total_earnings - unpaid_ded) / total_earnings))
 
         return 1.0
 

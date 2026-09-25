@@ -1,7 +1,10 @@
 # -*- coding: utf-8 -*-
 from datetime import date
+# pyrefly: ignore [missing-import]
 from odoo import fields
+# pyrefly: ignore [missing-import]
 from odoo.tests.common import TransactionCase
+# pyrefly: ignore [missing-import]
 from odoo.exceptions import ValidationError
 
 

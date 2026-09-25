@@ -58,7 +58,11 @@
         <!-- Components belonging to Regular Pay        -->
         <!-- ========================================== -->
 
-        <!-- 1. Basic Salary -->
+        <!-- 1. Basic Salary (Earned Proration Model) -->
+        <!-- When pay_by_attendance is ON: Basic = Contract_Basic * (WORK100_hours / Scheduled_hours)
+             This gives a clean positive number reflecting actual earned pay.
+             No separate SHORTAGE deduction line is needed.
+             When pay_by_attendance is OFF: full contract basic is always paid. -->
         <record id="hr_rule_basic" model="hr.salary.rule">
             <field name="name">Basic Salary</field>
             <field name="struct_id" ref="structure_base"/>
@@ -67,7 +71,17 @@
             <field name="category_id" ref="rule_category_basic"/>
             <field name="condition_select">none</field>
             <field name="amount_select">code</field>
-            <field name="amount_python_compute">result = contract.basic_salary or contract.wage or 0.0</field>
+            <field name="amount_python_compute"><![CDATA[
+nominal = contract.basic_salary or contract.wage or 0.0
+if contract.pay_by_attendance:
+    work_line = worked_days.WORK100
+    earned_hours = work_line.number_of_hours if work_line else 0.0
+    sched_data = payslip._get_attendance_vs_schedule(contract, payslip.date_from, payslip.date_to)
+    sched_hours = sched_data.get('scheduled_hours', 0.0)
+    result = round(nominal * (earned_hours / sched_hours), 2) if sched_hours > 0.0 else 0.0
+else:
+    result = nominal
+]]></field>
         </record>
 
         <!-- 2. Reimbursement -->

@@ -1,7 +1,11 @@
 # -*- coding: utf-8 -*-
 import calendar
+import logging
 from datetime import datetime, date
+# pyrefly: ignore [missing-import]
 from odoo import api, fields, models, _
+
+_logger = logging.getLogger(__name__)
 
 
 class HdsPayrollDashboard(models.Model):

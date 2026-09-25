@@ -706,6 +706,13 @@ class HrPayslip(models.Model):
                 })
 
             if in_days > 0.0 or in_hours > 0.0:
+                total_sched_hours = in_hours + out_hours
+                wage = float(getattr(contract, 'wage', 0.0) or getattr(contract, 'basic_salary', 0.0) or 0.0)
+                if total_sched_hours > 0.0 and out_hours > 0.0:
+                    work100_amount = round(wage * (in_hours / total_sched_hours), 2)
+                else:
+                    work100_amount = wage
+
                 res.append({
                     'name': _("Normal Working Days"),
                     'sequence': 2,
@@ -714,6 +721,7 @@ class HrPayslip(models.Model):
                     'number_of_days': in_days,
                     'number_of_hours': in_hours,
                     'contract_id': contract.id,
+                    'amount': work100_amount,
                 })
         return res
 

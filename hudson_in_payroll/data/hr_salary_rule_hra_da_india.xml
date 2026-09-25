@@ -13,7 +13,17 @@
             <field name="struct_id" ref="hudson_payroll_base.structure_base"/>
             <field name="condition_select">none</field>
             <field name="amount_select">code</field>
-            <field name="amount_python_compute"><![CDATA[result = contract.hra or 0.0]]></field>
+            <field name="amount_python_compute"><![CDATA[
+nominal = contract.hra or 0.0
+if contract.pay_by_attendance and nominal > 0.0:
+    work_line = worked_days.WORK100
+    earned_hours = work_line.number_of_hours if work_line else 0.0
+    sched_data = payslip._get_attendance_vs_schedule(contract, payslip.date_from, payslip.date_to)
+    sched_hours = sched_data.get('scheduled_hours', 0.0)
+    result = round(nominal * (earned_hours / sched_hours), 2) if sched_hours > 0.0 else 0.0
+else:
+    result = nominal
+]]></field>
             <field name="appears_on_payslip" eval="True"/>
         </record>
 
@@ -25,7 +35,17 @@
             <field name="struct_id" ref="hudson_payroll_base.structure_base"/>
             <field name="condition_select">none</field>
             <field name="amount_select">code</field>
-            <field name="amount_python_compute"><![CDATA[result = contract.da or 0.0]]></field>
+            <field name="amount_python_compute"><![CDATA[
+nominal = contract.da or 0.0
+if contract.pay_by_attendance and nominal > 0.0:
+    work_line = worked_days.WORK100
+    earned_hours = work_line.number_of_hours if work_line else 0.0
+    sched_data = payslip._get_attendance_vs_schedule(contract, payslip.date_from, payslip.date_to)
+    sched_hours = sched_data.get('scheduled_hours', 0.0)
+    result = round(nominal * (earned_hours / sched_hours), 2) if sched_hours > 0.0 else 0.0
+else:
+    result = nominal
+]]></field>
             <field name="appears_on_payslip" eval="True"/>
         </record>
 
@@ -37,7 +57,17 @@
             <field name="struct_id" ref="hudson_payroll_base.structure_base"/>
             <field name="condition_select">none</field>
             <field name="amount_select">code</field>
-            <field name="amount_python_compute"><![CDATA[result = contract.fixed_allowance or 0.0]]></field>
+            <field name="amount_python_compute"><![CDATA[
+nominal = contract.fixed_allowance or 0.0
+if contract.pay_by_attendance and nominal > 0.0:
+    work_line = worked_days.WORK100
+    earned_hours = work_line.number_of_hours if work_line else 0.0
+    sched_data = payslip._get_attendance_vs_schedule(contract, payslip.date_from, payslip.date_to)
+    sched_hours = sched_data.get('scheduled_hours', 0.0)
+    result = round(nominal * (earned_hours / sched_hours), 2) if sched_hours > 0.0 else 0.0
+else:
+    result = nominal
+]]></field>
             <field name="appears_on_payslip" eval="True"/>
         </record>
 
@@ -49,7 +79,17 @@
             <field name="struct_id" ref="hudson_payroll_base.structure_base"/>
             <field name="condition_select">none</field>
             <field name="amount_select">code</field>
-            <field name="amount_python_compute"><![CDATA[result = contract.standard_allowance or 0.0]]></field>
+            <field name="amount_python_compute"><![CDATA[
+nominal = contract.standard_allowance or 0.0
+if contract.pay_by_attendance and nominal > 0.0:
+    work_line = worked_days.WORK100
+    earned_hours = work_line.number_of_hours if work_line else 0.0
+    sched_data = payslip._get_attendance_vs_schedule(contract, payslip.date_from, payslip.date_to)
+    sched_hours = sched_data.get('scheduled_hours', 0.0)
+    result = round(nominal * (earned_hours / sched_hours), 2) if sched_hours > 0.0 else 0.0
+else:
+    result = nominal
+]]></field>
             <field name="appears_on_payslip" eval="True"/>
         </record>
 

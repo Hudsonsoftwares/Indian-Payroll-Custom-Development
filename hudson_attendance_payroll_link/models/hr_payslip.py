@@ -109,7 +109,15 @@ class HrPayslip(models.Model):
         total_shortage_days = 0.0
         total_unpaid_hours = 0.0
         total_unpaid_days = 0.0
-        
+        # ── Earned Proration Model ──────────────────────────────────────────────
+        # "Earned" = hours/days the employee is entitled to be paid for:
+        #   actual biometric hours worked
+        #   + paid leave hours (CL/SL/PL — employee still receives salary)
+        #   + mandatory public holiday credits (paid even with 0 attendance)
+        # Shortage hours are computed for information only (no deduction line).
+        total_earned_hours = 0.0
+        total_earned_days = 0.0
+
         current_date = fields.Date.from_string(date_from)
         end_date = fields.Date.from_string(date_to)
         day_std_hours = (calendar.hours_per_day if calendar and calendar.hours_per_day else 8.0)
@@ -144,12 +152,14 @@ class HrPayslip(models.Model):
 
             # Scheduled work hours for the day (factoring in working schedule and mandatory holidays)
             scheduled_hours = 0.0
+            base_scheduled = 0.0
             if calendar:
                 day_start = tz.localize(datetime.combine(current_date, time.min))
                 day_end = tz.localize(datetime.combine(current_date, time.max))
                 base_scheduled = calendar.get_work_hours_count(day_start, day_end, compute_leaves=False)
                 if current_date in mandatory_holiday_dates:
-                    # Mandatory Public Holiday: scheduled work is 0 for employee (paid holiday, no shortage)
+                    # Mandatory Public Holiday: scheduled = 0 so no shortage,
+                    # but employee earns the full day credit.
                     scheduled_hours = 0.0
                 else:
                     scheduled_hours = base_scheduled
@@ -172,10 +182,9 @@ class HrPayslip(models.Model):
                 total_unpaid_hours += unpaid_leave_hours
                 total_unpaid_days += unpaid_leave_hours / denom
             
-            # Shortage reconciliation
+            # Shortage reconciliation (kept for informational / anomaly reporting)
             is_regularized = current_date in regularized_dates
             if is_regularized:
-                # Regularized day: no shortage is deducted
                 shortage_hours = 0.0
             else:
                 # Leave takes priority, subtract leave hours from scheduled hours for shortage calculation
@@ -185,6 +194,25 @@ class HrPayslip(models.Model):
             total_shortage_hours += shortage_hours
             if shortage_hours > 0.0:
                 total_shortage_days += min(1.0, shortage_hours / denom)
+
+            # ── Earned hours (Odoo Online proration model) ──────────────────
+            # Public holiday: employee gets full-day credit (base_scheduled)
+            # Normal working day: actual_worked + paid_leave_hours (capped to scheduled)
+            # Unpaid leave hours are excluded from earned.
+            # Regularized shortages are credited as if fully worked.
+            if current_date in mandatory_holiday_dates:
+                day_earned = base_scheduled  # full holiday credit
+            else:
+                if is_regularized:
+                    # Manager approved regularization: credit full scheduled day
+                    day_earned = scheduled_hours
+                else:
+                    day_earned = min(actual_hours + paid_leave_hours, scheduled_hours)
+
+            total_earned_hours += day_earned
+            if scheduled_hours > 0.0 and day_earned > 0.0:
+                total_earned_days += min(1.0, day_earned / day_std_hours)
+
             current_date += relativedelta(days=1)
 
         # 6. Overtime calculation — reads from Standard Odoo 19 hr.attendance.overtime.line.
@@ -212,6 +240,8 @@ class HrPayslip(models.Model):
         data = {
             'scheduled_hours': total_scheduled_hours,
             'scheduled_days': total_scheduled_days,
+            'earned_hours': total_earned_hours,
+            'earned_days': total_earned_days,
             'out_of_contract_hours': total_out_of_contract_hours,
             'out_of_contract_days': total_out_of_contract_days,
             'actual_hours': total_actual_hours,
@@ -253,15 +283,16 @@ class HrPayslip(models.Model):
         if not ot_lines:
             return 0.0, 100.0, 0.0
 
-        # Base hourly wage from scheduled hours (WORK100 line)
+        # Base hourly wage from SCHEDULED hours (not WORK100 which is now earned hours).
+        # After the Earned Proration change, WORK100.number_of_hours = earned/actual hours,
+        # NOT the full scheduled period. Using earned hours here would inflate the hourly
+        # rate enormously (e.g. 40,000 / 8h = ₹5,000/hr for a 1-day worker).
+        # We must divide by the total scheduled hours for the payslip period.
         sched_hrs = 0.0
-        if worked_days and hasattr(worked_days, 'WORK100') and worked_days.WORK100:
-            sched_hrs = worked_days.WORK100.number_of_hours
+        att_data = self._get_attendance_vs_schedule(contract, self.date_from, self.date_to)
+        sched_hrs = att_data.get('scheduled_hours', 0.0)
         if not sched_hrs or sched_hrs <= 0.0:
-            wd_line = self.worked_days_line_ids.filtered(lambda w: w.code == 'WORK100')
-            if wd_line:
-                sched_hrs = wd_line[0].number_of_hours
-        if not sched_hrs or sched_hrs <= 0.0:
+            # Fallback: calendar hours_per_day × 26 working days
             cal = contract.resource_calendar_id
             sched_hrs = (cal.hours_per_day * 26.0) if cal and cal.hours_per_day else 208.0
 
@@ -388,30 +419,66 @@ class HrPayslip(models.Model):
         res = super(HrPayslip, self).get_worked_day_lines(contracts, date_from, date_to)
         for contract in contracts:
             data = self._get_attendance_vs_schedule(contract, date_from, date_to)
-            sched_days = data.get('scheduled_days', 0.0)
-            sched_hours = data.get('scheduled_hours', 0.0)
+
+            # ── Earned Proration Model ──────────────────────────────────────────
+            # WORK100 reflects the hours the employee EARNED pay for:
+            #   actual attendance + paid leaves + public holiday credits.
+            # This drives the BASIC / HRA / DA proration in salary rules directly.
+            # No SHORTAGE deduction line is generated; shortfalls are implicitly
+            # reflected by the lower earned hours in WORK100.
+            #
+            # If pay_by_attendance is OFF: we keep scheduled hours (full salary).
+            # If pay_by_attendance is ON:  we use earned hours (prorated salary).
+            pay_by_att = getattr(contract, 'pay_by_attendance', False)
+
+            if pay_by_att:
+                work100_days = data.get('earned_days', 0.0)
+                work100_hours = data.get('earned_hours', 0.0)
+            else:
+                work100_days = data.get('scheduled_days', 0.0)
+                work100_hours = data.get('scheduled_hours', 0.0)
+
             out_days = data.get('out_of_contract_days', 0.0)
             out_hours = data.get('out_of_contract_hours', 0.0)
+
+            wage = float(getattr(contract, 'wage', 0.0) or getattr(contract, 'basic_salary', 0.0) or 0.0)
+            sched_hours = data.get('scheduled_hours', 0.0)
+            sched_days = data.get('scheduled_days', 0.0)
+
+            if pay_by_att:
+                if sched_hours > 0.0 and work100_hours >= 0.0:
+                    work100_amount = round(wage * (work100_hours / sched_hours), 2)
+                elif sched_days > 0.0 and work100_days >= 0.0:
+                    work100_amount = round(wage * (work100_days / sched_days), 2)
+                else:
+                    work100_amount = 0.0
+            else:
+                if sched_hours > 0.0 and 0.0 < work100_hours < sched_hours:
+                    work100_amount = round(wage * (work100_hours / sched_hours), 2)
+                else:
+                    work100_amount = wage
 
             # 1. Update or remove WORK100
             work100_found = False
             for line in list(res):
                 if line.get('code') == 'WORK100' and line.get('contract_id') == contract.id:
-                    if sched_days <= 0.01:
+                    if work100_days <= 0.01 and work100_hours <= 0.01:
                         res.remove(line)
                     else:
-                        line['number_of_days'] = sched_days
-                        line['number_of_hours'] = sched_hours
+                        line['number_of_days'] = work100_days
+                        line['number_of_hours'] = work100_hours
+                        line['amount'] = work100_amount
                         work100_found = True
-            if not work100_found and sched_days > 0.01:
+            if not work100_found and (work100_days > 0.01 or work100_hours > 0.01):
                 res.insert(0, {
                     'name': _('Normal Working Days'),
                     'sequence': 2,
                     'code': 'WORK100',
                     'description': _('Normal Working Days'),
-                    'number_of_days': sched_days,
-                    'number_of_hours': sched_hours,
+                    'number_of_days': work100_days,
+                    'number_of_hours': work100_hours,
                     'contract_id': contract.id,
+                    'amount': work100_amount,
                 })
 
             # 2. Update or insert OUT_OF_CONTRACT
@@ -421,6 +488,7 @@ class HrPayslip(models.Model):
                     if line.get('code') == 'OUT_OF_CONTRACT' and line.get('contract_id') == contract.id:
                         line['number_of_days'] = out_days
                         line['number_of_hours'] = out_hours
+                        line['amount'] = 0.0
                         out_found = True
                 if not out_found:
                     is_india = (getattr(contract, '_is_india_localization', None) and contract._is_india_localization()) or (contract.company_id and contract.company_id.country_id and contract.company_id.country_id.code == 'IN')
@@ -436,41 +504,75 @@ class HrPayslip(models.Model):
                         'amount': 0.0,
                     })
 
-            # 3. Leaves, Shortages, Overtime
-            if data.get('unpaid_days', 0.0) > 0.01:
-                res.append({
-                    'name': _('Unpaid Leave'),
-                    'sequence': 4,
-                    'code': 'UNPAID',
-                    'description': _('Unpaid Leave'),
-                    'number_of_days': data['unpaid_days'],
-                    'number_of_hours': data['unpaid_hours'],
-                    'contract_id': contract.id,
-                })
-            if contract.pay_by_attendance and data.get('shortage_hours_delta', 0.0) > 0.01:
-                if not any(l.get('code') == 'SHORTAGE' for l in res):
+            # 3. Unpaid Leave — remains a separate deduction for formal LOP entries.
+            #    Unpaid hours are NOT included in earned, so they still reduce BASIC via
+            #    the UNPAID salary rule applied on top of the already-prorated BASIC.
+            if data.get('unpaid_days', 0.0) > 0.01 or data.get('unpaid_hours', 0.0) > 0.01:
+                unpaid_hours = data.get('unpaid_hours', 0.0)
+                unpaid_days = data.get('unpaid_days', 0.0)
+                if sched_hours > 0.0 and unpaid_hours > 0.0:
+                    per_hour = wage / sched_hours
+                    unpaid_ded = round(unpaid_hours * per_hour, 2)
+                elif hasattr(contract, 'get_period_day_rate') and unpaid_days > 0.0:
+                    unpaid_ded = round(unpaid_days * contract.get_period_day_rate(date_from, date_to), 2)
+                elif sched_days > 0.0 and unpaid_days > 0.0:
+                    per_day = wage / sched_days
+                    unpaid_ded = round(unpaid_days * per_day, 2)
+                else:
+                    unpaid_ded = 0.0
+
+                unpaid_found = False
+                for l in res:
+                    if l.get('code') == 'UNPAID' and l.get('contract_id') == contract.id:
+                        l['number_of_days'] = unpaid_days
+                        l['number_of_hours'] = unpaid_hours
+                        l['amount'] = -unpaid_ded if unpaid_ded else 0.0
+                        unpaid_found = True
+                if not unpaid_found:
                     res.append({
-                        'name': _('Attendance Shortage'),
-                        'sequence': 5,
-                        'code': 'SHORTAGE',
-                        'description': _('Attendance Shortage'),
-                        'number_of_days': data.get('shortage_days', 0.0),
-                        'number_of_hours': data['shortage_hours_delta'],
+                        'name': _('Unpaid Leave'),
+                        'sequence': 4,
+                        'code': 'UNPAID',
+                        'description': _('Unpaid Leave'),
+                        'number_of_days': unpaid_days,
+                        'number_of_hours': unpaid_hours,
                         'contract_id': contract.id,
+                        'amount': -unpaid_ded if unpaid_ded else 0.0,
                     })
-            # Overtime worked days line — uses Standard Odoo 19 overtime.line data.
-            # Gate: any approved, payable OT lines exist for the period.
-            # The salary rule OT reads rate-weighted pay directly from overtime.line,
-            # so number_of_hours here is the total approved payable hours (informational).
+
+            # NOTE: SHORTAGE line is intentionally NOT generated.
+            # In the Earned Proration model, attendance shortfalls reduce WORK100 hours,
+            # which in turn reduce BASIC/HRA/DA salary rule outputs directly.
+            # There is no separate negative deduction line on the payslip.
+
+            # 4. Overtime worked days line — uses Standard Odoo 19 overtime.line data.
+            #    Gate: any approved, payable OT lines exist for the period.
             if data.get('overtime_hours_delta', 0.0) > 0.01:
-                if not any(l.get('code') == 'OVERTIME' for l in res):
+                ot_hours = data['overtime_hours_delta']
+                if hasattr(self, '_get_dynamic_overtime_pay'):
+                    total_ot_amt = self._get_dynamic_overtime_pay(contract)
+                elif hasattr(self, '_get_dynamic_overtime_values'):
+                    base_hourly, rate_pct, qty = self._get_dynamic_overtime_values(contract)
+                    total_ot_amt = qty * base_hourly * (rate_pct / 100.0)
+                else:
+                    base_hourly = (wage / sched_hours) if sched_hours > 0.0 else 0.0
+                    total_ot_amt = base_hourly * 1.5 * ot_hours
+                ot_found = False
+                for l in res:
+                    if l.get('code') == 'OVERTIME' and l.get('contract_id') == contract.id:
+                        l['number_of_hours'] = ot_hours
+                        l['amount'] = round(total_ot_amt, 2)
+                        ot_found = True
+                if not ot_found:
                     res.append({
                         'name': _('Overtime Hours'),
                         'sequence': 6,
                         'code': 'OVERTIME',
                         'description': _('Overtime Hours (Standard Odoo Ruleset)'),
                         'number_of_days': 0.0,
-                        'number_of_hours': data['overtime_hours_delta'],
+                        'number_of_hours': ot_hours,
                         'contract_id': contract.id,
+                        'amount': round(total_ot_amt, 2),
                     })
         return res
+
