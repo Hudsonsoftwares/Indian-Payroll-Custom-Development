@@ -197,6 +197,75 @@ gross_total_income=%s""",
             f"INR {float(gti or 0.0):,.2f}"
         )
 
+        # ── Step 4b: Section 71(3A) Aggregate House-Property Loss Cap ──────────────
+        # Under Section 71(3A) (applicable to Old Regime only), the TOTAL house
+        # property loss that may be set off against salary / other income in any
+        # assessment year is capped at ₹2,00,000.  The engine currently applies:
+        #   • Let-out property loss  → subtracted from GTI in OtherIncomeAggregationService
+        #   • Self-occupied interest → subtracted as a deduction in HomeLoanDeductionService
+        # Both reductions are each capped at ₹2L individually, but their COMBINED
+        # impact can reach ₹4L, which is statutorily impermissible.
+        # Fix: measure both components together; trim the self-occupied 24(b) deduction
+        # so that (let_out_loss_absorbed + self_occ_interest_allowed) ≤ ₹2L cap.
+        if regime_code == 'old':
+            from .tds_parameter_service import TdsParameterService as _TdsParamSvc
+            _tds_param_svc_71 = _TdsParamSvc(self.env)
+            _sec_71_3a_cap = _tds_param_svc_71.get_house_property_loss_limit(eval_date=eval_date) or 200000.0
+
+            # Let-out loss already absorbed in GTI (effective_hp_gti_impact is negative when a loss)
+            _other_inc_agg = annual_projection.other_income_aggregation
+            _letout_loss_absorbed = abs(min(0.0, float(getattr(_other_inc_agg, 'effective_hp_gti_impact', 0.0) or 0.0)))
+
+            # Self-occupied interest allowed as a deduction
+            _self_occ_24b = float(deduction_calc.home_loan_interest_24b or 0.0)
+
+            _combined_hp_relief = _letout_loss_absorbed + _self_occ_24b
+
+            if _combined_hp_relief > _sec_71_3a_cap:
+                # Remaining room for self-occupied 24(b) after the let-out loss has used its share
+                _allowed_self_occ_24b = max(0.0, _sec_71_3a_cap - _letout_loss_absorbed)
+                _trimmed_24b = _self_occ_24b - _allowed_self_occ_24b  # amount being removed
+
+                _logger.warning(
+                    """[SECTION_71_3A_AGGREGATE_CAP_ENFORCEMENT]
+regime                      : OLD
+sec_71_3a_statutory_cap     : INR %s
+letout_loss_absorbed_in_gti : INR %s  (already reduced GTI via OtherIncomeAggregationService)
+self_occ_24b_deduction      : INR %s  (computed by HomeLoanDeductionService)
+combined_hp_relief_pre_cap  : INR %s
+combined_hp_relief_post_cap : INR %s
+trimmed_self_occ_24b        : INR %s  (excess removed to honour aggregate cap)
+final_allowed_self_occ_24b  : INR %s
+decision                    : self-occupied 24(b) capped to leave room within ₹2L aggregate limit""",
+                    f"{_sec_71_3a_cap:,.2f}",
+                    f"{_letout_loss_absorbed:,.2f}",
+                    f"{_self_occ_24b:,.2f}",
+                    f"{_combined_hp_relief:,.2f}",
+                    f"{_sec_71_3a_cap:,.2f}",
+                    f"{_trimmed_24b:,.2f}",
+                    f"{_allowed_self_occ_24b:,.2f}",
+                )
+
+                # Adjust the deduction summary in-place before it is consumed by TaxableIncomeService
+                deduction_calc.home_loan_interest_24b = _allowed_self_occ_24b
+                deduction_calc.total_allowable_deductions = (
+                    deduction_calc.total_allowable_deductions - _trimmed_24b
+                )
+            else:
+                _logger.warning(
+                    """[SECTION_71_3A_AGGREGATE_CAP_ENFORCEMENT]
+regime                      : OLD
+sec_71_3a_statutory_cap     : INR %s
+letout_loss_absorbed_in_gti : INR %s
+self_occ_24b_deduction      : INR %s
+combined_hp_relief          : INR %s
+decision                    : combined HP relief is within ₹2L cap — no adjustment required""",
+                    f"{_sec_71_3a_cap:,.2f}",
+                    f"{_letout_loss_absorbed:,.2f}",
+                    f"{_self_occ_24b:,.2f}",
+                    f"{_combined_hp_relief:,.2f}",
+                )
+
         # Step 5: Net Taxable Income Computation
         if debug_enabled:
             _logger.warning("Before TaxableIncomeService")

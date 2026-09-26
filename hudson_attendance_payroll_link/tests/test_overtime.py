@@ -19,6 +19,7 @@ Tests cover:
 
 from datetime import date, datetime, timedelta
 from unittest.mock import patch, MagicMock
+# pyrefly: ignore [missing-import]
 from odoo.tests.common import TransactionCase, tagged
 
 
