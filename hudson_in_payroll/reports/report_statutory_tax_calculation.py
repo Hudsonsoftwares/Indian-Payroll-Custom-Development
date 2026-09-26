@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 import logging
+# pyrefly: ignore [missing-import]
 from odoo import api, fields, models, _
 
 _logger = logging.getLogger(__name__)
@@ -63,6 +64,7 @@ class ReportStatutoryTaxCalculation(models.AbstractModel):
 
             company = rec.company_id if hasattr(rec, 'company_id') and rec.company_id else self.env.company
             if not getattr(company, 'hds_in_tds_applicable', True):
+                # pyrefly: ignore [missing-import]
                 from odoo.exceptions import UserError
                 raise UserError(_("Tax Calculation Report cannot be generated because TDS is disabled in Company Settings for %s.") % company.name)
 
@@ -191,6 +193,7 @@ class ReportStatutoryTaxCalculation(models.AbstractModel):
             gross_total_income = float(getattr(proj, 'gross_total_income', 0.0) or 0.0)
 
             standard_deduction = float(getattr(deduct, 'standard_deduction', 0.0) or 0.0)
+            professional_tax_16iii = float(getattr(deduct, 'professional_tax_16iii', 0.0) or 0.0)
             hra_exemption = float(getattr(deduct, 'hra_exemption', 0.0) or 0.0)
             home_loan_24b = float(getattr(deduct, 'home_loan_interest_24b', 0.0) or 0.0)
             sec_80eea = float(getattr(deduct, 'section_80eea_deduction', 0.0) or 0.0)
@@ -339,6 +342,8 @@ class ReportStatutoryTaxCalculation(models.AbstractModel):
             deduction_breakdown = []
             if standard_deduction > 0:
                 deduction_breakdown.append(('Standard Deduction [u/s 16(ia)]', standard_deduction))
+            if professional_tax_16iii > 0:
+                deduction_breakdown.append(('Professional Tax [u/s 16(iii)]', professional_tax_16iii))
             if hra_exemption > 0:
                 deduction_breakdown.append(('HRA Exemption [Sec 10(13A)]', hra_exemption))
             if home_loan_24b > 0:
@@ -527,6 +532,7 @@ Actual Current Month TDS : ₹{current_month_tds:,.2f}
                 'gross_total_income': gross_total_income,
                 # ── Deductions ────────────────────────────────────────────────
                 'standard_deduction': standard_deduction,
+                'professional_tax_16iii': professional_tax_16iii,
                 'hra_exemption': hra_exemption,
                 'home_loan_24b': home_loan_24b,
                 'sec_80eea': sec_80eea,

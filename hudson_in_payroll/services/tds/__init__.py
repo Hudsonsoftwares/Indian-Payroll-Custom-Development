@@ -19,6 +19,7 @@ from . import other_income_aggregation_service
 from . import regime_routing_service
 from . import annual_income_projection_service
 from . import standard_deduction_service
+from . import professional_tax_deduction_service
 from . import chapter6a_deduction_service
 from . import home_loan_deduction_service
 from . import deduction_calculation_service

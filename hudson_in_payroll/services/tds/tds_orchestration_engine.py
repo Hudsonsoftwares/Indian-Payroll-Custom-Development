@@ -166,17 +166,39 @@ month=%s""",
             financial_year=financial_year,
             regime_context=regime_context,
             eval_date=eval_date,
-            gross_salary_income=gross_salary_income
+            gross_salary_income=gross_salary_income,
+            payslip=payslip,
+            annual_projection=annual_projection
         )
         if debug_enabled:
             _logger.warning(
-                "After DeductionCalculationService | Standard Deduction: %s, Chapter VI-A Deductions: %s, HRA Exemption: %s, Home Loan Deduction: %s, Total Deductions: %s",
+                "After DeductionCalculationService | Standard Deduction: %s, PT 16(iii): %s, Chapter VI-A Deductions: %s, HRA Exemption: %s, Home Loan Deduction: %s, Total Deductions: %s",
                 deduction_calc.standard_deduction,
+                getattr(deduction_calc, 'professional_tax_16iii', 0.0),
                 deduction_calc.total_chapter_6a,
                 deduction_calc.hra_exemption,
                 deduction_calc.home_loan_interest_24b,
                 deduction_calc.total_approved_deductions
             )
+
+        _logger.warning("""[SECTION_16III_PT_DEDUCTION_AUDIT]
+calculation_run_id=%s
+employee=%s
+financial_year=%s
+regime=%s
+annual_salary=%s
+standard_deduction=%s
+professional_tax_16iii=%s
+taxable_salary_before_chapter_6a=%s""",
+            calc_run_id,
+            employee.name if employee else 'N/A',
+            financial_year.name if financial_year else 'N/A',
+            regime_code.upper(),
+            f"INR {gross_salary_income:,.2f}",
+            f"INR {float(deduction_calc.standard_deduction or 0.0):,.2f}",
+            f"INR {float(getattr(deduction_calc, 'professional_tax_16iii', 0.0) or 0.0):,.2f}",
+            f"INR {max(0.0, gross_salary_income - (deduction_calc.standard_deduction or 0.0) - (getattr(deduction_calc, 'professional_tax_16iii', 0.0) or 0.0)):,.2f}"
+        )
 
         _logger.warning("""[HRA_EXEMPTION_AT_ANNUAL_TAX_CALCULATION_POINT]
 calculation_run_id=%s
@@ -284,12 +306,14 @@ decision                    : combined HP relief is within ₹2L cap — no adju
         _logger.warning("""[TAX_SLAB_INPUT_AUDIT]
 gross_annual_income=%s
 standard_deduction=%s
+professional_tax_16iii=%s
 hra_exemption_received=%s
 chapter_6a_deductions=%s
 total_deductions=%s
 taxable_income_passed_to_tax_calculator=%s""",
             f"INR {float(gti or 0.0):,.2f}",
             f"INR {float(deduction_calc.standard_deduction or 0.0):,.2f}",
+            f"INR {float(getattr(deduction_calc, 'professional_tax_16iii', 0.0) or 0.0):,.2f}",
             f"INR {float(deduction_calc.hra_exemption or 0.0):,.2f}",
             f"INR {float(deduction_calc.total_chapter_6a or 0.0):,.2f}",
             f"INR {float(deduction_calc.total_approved_deductions or 0.0):,.2f}",
@@ -420,6 +444,7 @@ tax_difference=%s""",
 
         c6a_obj = getattr(deduction_calc, 'chapter_6a_deductions', None)
         std_ded_val = float(deduction_calc.standard_deduction or 0.0)
+        pt_16iii_val = float(getattr(deduction_calc, 'professional_tax_16iii', 0.0) or 0.0)
         hra_ex_val = float(deduction_calc.hra_exemption or 0.0)
         lta_ex_val = float(deduction_calc.lta_exemption or 0.0)
         s80c_val = float(getattr(c6a_obj, 'section_80c', 0.0) or 0.0) if c6a_obj else 0.0
@@ -774,6 +799,7 @@ Result         : ₹{sec_80eea_ded:,.2f}
 [STAGE 11 — TOTAL ALLOWABLE DEDUCTIONS]
 Input          :
   Standard Deduction   : ₹{deduction_calc.standard_deduction:,.2f}
+  Professional Tax 16(iii): ₹{pt_16iii_val:,.2f}
   Chapter VI-A Total   : ₹{total_c6a_val:,.2f}
   Employer NPS (Sec 124): ₹{emp_nps_80ccd2:,.2f}
   HRA Exemption        : ₹{deduction_calc.hra_exemption:,.2f}
@@ -850,6 +876,7 @@ FINAL SUMMARY
 ================================================================================
 Gross Total Income         : ₹{annual_projection.gross_total_income:,.2f}
 Standard Deduction         : ₹{deduction_calc.standard_deduction:,.2f}
+Professional Tax 16(iii)   : ₹{pt_16iii_val:,.2f}
 Chapter VI-A Total         : ₹{total_c6a_val:,.2f}
 Section 57(iia)            : ₹{fam_pension_57:,.2f}
 HRA Exemption              : ₹{deduction_calc.hra_exemption:,.2f}
