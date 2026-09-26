@@ -2994,35 +2994,43 @@ is_within_8_years=%s""",
                 lambda l: l.category == '80c' and getattr(l, 'active', True) and self._match_80c_child_line(l, python_field_name)
             )
         else:
+            # Match by category only — description is written during sync, not used as a lookup key.
+            # Previously matched by label substring which caused duplicate lines when users entered
+            # custom descriptions that didn't contain the canonical label (e.g. '80d_self' line named
+            # 'My Health Policy' instead of 'Medical Insurance (Self & Family)').
             lines = self.declaration_line_ids.filtered(
-                lambda l: l.category == category_code and l.description and description.split(' (')[0] in l.description
+                lambda l: l.category == category_code
             )
         existing_val = lines[0].declared_amount if lines else 0.0
         line_id = lines[0].id if lines else 'New'
 
         if amount > 0.0:
-            line_vals = {
+            # When updating an existing line, do NOT overwrite description —
+            # the user may have entered a custom name which must be preserved.
+            # Description is only set on initial creation.
+            update_vals = {
                 'declared_amount': amount,
-                'description': description,
                 'is_senior_citizen': is_senior,
                 'is_severe_disability': is_severe,
             }
+            create_vals = dict(update_vals, description=description)
             if category_code == '80g' and hasattr(self, 'decl_80g_category') and self.decl_80g_category:
-                line_vals['decl_80g_category'] = self.decl_80g_category
+                update_vals['decl_80g_category'] = self.decl_80g_category
+                create_vals['decl_80g_category'] = self.decl_80g_category
 
             if lines:
                 target_line = lines[0]
-                target_line.sudo().write(line_vals)
+                target_line.sudo().write(update_vals)
                 if len(lines) > 1:
                     lines[1:].sudo().unlink()
                 line_id = target_line.id
                 post_val = target_line.declared_amount
             else:
-                line_vals.update({
+                create_vals.update({
                     'declaration_id': self.id,
                     'category': category_code,
                 })
-                new_line = self.env['tds.employee.declaration.line'].sudo().create(line_vals)
+                new_line = self.env['tds.employee.declaration.line'].sudo().create(create_vals)
                 line_id = new_line.id
                 post_val = new_line.declared_amount
         else:
@@ -3192,12 +3200,9 @@ is_within_8_years=%s""",
                         lambda l: l.category == '80c' and rec._match_80c_child_line(l, field_name)
                     )
                 else:
-                    ui_info = DECLARATION_UI_REGISTRY.get(field_name, {})
-                    ui_label = ui_info.get('label', field_name)
-                    lbl_base = ui_label.split(' (')[0].strip()
-                    matching_lines = active_lines.filtered(
-                        lambda l: l.category == cat and l.description and (lbl_base in l.description or field_name in l.description or ui_label in l.description)
-                    )
+                    # Match by category only — description is not a reliable key because users
+                    # may enter custom names. This prevents false misses that cause duplicate lines.
+                    matching_lines = active_lines.filtered(lambda l: l.category == cat)
                 line_val = sum(float(l.declared_amount or 0.0) for l in matching_lines) if matching_lines else 0.0
                 has_approved_proof = any(
                     float(getattr(l, 'tax_firm_approved_amount', 0.0) or getattr(l, 'approved_amount', 0.0) or getattr(l, 'verified_amount', 0.0) or 0.0) > 0.0
@@ -3337,7 +3342,10 @@ is_within_8_years=%s""",
                     elif cat == '80c' and line.category == '80c' and rec._match_80c_child_line(line, field_name):
                         matched = line
                         break
-                    elif line.category == cat and line.description and desc.split(' (')[0].strip() in line.description:
+                    elif line.category == cat:
+                        # Match by category only — do not require the canonical label to be present
+                        # in the line description. Users may have entered a custom description;
+                        # the description is overwritten during sync anyway.
                         matched = line
                         break
 
@@ -3345,7 +3353,8 @@ is_within_8_years=%s""",
                     matched_line_set.add(matched)
                     if hdr_val > 0.0:
                         matched.declared_amount = hdr_val
-                        matched.description = desc
+                        # Do NOT overwrite description — user may have set a custom name.
+                        # Only update amount and flags; description is preserved as-is.
                         matched.is_senior_citizen = is_senior
                         matched.is_severe_disability = is_severe
                         if cat == '80g' and hasattr(rec, 'decl_80g_category') and rec.decl_80g_category:
