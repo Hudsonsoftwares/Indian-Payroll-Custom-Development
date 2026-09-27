@@ -12,6 +12,7 @@
                 <field name="name"/>
                 <field name="effective_date" optional="show"/>
                 <field name="employee_id"/>
+                <field name="employee_code" optional="show"/>
                 <field name="contract_id" optional="hide"/>
                 <field name="revision_type" widget="badge" optional="show"/>
                 <field name="old_wage" widget="monetary" optional="show"/>
@@ -45,6 +46,7 @@
                         </h1>
                         <h2>
                             <field name="employee_id" readonly="1"/>
+                            <span class="text-muted ms-2" invisible="not employee_code">(<field name="employee_code" readonly="1" class="d-inline"/>)</span>
                         </h2>
                     </div>
 

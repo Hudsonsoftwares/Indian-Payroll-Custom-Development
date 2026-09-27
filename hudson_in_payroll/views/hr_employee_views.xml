@@ -33,6 +33,11 @@
             </xpath>
 
 
+            <!-- Employee Code under Work Information -->
+            <xpath expr="//page[@name='work_information']//field[@name='department_id']" position="before">
+                <field name="registration_number" string="Employee Code" placeholder="e.g. EMP001"/>
+            </xpath>
+
             <!-- Position Employer Cost fields in Left Column (Contract Overview) right below wage -->
             <xpath expr="//div[@name='wage']" position="after">
                 <label for="hds_in_employer_cost_monthly" string="Employer Cost (Monthly)"/>
@@ -323,6 +328,30 @@
         <field name="arch" type="xml">
             <xpath expr="//field[@name='is_non_resident']" position="before">
                 <field name="hds_in_residential_status" string="Residential Status"/>
+            </xpath>
+        </field>
+    </record>
+
+    <!-- Employee Tree View: Show Employee Code -->
+    <record id="hds_in_view_employee_tree" model="ir.ui.view">
+        <field name="name">hr.employee.tree.inherit.hds.code</field>
+        <field name="model">hr.employee</field>
+        <field name="inherit_id" ref="hr.view_employee_tree"/>
+        <field name="arch" type="xml">
+            <xpath expr="//field[@name='name']" position="before">
+                <field name="registration_number" string="Employee Code" optional="show"/>
+            </xpath>
+        </field>
+    </record>
+
+    <!-- Employee Search View: Search by Employee Code -->
+    <record id="hds_in_view_employee_filter" model="ir.ui.view">
+        <field name="name">hr.employee.search.inherit.hds.code</field>
+        <field name="model">hr.employee</field>
+        <field name="inherit_id" ref="hr.view_employee_filter"/>
+        <field name="arch" type="xml">
+            <xpath expr="//field[@name='name']" position="after">
+                <field name="registration_number" string="Employee Code"/>
             </xpath>
         </field>
     </record>

@@ -37,10 +37,21 @@ class HdsInSalaryRevisionWizard(models.TransientModel):
         res = super().default_get(fields_list)
         active_id = self.env.context.get('active_id')
         active_model = self.env.context.get('active_model')
+        default_employee_id = self.env.context.get('default_employee_id')
 
+        emp_id = None
         if active_model == 'hr.employee' and active_id:
-            employee = self.env['hr.employee'].browse(active_id)
+            emp_id = active_id
+            res['is_employee_readonly'] = True
+        elif default_employee_id:
+            emp_id = default_employee_id
+            res['is_employee_readonly'] = True
+
+        if emp_id:
+            employee = self.env['hr.employee'].browse(emp_id)
             res['employee_id'] = employee.id
+            code = getattr(employee, 'registration_number', None) or getattr(employee, 'identification_id', None) or False
+            res['employee_code'] = str(code) if code else False
             contract = self._get_employee_contract(employee)
             if contract:
                 res['contract_id'] = contract.id
@@ -52,8 +63,18 @@ class HdsInSalaryRevisionWizard(models.TransientModel):
         return res
 
     # Section 1: Employee Information
+    is_employee_readonly = fields.Boolean(
+        string="Is Employee Fixed",
+        default=False,
+        help="Locks employee selection when the wizard is initiated directly from an employee profile."
+    )
     employee_id = fields.Many2one('hr.employee', string="Employee", required=True)
-    employee_code = fields.Char(string="Employee Code", compute='_compute_employee_code', readonly=True)
+    employee_code = fields.Char(
+        string="Employee Code",
+        compute='_compute_employee_code',
+        readonly=True,
+        help="Employee Code / Registration Number from employee profile."
+    )
     department_id = fields.Many2one('hr.department', string="Department", related='employee_id.department_id', readonly=True)
     job_id = fields.Many2one('hr.job', string="Designation", related='employee_id.job_id', readonly=True)
     company_id = fields.Many2one('res.company', string="Company", related='employee_id.company_id', readonly=True)
@@ -90,6 +111,11 @@ class HdsInSalaryRevisionWizard(models.TransientModel):
 
     @api.onchange('employee_id')
     def _onchange_employee_id(self):
+        if self.employee_id:
+            code = getattr(self.employee_id, 'registration_number', None) or getattr(self.employee_id, 'identification_id', None) or False
+            self.employee_code = str(code) if code else False
+        else:
+            self.employee_code = False
         self._compute_contract_info()
         self._onchange_breakdown_distribution_mode()
 
@@ -98,8 +124,8 @@ class HdsInSalaryRevisionWizard(models.TransientModel):
         for wizard in self:
             emp = wizard.employee_id
             if emp:
-                code = getattr(emp, 'registration_number', None) or getattr(emp, 'identification_id', None) or getattr(emp, 'barcode', None) or str(emp.id)
-                wizard.employee_code = str(code)
+                code = getattr(emp, 'registration_number', None) or getattr(emp, 'identification_id', None) or False
+                wizard.employee_code = str(code) if code else False
             else:
                 wizard.employee_code = False
 

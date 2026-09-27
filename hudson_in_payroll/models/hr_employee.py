@@ -9,6 +9,32 @@ from odoo.exceptions import ValidationError
 class HrEmployee(models.Model):
     _inherit = 'hr.employee'
 
+    registration_number = fields.Char(
+        string="Employee Code",
+        copy=False,
+        help="Configurable internal Employee Code or Registration Number (e.g. EMP001)."
+    )
+    employee_code = fields.Char(
+        string="Employee Code",
+        related='registration_number',
+        readonly=False,
+        store=True,
+        help="Configurable Employee Code (alias for registration_number)."
+    )
+
+    @api.constrains('registration_number')
+    def _check_unique_registration_number(self):
+        for emp in self:
+            if emp.registration_number:
+                domain = [
+                    ('registration_number', '=', emp.registration_number),
+                    ('id', '!=', emp.id),
+                ]
+                if emp.company_id:
+                    domain.append(('company_id', '=', emp.company_id.id))
+                if self.search_count(domain):
+                    raise ValidationError(_("The Employee Code '%s' is already assigned to another employee.") % emp.registration_number)
+
     previous_lta_history_ids = fields.One2many(
         'tds.lta.previous.employer',
         'employee_id',

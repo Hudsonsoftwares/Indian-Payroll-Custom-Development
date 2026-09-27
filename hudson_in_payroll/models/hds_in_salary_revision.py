@@ -27,6 +27,12 @@ class HdsInSalaryRevision(models.Model):
         readonly=True,
         ondelete='restrict'
     )
+    employee_code = fields.Char(
+        string="Employee Code",
+        related='employee_id.registration_number',
+        store=True,
+        readonly=True
+    )
     contract_id = fields.Many2one(
         'hr.version',
         string="Active Contract",
