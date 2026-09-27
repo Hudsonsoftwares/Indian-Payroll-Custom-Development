@@ -247,6 +247,7 @@
                 <field name="sequence" widget="handle"/>
                 <field name="financial_year_id"/>
                 <field name="regime_code"/>
+                <field name="age_category"/>
                 <field name="income_from" optional="show" string="Income From (₹)"/>
                 <field name="income_to" column_invisible="True"/>
                 <field name="display_income_to" string="Income To (₹)" optional="show" decoration-bf="income_to == 0" decoration-info="income_to == 0"/>
@@ -265,11 +266,17 @@
             <search string="Search Income Tax Slabs">
                 <field name="financial_year_id"/>
                 <field name="regime_code"/>
+                <field name="age_category"/>
                 <filter string="New Regime" name="filter_new" domain="[('regime_code', '=', 'new')]"/>
                 <filter string="Old Regime" name="filter_old" domain="[('regime_code', '=', 'old')]"/>
+                <separator/>
+                <filter string="General (Below 60)" name="filter_general" domain="[('age_category', '=', 'general')]"/>
+                <filter string="Senior Citizen (60–79)" name="filter_senior" domain="[('age_category', '=', 'senior')]"/>
+                <filter string="Super Senior (80+)" name="filter_super_senior" domain="[('age_category', '=', 'super_senior')]"/>
                 <group>
                     <filter string="Tax Year" name="group_by_fy" context="{'group_by': 'financial_year_id'}"/>
                     <filter string="Tax Regime" name="group_by_regime" context="{'group_by': 'regime_code'}"/>
+                    <filter string="Age Category" name="group_by_age_category" context="{'group_by': 'age_category'}"/>
                 </group>
 
             </search>
@@ -282,7 +289,7 @@
         <field name="res_model">tds.tax.slab</field>
         <field name="view_mode">list,form</field>
         <field name="search_view_id" ref="tds_tax_slab_view_search"/>
-        <field name="context">{'search_default_group_by_fy': 1, 'search_default_group_by_regime': 1}</field>
+        <field name="context">{'search_default_group_by_fy': 1, 'search_default_group_by_regime': 1, 'search_default_group_by_age_category': 1}</field>
     </record>
 
     <!-- ============================================================= -->

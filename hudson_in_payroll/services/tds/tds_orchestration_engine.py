@@ -320,18 +320,24 @@ taxable_income_passed_to_tax_calculator=%s""",
             f"INR {float(taxable_inc.net_taxable_income or 0.0):,.2f}"
         )
 
+        # Step 6a: Resolve employee age category for Old Regime slab selection
+        # Per CBDT Circular No. 19/2015: age determined as of March 31 of the Financial Year
+        age_category = IncomeTaxSlabService.resolve_age_category(employee, financial_year, eval_date)
+
         if debug_enabled:
-            _logger.warning("Before IncomeTaxSlabService")
+            _logger.warning("Before IncomeTaxSlabService | Age Category: %s", age_category)
         slab_svc = IncomeTaxSlabService(self.env)
         slab_calc = slab_svc.calculate_base_tax(
             net_taxable_income=taxable_inc.net_taxable_income,
             financial_year=financial_year,
-            regime_code=regime_code
+            regime_code=regime_code,
+            age_category=age_category
         )
         if debug_enabled:
             _logger.warning(
-                "After IncomeTaxSlabService | Base Tax: %s",
-                slab_calc.base_tax_liability
+                "After IncomeTaxSlabService | Base Tax: %s | Age Category: %s",
+                slab_calc.base_tax_liability,
+                slab_calc.age_category
             )
 
         # Step 7: Section 87A Rebate Engine Application
@@ -359,7 +365,8 @@ taxable_income_passed_to_tax_calculator=%s""",
             net_taxable_income=taxable_inc.net_taxable_income,
             tax_after_rebate=rebate_calc.tax_after_rebate,
             financial_year=financial_year,
-            regime_code=regime_code
+            regime_code=regime_code,
+            age_category=age_category
         )
         if debug_enabled:
             _logger.warning(

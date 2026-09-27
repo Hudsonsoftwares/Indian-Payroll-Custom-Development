@@ -56,7 +56,7 @@ class SurchargeEngineService(BaseStatutoryService):
     Applies surcharge to total income tax after Section 87A rebate and evaluates statutory marginal relief.
     """
 
-    def calculate_surcharge(self, net_taxable_income, tax_after_rebate, financial_year, regime_code):
+    def calculate_surcharge(self, net_taxable_income, tax_after_rebate, financial_year, regime_code, age_category='general'):
         """
         Calculates income tax surcharge with statutory marginal relief.
 
@@ -64,6 +64,7 @@ class SurchargeEngineService(BaseStatutoryService):
         :param tax_after_rebate: float (Tax liability after Section 87A rebate)
         :param financial_year: tds.financial.year record
         :param regime_code: str ('old' or 'new')
+        :param age_category: str ('general', 'senior', or 'super_senior') for consistent slab resolution
         :return: SurchargeEngineResult
         """
         net_taxable_income = float(net_taxable_income or 0.0)
@@ -155,7 +156,7 @@ class SurchargeEngineService(BaseStatutoryService):
         # Calculate base tax at threshold using IncomeTaxSlabService
         from .income_tax_slab_service import IncomeTaxSlabService
         slab_svc = IncomeTaxSlabService(self.env)
-        tax_at_threshold_calc = slab_svc.calculate_base_tax(threshold, financial_year, regime_code)
+        tax_at_threshold_calc = slab_svc.calculate_base_tax(threshold, financial_year, regime_code, age_category=age_category)
         tax_at_threshold = float(tax_at_threshold_calc.base_tax_liability or 0.0)
 
         # Surcharge rate applicable at threshold is derived from the preceding slab
